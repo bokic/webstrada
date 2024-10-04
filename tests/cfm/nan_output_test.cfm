@@ -1,0 +1,1 @@
+<cfset x = (-2)^0.5><cfset neg = -x><cfset big = 2^1024><cfset nbig = -2^1025><cfset s = ToString(x)><cfset c = x & ""><cfoutput>out1:[#x#]|out2:[#(-2)^0.5#]|neg:[#neg#]|inf:[#big#]|ninf:[#nbig#]|tostr:[#s#]|conv:[#c#]|json:#SerializeJSON(x)#|</cfoutput><cfscript>writeOutput("wo:[" & x & "]|");</cfscript><cfdump var="#x#"><cfdump var="#x#" format="text">

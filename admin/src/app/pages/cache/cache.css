@@ -1,0 +1,22 @@
+:host {
+  display: block;
+}
+
+.cache-message {
+  margin-bottom: 14px;
+  color: var(--ws-blue);
+}
+
+.admin-table th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+code {
+  background: var(--ws-light);
+  border: 1px solid var(--ws-border);
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-size: 12px;
+}

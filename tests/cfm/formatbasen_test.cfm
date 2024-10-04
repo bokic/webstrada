@@ -1,0 +1,30 @@
+<cfoutput>
+hex255:#FormatBaseN(255, 16)#
+hex26:#FormatBaseN(26, 16)#
+hex0:#FormatBaseN(0, 16)#
+b36:#FormatBaseN(255, 36)#
+neg:#FormatBaseN(-255, 16)#
+neg1h:#FormatBaseN(-1, 16)#
+neg1b2:#FormatBaseN(-1, 2)#
+neg8o:#FormatBaseN(-8, 8)#
+neg1b3:#FormatBaseN(-1, 3)#
+neg5b5:#FormatBaseN(-5, 5)#
+neg1296b36:#FormatBaseN(-1296, 36)#
+negminb2:#FormatBaseN(-2147483648, 2)#
+negminh:#FormatBaseN(-2147483648, 16)#
+negminb36:#FormatBaseN(-2147483648, 36)#
+negminb8:#FormatBaseN(-2147483648, 8)#
+posmaxh:#FormatBaseN(2147483647, 16)#
+posmaxb2:#FormatBaseN(2147483647, 2)#
+pow31:#FormatBaseN(2147483648, 16)#
+u32maxh:#FormatBaseN(4294967295, 16)#
+u32maxb2:#FormatBaseN(4294967295, 2)#
+u32maxb10:#FormatBaseN(4294967295, 10)#
+u32maxb36:#FormatBaseN(4294967295, 36)#
+octal:#FormatBaseN(8, 8)#
+bin10:#FormatBaseN(10, 2)#
+float:#FormatBaseN(3.99, 2)#
+b36large:#FormatBaseN(1296, 36)#
+n10b8:#FormatBaseN(10, 8)#
+nneg2b8:#FormatBaseN(-2, 8)#
+</cfoutput>

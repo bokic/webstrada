@@ -1,0 +1,321 @@
+:root {
+  --ws-blue: #0076cb;
+  --ws-blue-hover: #0062aa;
+  --ws-blue-light: #e8f3fb;
+  --ws-dark: #5d5d5d;
+  --ws-dark-hover: #4c4c4c;
+  --ws-darker: #3c3c3c;
+  --ws-darkest: #212121;
+  --ws-light: #f5f4f4;
+  --ws-border: #d9d9d9;
+  --ws-border-light: #e8e8e8;
+  --ws-text: #212121;
+  --ws-text-muted: #757575;
+  --ws-white: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  color: var(--ws-text);
+  background: var(--ws-white);
+}
+
+/* ---- Page scaffolding used by every admin page ---- */
+.page {
+  padding: 18px 24px 40px 24px;
+  max-width: 1200px;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ws-darkest);
+  margin: 0 0 6px 0;
+}
+
+.page-desc {
+  margin: 0 0 18px 0;
+  color: var(--ws-text-muted);
+  line-height: 1.5;
+}
+
+.page-actions {
+  margin-bottom: 18px;
+}
+
+.muted {
+  color: var(--ws-text-muted);
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-head .page-actions {
+  margin-bottom: 18px;
+  flex-shrink: 0;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-block;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #ffffff;
+  background: var(--ws-blue);
+  border: 1px solid var(--ws-blue);
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:hover {
+  background: var(--ws-blue-hover);
+  border-color: var(--ws-blue-hover);
+}
+
+.btn-secondary {
+  display: inline-block;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ws-text);
+  background: var(--ws-light);
+  border: 1px solid var(--ws-border);
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn-secondary:hover {
+  background: #ebebeb;
+}
+
+/* ---- Admin tables ---- */
+.table-wrap {
+  border: 1px solid var(--ws-border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  background: var(--ws-white);
+}
+
+table.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-table thead th {
+  background: var(--ws-light);
+  color: var(--ws-text);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ws-border);
+  white-space: nowrap;
+}
+
+.admin-table tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ws-border-light);
+  color: var(--ws-text);
+  vertical-align: top;
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table tbody tr:hover {
+  background: #fafcfe;
+}
+
+.admin-table td.muted,
+.admin-table th.muted {
+  color: var(--ws-text-muted);
+}
+
+.admin-table .status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--ws-blue);
+}
+
+.admin-table .status-dot.ok {
+  background: #6aab5c;
+}
+
+.admin-table .status-dot.bad {
+  background: #d9534f;
+}
+
+/* ---- Info/stat cards ---- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.stat-card {
+  border: 1px solid var(--ws-border);
+  border-radius: 3px;
+  background: var(--ws-white);
+  padding: 14px 16px;
+}
+
+.stat-card .stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ws-text-muted);
+  margin-bottom: 6px;
+}
+
+.stat-card .stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ws-darkest);
+}
+
+.stat-card .stat-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ws-text-muted);
+}
+
+/* ---- Section boxes ---- */
+.section-box {
+  border: 1px solid var(--ws-border);
+  border-radius: 3px;
+  background: var(--ws-white);
+  margin-bottom: 20px;
+}
+
+.section-box .section-header {
+  background: var(--ws-light);
+  border-bottom: 1px solid var(--ws-border);
+  padding: 8px 14px;
+  font-weight: 600;
+  color: var(--ws-text);
+}
+
+.section-box .section-body {
+  padding: 14px;
+}
+
+/* ---- Progress bars (runtime page) ---- */
+.meter {
+  height: 12px;
+  border: 1px solid var(--ws-border);
+  border-radius: 2px;
+  background: var(--ws-light);
+  overflow: hidden;
+}
+
+.meter .meter-fill {
+  height: 100%;
+  background: var(--ws-blue);
+}
+
+/* ---- Forms ---- */
+.form-row {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ws-border-light);
+}
+
+.form-row:last-child {
+  border-bottom: none;
+}
+
+.form-row label {
+  color: var(--ws-text);
+  font-weight: 500;
+}
+
+.form-row input[type='text'],
+.form-row input[type='password'],
+.form-row select {
+  width: 100%;
+  max-width: 420px;
+  padding: 5px 8px;
+  border: 1px solid var(--ws-border);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ws-text);
+  background: var(--ws-white);
+}
+
+.form-row input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+}
+
+.form-row .hint {
+  font-size: 11px;
+  color: var(--ws-text-muted);
+}
+
+/* ---- Key/value settings table (General Settings) ---- */
+.kv-row {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ws-border-light);
+}
+
+.kv-row:last-child {
+  border-bottom: none;
+}
+
+.kv-row .kv-label {
+  font-weight: 500;
+  color: var(--ws-text);
+}
+
+.kv-row .kv-value {
+  text-align: right;
+  color: var(--ws-text);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: var(--ws-blue-light);
+  color: var(--ws-blue);
+  font-weight: 600;
+}
+
+.badge.gray {
+  background: var(--ws-light);
+  color: var(--ws-text-muted);
+}

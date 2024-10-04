@@ -1,0 +1,77 @@
+# Function Name: `EntityLoad`
+
+## Description
+Loads and returns an array of entities of the specified entityname or an entity if unique=true or if a primary key id is passed in to filterCriteria.
+
+## Return Type
+`any`
+
+## Syntax
+```cfml
+entityLoad(entityName [,id | Filter ,unique | Order ,options])
+```
+
+## Arguments
+
+### Argument: `entityName`
+- **Type**: `string`
+- **Required**: Required
+- **Default Value**: *None*
+- **Description**: Name of CFC / Entity to be loaded.
+
+### Argument: `id`
+- **Type**: `any`
+- **Required**: Optional
+- **Default Value**: *None*
+- **Description**: THIS PARAMETER IS MUTUALLY EXCLUSIVE WITH `Filter`.
+
+The primary key value of the entity to be loaded. Or if the entity has a composite key, then this is specified as a ColdFusion struct (key-value pair).
+
+### Argument: `Filter`
+- **Type**: `any`
+- **Required**: Optional
+- **Default Value**: *None*
+- **Description**: THIS PARAMETER IS MUTUALLY EXCLUSIVE WITH `id`.
+
+This is a ColdFusion struct (key-value pair) of property names and values. If there is more than one key-value pair, then use the `AND` keyword.
+
+### Argument: `unique`
+- **Type**: `boolean`
+- **Required**: Optional
+- **Default Value**: *None*
+- **Description**: THIS PARAMETER IS MUTUALLY EXCLUSIVE WITH `Order`.
+
+When true a single entity is returned, otherwise an array is returned.
+If you are sure only one record exists for the `Filter`, then you can specify `unique=true` to return a single entity instead of an array. If you set `unique=true` and multiple records are returned, then an exception occurs.
+
+### Argument: `Order`
+- **Type**: `string`
+- **Required**: Optional
+- **Default Value**: *None*
+- **Description**: THIS PARAMETER IS MUTUALLY EXCLUSIVE WITH `unique`.
+
+String used to specify the sort order of the entities that are returned.
+If this is specified, the function returns an array of entities that satisfy the `Filter` and is sorted as specified by `Order`.
+
+Usage example: LastName ASC, FirstName ASC
+
+### Argument: `options`
+- **Type**: `struct`
+- **Required**: Optional
+- **Default Value**: *None*
+- **Description**: A struct with possible keys:
+ignorecase : Ignores the case of sort order when set to true. Use only if you've specified the `Order` parameter.
+offset : Specifies the position from which to retrieve the objects.
+maxResults : Specifies the maximum number of objects to be retrieved.
+cacheable : Whether the result has to be cached in secondary cache. Default is `false`.
+cachename : Name of the cache in secondary cache.
+timeout : Specified the timeout value (in seconds) for the query
+
+## Limitations and Other Info
+
+- **Related Functions**: `entitynew`, `entityget`, `entityloadbypk`, `entityloadbyexample`, `entityreload`, `ormexecutequery`
+- **Coldfusion Support**: Minimum version: `9`.
+- **Lucee Support**:
+- **Railo Support**:
+- **Boxlang Support**: Minimum version: `1.0.0`.
+

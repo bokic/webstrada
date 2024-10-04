@@ -1,0 +1,78 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Dashboard</h1>
+      <p class="page-desc">
+        Welcome to the WebStrada Administrator. Monitor the ColdFusion-compatible
+        engine, its data services and overall server health.
+      </p>
+    </div>
+    <div class="page-actions">
+      <button class="btn-secondary" type="button" (click)="refresh()">Refresh</button>
+    </div>
+  </div>
+
+  @if (!loaded()) {
+    <div class="muted">Loading&hellip;</div>
+  }
+
+  @if (failed()) {
+    <div class="dashboard-error">
+      Could not reach the server API. Is the WebStrada daemon running?
+      (<a href="/admin/api/serverinfo.cfm" target="_blank">open the endpoint</a>)
+    </div>
+  }
+
+  <div class="cards">
+    @for (s of stats(); track s.label) {
+      <div class="stat-card">
+        <div class="stat-label">{{ s.label }}</div>
+        <div class="stat-value">{{ s.value }}</div>
+        <div class="stat-sub">{{ s.sub }}</div>
+      </div>
+    }
+  </div>
+
+  <div class="section-box">
+    <div class="section-header-row">
+      <span class="section-header-title">Recent Requests</span>
+      <label class="switch-row">
+        <span class="switch-label">Hide admin requests</span>
+        <span class="switch" [class.on]="excludeAdmin()" (click)="toggleAdminFilter()">
+          <span class="switch-knob"></span>
+        </span>
+      </label>
+    </div>
+    <div class="table-wrap no-border">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Template</th>
+            <th>Status</th>
+            <th>Method</th>
+            <th>Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of recent(); track $index) {
+            <tr>
+              <td class="muted">{{ r.time }}</td>
+              <td>{{ r.template }}</td>
+              <td>
+                <span
+                  class="status-dot"
+                  [class.ok]="r.status === '200 OK' || r.status === '204 No Content'"
+                  [class.bad]="r.status !== '200 OK' && r.status !== '204 No Content'"
+                ></span>
+                {{ r.status }}
+              </td>
+              <td class="muted">{{ r.method }}</td>
+              <td class="muted">{{ r.duration }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

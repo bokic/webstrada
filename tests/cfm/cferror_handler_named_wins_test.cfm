@@ -1,0 +1,1 @@
+<cferror type="exception" exception="myboom" template="include_lib/cferror_exc_page.cfm"><cferror type="exception" exception="ktype" template="include_lib/cferror_alt_page.cfm"><cfthrow type="myboom" message="winner">

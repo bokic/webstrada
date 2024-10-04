@@ -1,0 +1,57 @@
+<div class="shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand-mark">W</div>
+      <div class="brand-text">
+        <span class="brand-name">{{ brand }}</span>
+        <span class="brand-sub">{{ subtitle }}</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <a class="toplink" href="#" (click)="false">Server Monitor</a>
+      <a class="toplink" href="#" (click)="false">Documentation</a>
+      <span class="top-sep">|</span>
+      <a class="toplink top-danger" href="#" (click)="false">Log Out</a>
+    </div>
+  </header>
+
+  <nav class="subbar">
+    <a class="crumb" routerLink="/">WebStrada</a>
+    <span class="crumb-sep">›</span>
+    <span class="crumb crumb-current">Administrator</span>
+    <span class="subbar-spacer"></span>
+    <span class="subbar-status">
+      <span class="pulse-dot"></span>
+      Server running
+    </span>
+  </nav>
+
+  <div class="body">
+    <aside class="sidebar">
+      <nav class="nav">
+        @for (section of nav; track section.title) {
+          @if (section.title) {
+            <div class="nav-section">{{ section.title }}</div>
+          }
+          @for (item of section.items; track item.route) {
+            <a
+              class="nav-item"
+              routerLink="{{ item.route }}"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: item.route === '/' }"
+            >
+              <span class="nav-icon" [attr.aria-hidden]="true">
+                <app-icon [name]="item.icon" />
+              </span>
+              <span class="nav-label">{{ item.label }}</span>
+            </a>
+          }
+        }
+      </nav>
+    </aside>
+
+    <main class="content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

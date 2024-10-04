@@ -1,0 +1,1 @@
+<cfset inf = 2^1024><cfset nan = 5><cfset infinity = 2><cfoutput>#inf#|#nan#|#infinity#</cfoutput><cfoutput>#INF#|#Inf#|#NaN#|#NAN#|#Infinity#</cfoutput><cfset s = "v=#inf#,#nan#,#infinity#"><cfoutput>#s#</cfoutput><cfoutput>#1.5#|#-3#|#1e3#|#1E-2#|#.5#|#8.#|#+7#|#-2.5E+1#</cfoutput>

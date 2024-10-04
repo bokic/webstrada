@@ -1,0 +1,492 @@
+{
+  "name": "cfml",
+  "signAmbiguityFix": true,
+  "version": 1.0,
+  "caseSensitivity": false,
+  "defaultFileExtensions": [
+    "cfm",
+    "cfc"
+  ],
+  "otherTextInside": true,
+  "defaultTextEncoding": "latin1",
+  "SupportedBom": "UTF-8,UTF-16-LE,UTF-16-BE",
+  "startTokens": [
+    "ScriptTagPair",
+    "OutputTagPair",
+    "QueryTagPair",
+    "LoopTagPair",
+    "StartTag",
+    "EndTag",
+    "Comment"
+  ],
+  "overrideStartTokens": [
+    {
+      "if": {
+        "fileExtensions": [
+          "cfc"
+        ],
+        "regex": "^\\s*(?:(?:component|import|interface|final|abstract)\\b|//|/\\*)"
+      },
+      "startTokens": [
+        "ScriptExpression"
+      ]
+    }
+  ],
+  "tokens": {
+    "ScriptTagPair": {
+      "type": "GroupAllChildrenInSameOrder",
+      "multiLine": true,
+      "nestedTokens": [
+        "ScriptStartTag",
+        "ScriptExpression",
+        "ScriptEndTag"
+      ]
+    },
+    "ScriptStartTag": {
+      "type": "StartStop",
+      "startRegex": "<cfscript(?=[\\>\\s])",
+      "endRegex": "\\/?>",
+      "multiLine": true,
+      "textColor": "0xabd90c",
+      "nestedTokens": [
+        "Expression"
+      ]
+    },
+    "ScriptEndTag": {
+      "type": "SimpleToken",
+      "startRegex": "<\\/cfscript>",
+      "textColor": "0xabd90c"
+    },
+    "OutputTagPair": {
+      "type": "GroupAllChildrenInSameOrder",
+      "otherTextInside": true,
+      "multiLine": true,
+      "nestedTokens": [
+        "OutputStartTag",
+        "OutputExpression",
+        "OutputEndTag"
+      ]
+    },
+    "OutputStartTag": {
+      "type": "StartStop",
+      "startRegex": "<cfoutput(?=[\\>\\s])",
+      "endRegex": "\\/?>",
+      "multiLine": true,
+      "textColor": "0xabd90c",
+      "nestedTokens": [
+        "Expression"
+      ]
+    },
+    "OutputEndTag": {
+      "type": "SimpleToken",
+      "startRegex": "<\\/cfoutput>",
+      "textColor": "0xabd90c"
+    },
+    "QueryTagPair": {
+      "type": "GroupAllChildrenInSameOrder",
+      "multiLine": true,
+      "nestedTokens": [
+        "QueryStartTag",
+        "QueryExpression",
+        "QueryEndTag"
+      ]
+    },
+    "QueryStartTag": {
+      "type": "StartStop",
+      "startRegex": "<cfquery(?=[\\>\\s])",
+      "endRegex": "\\/?>",
+      "multiLine": true,
+      "textColor": "0xabd90c",
+      "nestedTokens": [
+        "Expression"
+      ]
+    },
+    "QueryEndTag": {
+      "type": "SimpleToken",
+      "startRegex": "<\\/cfquery>",
+      "textColor": "0xabd90c"
+    },
+    "LoopTagPair": {
+      "type": "GroupAllChildrenInSameOrder",
+      "multiLine": true,
+      "nestedTokens": [
+        "LoopStartTag",
+        "LoopExpression",
+        "LoopEndTag"
+      ]
+    },
+    "LoopStartTag": {
+      "type": "StartStop",
+      "startRegex": "<cfloop(?=[\\>\\s])",
+      "endRegex": "\\/?>",
+      "multiLine": true,
+      "textColor": "0xabd90c",
+      "nestedTokens": [
+        "Expression"
+      ]
+    },
+    "LoopEndTag": {
+      "type": "SimpleToken",
+      "startRegex": "<\\/cfloop>",
+      "textColor": "0xabd90c"
+    },
+    "StartTag": {
+      "type": "StartStop",
+      "startRegex": "<cf[a-z0-9_]+",
+      "endRegex": "\\/?>",
+      "multiLine": true,
+      "textColor": "0xabd90c",
+      "nestedTokens": [
+        "Expression"
+      ]
+    },
+    "EndTag": {
+      "type": "StartStop",
+      "startRegex": "<\\/cf(?!output)(?!script)(?!query)(?!loop)[a-z0-9_]+",
+      "endRegex": "\\/?>",
+      "multiLine": true,
+      "textColor": "0xabd90c",
+      "nestedTokens": [
+        "Expression"
+      ]
+    },
+    "Comment": {
+      "type": "StartStop",
+      "startRegex": "<!---",
+      "endRegex": "--->",
+      "multiLine": true,
+      "otherTextInside": true,
+      "nestedTokens": [
+        "Comment"
+      ]
+    },
+    "SingleString": {
+      "type": "StartStop",
+      "startRegex": "'",
+      "endRegex": "'",
+      "multiLine": true,
+      "otherTextInside": true,
+      "searchParentEndTokenLast": true,
+      "textColor": "0xce9178",
+      "nestedTokens": [
+        "SharpChar",
+        "SharpExpression",
+        "SingleChar"
+      ]
+    },
+    "DoubleString": {
+      "type": "StartStop",
+      "startRegex": "\"",
+      "endRegex": "\"",
+      "multiLine": true,
+      "otherTextInside": true,
+      "searchParentEndTokenLast": true,
+      "textColor": "0xce9178",
+      "nestedTokens": [
+        "SharpChar",
+        "SharpExpression",
+        "DoubleChar"
+      ]
+    },
+    "SingleChar": {
+      "type": "SimpleToken",
+      "startRegex": "''",
+      "textColor": "0xd7ba7d"
+    },
+    "DoubleChar": {
+      "type": "SimpleToken",
+      "startRegex": "\"\"",
+      "textColor": "0xd7ba7d"
+    },
+    "SharpChar": {
+      "type": "SimpleToken",
+      "startRegex": "##",
+      "textColor": "0xd7ba7d"
+    },
+    "SharpExpression": {
+      "type": "StartStop",
+      "startRegex": "#",
+      "endRegex": "#",
+      "multiLine": true,
+      "textColor": "0x569cd6",
+      "nestedTokens": [
+        "Expression",
+        "ExpressionEnd"
+      ]
+    },
+    "Expression": {
+      "type": "Group",
+      "multiLine": true,
+      "deleteIfOnlyOneChild": true,
+      "nestedTokens": [
+        "SingleString",
+        "DoubleString",
+        "SharpChar",
+        "SharpExpression",
+        "Separator",
+        "ScriptLineComment",
+        "ScriptBlockComment",
+        "ExpressionEnd",
+        "Number",
+        "Boolean",
+        "Keyword",
+        "Function",
+        "Operator",
+        "ObjectMember",
+        "Variable",
+        "CodeBlock",
+        "Parenthesis",
+        "ArrayIndex"
+      ]
+    },
+    "ScriptExpression": {
+      "type": "Group",
+      "multiLine": true,
+      "nestedTokens": [
+        "SingleString",
+        "DoubleString",
+        "SharpChar",
+        "SharpExpression",
+        "Separator",
+        "CodeBlock",
+        "ScriptLineComment",
+        "ScriptBlockComment",
+        "ExpressionEnd",
+        "Number",
+        "Boolean",
+        "Keyword",
+        "Function",
+        "Operator",
+        "ObjectMember",
+        "Variable",
+        "Parenthesis",
+        "ArrayIndex"
+      ]
+    },
+    "OutputExpression": {
+      "type": "Group",
+      "otherTextInside": true,
+      "multiLine": true,
+      "nestedTokens": [
+        "ScriptTagPair",
+        "OutputTagPair",
+        "QueryTagPair",
+        "LoopTagPair",
+        "StartTag",
+        "EndTag",
+        "Comment",
+        "SharpChar",
+        "SharpExpression"
+      ]
+    },
+    "QueryExpression": {
+      "type": "Group",
+      "otherTextInside": true,
+      "multiLine": true,
+      "nestedTokens": [
+        "ScriptTagPair",
+        "OutputTagPair",
+        "QueryTagPair",
+        "LoopTagPair",
+        "StartTag",
+        "EndTag",
+        "Comment",
+        "SharpChar",
+        "SharpExpression"
+      ]
+    },
+    "LoopExpression": {
+      "type": "Group",
+      "otherTextInside": true,
+      "multiLine": true,
+      "nestedTokens": [
+        "ScriptTagPair",
+        "OutputTagPair",
+        "QueryTagPair",
+        "LoopTagPair",
+        "StartTag",
+        "EndTag",
+        "Comment"
+      ],
+      "contextNestedTokens": [
+        {
+          "whenParentIn": [
+            "OutputExpression",
+            "QueryExpression",
+            "OutputTagPair",
+            "QueryTagPair"
+          ],
+          "nestedTokens": [
+            "ScriptTagPair",
+            "OutputTagPair",
+            "QueryTagPair",
+            "LoopTagPair",
+            "StartTag",
+            "EndTag",
+            "Comment",
+            "SharpChar",
+            "SharpExpression"
+          ]
+        }
+      ]
+    },
+    "ScriptBlockComment": {
+      "type": "StartStop",
+      "startRegex": "\\/\\*",
+      "endRegex": "\\*\\/",
+      "otherTextInside": true,
+      "multiLine": true
+    },
+    "ScriptLineComment": {
+      "type": "SimpleToken",
+      "startRegex": "\\/\\/.*[^\\r\\n]"
+    },
+    "ExpressionEnd": {
+      "type": "SimpleToken",
+      "startRegex": ";"
+    },
+    "Number": {
+      "type": "SimpleToken",
+      "startRegex": "([-+]?[0-9]+\\.?[0-9]*(?:[eE][-+]?[0-9]+)?|[-+]?[0-9]*\\.[0-9]+(?:[eE][-+]?[0-9]+)?)",
+      "textColor": "0xb5cea8"
+    },
+    "Boolean": {
+      "type": "SimpleToken",
+      "startRegex": "true\\b|false\\b|yes\\b|no\\b"
+    },
+    "ObjectMember": {
+      "type": "SimpleToken",
+      "startRegex": "\\."
+    },
+    "Function": {
+      "type": "SimpleToken",
+      "startRegex": "([a-z_]+[a-z0-9_]*)[\\s]*\\(",
+      "textColor": "0xc5f566"
+    },
+    "Separator": {
+      "type": "SimpleToken",
+      "startRegex": ","
+    },
+    "Variable": {
+      "type": "SimpleToken",
+      "startRegex": "[a-z_]+[a-z0-9_]*",
+      "textColor": "0x9cdcfe"
+    },
+    "Operator": {
+      "type": "SimpleToken",
+      "startRegex": "greater\\s+than\\s+or\\s+equal\\s+to\\b|less\\s+than\\s+or\\s+equal\\s+to\\b|does\\s+not\\s+contain\\b|is\\s+not\\b|contains\\b|less\\s+than\\b|greater\\s+than\\b|not\\s+equal\\b|equal\\b|and\\b|not\\b|mod\\b|neq\\b|lte\\b|gte\\b|xor\\b|imp\\b|eqv\\b|eq\\b|\\&\\&|\\|\\||\\+=|\\-=|\\*=|\\/=|\\\\|==|\bis\b|>=|or\\b|ge\\b|lt\\b|gt\\b|<=|le\\b|%=|!=|&=|\\+|-|\\*|\\&|\\%|\\/|\\^|\\?|\\:|>|<|=|!|\\$",
+      "textColor": "0x35b2dd"
+    },
+    "CodeBlock": {
+      "type": "StartStop",
+      "startRegex": "\\{",
+      "endRegex": "\\}",
+      "multiLine": true,
+      "textColor": "0xffd700",
+      "nestedTokens": [
+        "ScriptExpression"
+      ]
+    },
+    "Keyword": {
+      "type": "SimpleToken",
+      "startRegex": "var\\b|function\\b|this\\b|try\\b|catch\\b|if\\b|then\\b|else\\b",
+      "textColor": "0xc586c0"
+    },
+    "Parenthesis": {
+      "type": "StartStop",
+      "startRegex": "\\(",
+      "endRegex": "\\)",
+      "multiLine": true,
+      "otherTextInside": true,
+      "textColor": "0xffd700",
+      "nestedTokens": [
+        "ScriptTagPair",
+        "OutputTagPair",
+        "QueryTagPair",
+        "LoopTagPair",
+        "StartTag",
+        "EndTag",
+        "Comment",
+        "ScriptStartTag",
+        "ScriptExpression",
+        "ScriptEndTag",
+        "Expression",
+        "OutputStartTag",
+        "OutputExpression",
+        "OutputEndTag",
+        "QueryStartTag",
+        "QueryExpression",
+        "QueryEndTag",
+        "LoopStartTag",
+        "LoopExpression",
+        "LoopEndTag",
+        "SharpChar",
+        "SharpExpression",
+        "ExpressionEnd",
+        "SingleString",
+        "DoubleString",
+        "Separator",
+        "ScriptLineComment",
+        "ScriptBlockComment",
+        "Number",
+        "Boolean",
+        "Keyword",
+        "Function",
+        "Operator",
+        "ObjectMember",
+        "Variable",
+        "CodeBlock",
+        "Parenthesis",
+        "ArrayIndex"
+      ]
+    },
+    "ArrayIndex": {
+      "type": "StartStop",
+      "startRegex": "\\[",
+      "endRegex": "\\]",
+      "multiLine": true,
+      "otherTextInside": true,
+      "textColor": "0xffd700",
+      "nestedTokens": [
+        "ScriptTagPair",
+        "OutputTagPair",
+        "QueryTagPair",
+        "LoopTagPair",
+        "StartTag",
+        "EndTag",
+        "Comment",
+        "ScriptStartTag",
+        "ScriptExpression",
+        "ScriptEndTag",
+        "Expression",
+        "OutputStartTag",
+        "OutputExpression",
+        "OutputEndTag",
+        "QueryStartTag",
+        "QueryExpression",
+        "QueryEndTag",
+        "LoopStartTag",
+        "LoopExpression",
+        "LoopEndTag",
+        "SharpChar",
+        "SharpExpression",
+        "ExpressionEnd",
+        "SingleString",
+        "DoubleString",
+        "Separator",
+        "ScriptLineComment",
+        "ScriptBlockComment",
+        "Number",
+        "Boolean",
+        "Keyword",
+        "Function",
+        "Operator",
+        "ObjectMember",
+        "Variable",
+        "CodeBlock",
+        "Parenthesis",
+        "ArrayIndex"
+      ]
+    }
+  }
+}

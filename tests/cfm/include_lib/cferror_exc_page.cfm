@@ -1,0 +1,1 @@
+<cfoutput>ERRPAGE|MSG=#error.message#|MLTO=#error.mailto#|RC=#error.rootcause.type#:#error.rootcause.message#:#error.rootcause.detail#|GC=#error.generatedcontent#</cfoutput>

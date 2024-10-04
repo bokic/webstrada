@@ -1,0 +1,1 @@
+<cfset s = "hello"><cfdump var="#s#"><cfset st = StructNew()><cfset StructInsert(st, "A", 1)><cfset StructInsert(st, "B", "two")><cfdump var="#st#"><cfset arr = ArrayNew(1)><cfset ArrayAppend(arr, 1)><cfset ArrayAppend(arr, "two")><cfdump var="#arr#">

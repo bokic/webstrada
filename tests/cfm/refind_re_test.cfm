@@ -1,0 +1,84 @@
+<cfoutput>
+REFind-Simple:#REFind("l","hello")#
+REFind-Start:#REFind("l","hello",4)#
+REFind-NoMatch:#REFind("x","hello")#
+REFind-Start0:#REFind("l","hello",0)#
+REFind-StartBig:#REFind("l","hello",99)#
+REFind-StartLast:#REFind("o","hello",5)#
+REFind-StartPlus1:#REFind("o","hello",6)#
+REFind-StartString:#REFind("l","hello","3")#
+REFind-AnchorDollar:#REFind("o$","hello")#
+REFind-AnchorStart:#REFind("^he","hello")#
+REFind-Posix:#REFind("[[:alpha:]]+","hello123")#
+REFind-CharClass:#REFind("[abc]","xyzabc")#
+REFind-Alt:#REFind("cat|dog","dog")#
+REFind-WordBoundary:#REFind("\bcat\b","the cat sat")#
+REFind-Backref:#REFind("(a)\1","aab")#
+REFind-Lookahead:#REFind("h(?=e)","hello")#
+REFind-EmptyPattern:#REFind("","hello")#
+REFind-EmptyStr:#REFind("l","")#
+REFindNoCase-1:#REFindNoCase("[a-z]","HELLO")#
+REFindNoCase-2:#REFindNoCase("HELLO","hello")#
+REFind-Newline-dot:#REFind("a.b","a" & Chr(10) & "b")#
+REFind-Newline-cr-dot:#REFind("a.b","a" & Chr(13) & "b")#
+REFind-Caret-no-multiline:#REFind("^b","a" & Chr(10) & "b")#
+REFind-s-tab:#REFind("\s","a" & Chr(9) & "b")#
+REFind-s-lf:#REFind("\s","a" & Chr(10) & "b")#
+REFind-d-class:#REFind("\d+","abc123def")#
+REFind-w-class:#REFind("\w+","a_b9x")#
+REFind-x41:#REFind("\x41","A")#
+REFind-octal:#REFind("\101","A")#
+REFind-octal2:#REFind("\012","#Chr(10)#")#
+REFindReturnSub-1:#ArrayToList(REFind("(l)(l)?","hello",1,true).MATCH,"|")#
+REFindReturnSub-1P:#ArrayToList(REFind("(l)(l)?","hello",1,true).POS,"|")#
+REFindReturnSub-1L:#ArrayToList(REFind("(l)(l)?","hello",1,true).LEN,"|")#
+REFindReturnSub-NoMatchM:#ArrayToList(REFind("x","hello",1,true).MATCH,"|")#
+REFindReturnSub-NoMatchP:#ArrayToList(REFind("x","hello",1,true).POS,"|")#
+REFindReturnSub-NoMatchL:#ArrayToList(REFind("x","hello",1,true).LEN,"|")#
+REFindReturnSub-Start:#ArrayToList(REFind("(l)","hello",4,true).MATCH,"|")#
+REFindReturnSub-Unparticipated:#ArrayToList(REFind("(x)?(e)","hello",1,true).POS,"|")#
+REFindReturnSub-3Groups:#ArrayToList(REFind("(a)(b)(c)?","abc",1,true).MATCH,"|")#
+REFindAll:#ArrayToList(REFind("l","hello",1,false,"all"),"|")#
+REFindAll-ReturnSub:#ArrayToList(REFind("(l)","hello",1,true,"all")[1].MATCH,"|")#
+REFindAll-ZeroLen:#ArrayToList(REFind("x*","abc",1,false,"all"),"|")#
+REFindAll-NoMatchR:#ArrayToList(REFind("x","hello",1,true,"all")[1].POS,"|")#
+REMatch-Simple:#ArrayToList(REMatch("l","hello"),"|")#
+REMatch-NoMatch:#ArrayToList(REMatch("x","hello"),"|")#
+REMatch-ZeroLen:#ArrayToList(REMatch("x*","abc"),"|")#
+REMatch-Posix:#ArrayToList(REMatch("[[:alpha:]]+","hello123world"),"|")#
+REMatch-EmptyStr:#ArrayLen(REMatch("l",""))#
+REMatchNoCase:#ArrayToList(REMatchNoCase("[a-z]","HELLO"),"|")#
+REReplace-One:#REReplace("hello","l","-")#
+REReplace-All:#REReplace("hello","l","-","all")#
+REReplace-Backref:#REReplace("hello","(l)","[\1]")#
+REReplace-BackrefAll:#REReplace("hello","(l)","[\1]","all")#
+REReplace-BadGroup:#REReplace("hello","l","[\1]")#
+REReplace-Group5:#REReplace("hello","l","[\5]")#
+REReplace-DollarLiteral:#REReplace("hello","l","[$1]")#
+REReplace-Backslash:#REReplace("hello","l","a\b")#
+REReplace-2Backslash:#REReplace("hello","l","a\\b")#
+REReplace-3Backslash:#REReplace("hello","l","a\\\b")#
+REReplace-EscDollar:#REReplace("hello","l","a\$b")#
+REReplace-Upper:#REReplace("hello","(l)","\U\1\E")#
+REReplace-Lower:#REReplace("HELLO","(L)","\L\1\E")#
+REReplace-UFirst:#REReplace("hello","(l)","\u\1")#
+REReplace-LFirst:#REReplace("HELLO","(L)","\l\1")#
+REReplace-ULiteral:#REReplace("hello","l","\uabc")#
+REReplace-UNoClose:#REReplace("hello","l","\Uabc")#
+REReplace-EAlone:#REReplace("hello","l","a\Eb")#
+REReplace-UUDouble:#REReplace("hello","(l)","\u\u\1")#
+REReplace-UnmatchedGroup:#REReplace("hello","(l)(l)?","[\2]","all")#
+REReplace-Group10:#REReplace("hello","(l)","\10")#
+REReplace-Group0:#REReplace("hello","l","\0")#
+REReplace-2Backslash1:#REReplace("hello","(l)","\\1")#
+REReplace-DoubleDollar:#REReplace("hello","l","a$$b")#
+REReplace-Posix:#REReplace("abc","[[:alpha:]]+","X")#
+REReplace-DotNewline:#REReplace("a" & Chr(10) & "b","a.b","X")#
+REReplace-StartAnchor:#REReplace("aaa","\Aa","X")#
+REReplaceNoCase:#REReplaceNoCase("HELLO","[a-z]","X","all")#
+ReEscape-All:#ReEscape("a.b^c$d|e(f)g[h]{i}j*k+l?m-n\o&p")#
+ReEscape-Simple:#ReEscape("a&b-c")#
+ReEscape-Empty:#ReEscape("")#
+ReEscape-Plain:#ReEscape("plainText")#
+ReEscape-Tilde:#ReEscape("a~b")#
+</cfoutput>

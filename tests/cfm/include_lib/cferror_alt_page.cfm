@@ -1,0 +1,1 @@
+<cfoutput>ALTPAGE|MSG=#error.message#|RC=#error.rootcause.type#:#error.rootcause.message#</cfoutput>

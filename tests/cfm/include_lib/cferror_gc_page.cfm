@@ -1,0 +1,1 @@
+<cfoutput>PAGE|GC=#error.generatedcontent#</cfoutput>

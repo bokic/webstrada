@@ -1,0 +1,1 @@
+<cfset num_var = "-44.75" /><cfoutput>Abs:#Abs(-42)#|AbsString:#Abs("-44")#|AbsFloatString:#Abs("-44.5")#|AbsVar:#Abs(num_var)#|Ceiling:#Ceiling(3.14)#|Floor:#Floor(3.14)#|Int:#Int(3.99)#|Round:#Round(3.5)#|Sqr:#Sqr(16)#|Max:#Max(12, 24)#|Min:#Min(12, 24)#|Sgn:#Sgn(-5)#,#Sgn(0)#,#Sgn(5)#|Exp:#Exp(0)#</cfoutput>

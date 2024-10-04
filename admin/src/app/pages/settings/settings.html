@@ -1,0 +1,64 @@
+<div class="page">
+  <h1 class="page-title">General Settings</h1>
+  <p class="page-desc">
+    Core runtime settings for the WebStrada engine. Values are stored in the
+    server configuration file.
+  </p>
+
+  @if (!loaded()) {
+    <div class="muted">Loading&hellip;</div>
+  }
+
+  @for (group of groups(); track group.title) {
+    <div class="section-box">
+      <div class="section-header">{{ group.title }}</div>
+      @for (row of group.rows; track row.key) {
+        <div class="kv-row">
+          <div class="kv-label">{{ row.label }}</div>
+          <div class="kv-value">
+            @if (row.type === 'bool') {
+              <input type="checkbox" [(ngModel)]="row.value" />
+            } @else if (row.type === 'charset') {
+              <select class="settings-input" [(ngModel)]="row.value">
+                @for (cs of charsets; track cs) {
+                  <option [value]="cs">{{ cs }}</option>
+                }
+                @if (!charsets.includes('' + row.value)) {
+                  <option [value]="row.value">{{ row.value }}</option>
+                }
+              </select>
+            } @else if (row.type === 'number') {
+              <input class="settings-input" type="number" step="any" [(ngModel)]="row.value" />
+            } @else if (row.type === 'timespan') {
+              <div class="timespan-row">
+                <label class="timespan-field">
+                  <span>Days</span>
+                  <input type="number" min="0" [ngModel]="timespanDays(row)" (ngModelChange)="setTimespanPart(row, 'd', $event)" />
+                </label>
+                <label class="timespan-field">
+                  <span>Hours</span>
+                  <input type="number" min="0" max="23" [ngModel]="timespanHours(row)" (ngModelChange)="setTimespanPart(row, 'h', $event)" />
+                </label>
+                <label class="timespan-field">
+                  <span>Minutes</span>
+                  <input type="number" min="0" max="59" [ngModel]="timespanMinutes(row)" (ngModelChange)="setTimespanPart(row, 'm', $event)" />
+                </label>
+              </div>
+            } @else {
+              <input class="settings-input" type="text" [(ngModel)]="row.value" />
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  @if (message()) {
+    <div class="settings-message">{{ message() }}</div>
+  }
+
+  <div class="page-actions">
+    <button class="btn" type="button" [disabled]="saving() || !loaded()" (click)="save()">Save Changes</button>
+    <button class="btn-secondary" type="button" [disabled]="saving() || !loaded()" (click)="restoreDefaults()">Restore Defaults</button>
+  </div>
+</div>

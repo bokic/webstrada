@@ -1,0 +1,72 @@
+<div class="page">
+  <h1 class="page-title">Debugging &amp; Logging</h1>
+  <p class="page-desc">
+    View server log files and enable request debugging output for templates.
+  </p>
+
+  <div class="page-actions">
+    <button class="btn" type="button" (click)="false">New Log File</button>
+    <button class="btn-secondary" type="button" (click)="false">Download All Logs</button>
+  </div>
+
+  <div class="section-box">
+    <div class="section-header">Log Files</div>
+    <div class="table-wrap no-border">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Level</th>
+            <th>Size</th>
+            <th>Entries</th>
+            <th>Last Modified</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (f of files; track f.name) {
+            <tr>
+              <td>
+                <strong>{{ f.name }}</strong>
+              </td>
+              <td><span class="badge gray">{{ f.level }}</span></td>
+              <td class="muted">{{ f.size }}</td>
+              <td class="muted">{{ f.entries }}</td>
+              <td class="muted">{{ f.lastModified }}</td>
+              <td>
+                <button class="btn-secondary" type="button" (click)="false">View</button>
+                <button class="btn-secondary" type="button" (click)="false">Clear</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-box">
+    <div class="section-header">webstrada.log &mdash; Latest Entries</div>
+    <div class="table-wrap no-border">
+      <table class="admin-table log-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Level</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (l of lines; track $index) {
+            <tr>
+              <td class="muted nowrap">{{ l.time }}</td>
+              <td class="nowrap">
+                <span class="badge" [class]="levelClass(l.level)">{{ l.level }}</span>
+              </td>
+              <td class="msg">{{ l.message }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

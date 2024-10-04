@@ -1,0 +1,3 @@
+[submodule "textparser"]
+	path = textparser
+	url = git@github.com:bokic/textparser.git

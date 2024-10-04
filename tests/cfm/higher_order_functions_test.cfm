@@ -1,0 +1,31 @@
+<cfscript>
+arr = [1,2,3,4];
+eachOut = "";
+ArrayEach(arr, function(item, idx, a){ eachOut = eachOut & idx & ":" & item & "|"; });
+writeOutput(eachOut & ";");
+f = ArrayFilter(arr, function(item, idx, a){ return item MOD 2 EQ 0; });
+writeOutput(ArrayLen(f) & ":" & f[1] & f[2] & ";");
+writeOutput(ArrayReduce(arr, function(acc, item, idx, a){ return acc + item; }, 0) & ";");
+writeOutput(ArrayReduce(arr, function(acc, item, idx, a){ return acc & item; }, ">") & ";");
+writeOutput(ArrayReduce(ArrayNew(1), function(acc, item, idx, a){ return acc + item; }, 7) & ";");
+l = "a,b,c,b,a";
+leach = "";
+ListEach(l, function(item, idx, ll){ leach = leach & idx & ":" & item & "|"; });
+writeOutput(leach & ";");
+writeOutput(ListFilter(l, function(item, idx, ll){ return item NEQ "b"; }) & ";");
+writeOutput(ListMap(l, function(item, idx, ll){ return item & "!"; }) & ";");
+writeOutput(ListReduce(l, function(acc, item, idx, ll){ return acc & item; }, ">") & ";");
+writeOutput(ListReduce("1,2,3", function(acc, item, idx, ll){ return acc + item; }, 10) & ";");
+writeOutput(ListGetDuplicates("a,b,a,c,b,a") & ";");
+writeOutput(ListGetDuplicates("x,y,z") & ";");
+writeOutput(ListRemoveDuplicates("a,b,a,c,b,a") & ";");
+writeOutput(ListRemoveDuplicates("a,A,b", ",", true) & ";");
+writeOutput(ListRemoveDuplicates("a,A,b", ",", false) & ";");
+writeOutput(ListQualify("a,b,c", "'") & ";");
+writeOutput(ListValueCount("a,b,a,c", "a") & ";");
+writeOutput(ListValueCountNoCase("a,b,A,c", "a") & ";");
+writeOutput(ListSort("3,1,2", "numeric") & ";");
+writeOutput(ListSort("c,a,b", "text", "desc") & ";");
+writeOutput(ListSort("B,a,C", "textnocase") & ";");
+writeOutput(ListSort("a,c,b", function(a, b){ return compare(a, b); }) & ";");
+</cfscript>

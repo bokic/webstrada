@@ -1,0 +1,53 @@
+:host {
+  display: block;
+}
+
+.settings-input {
+  width: 280px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ws-text);
+  border: 1px solid var(--ws-border);
+  border-radius: 3px;
+  background: var(--ws-white);
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--ws-blue);
+}
+
+.settings-message {
+  margin-bottom: 14px;
+  color: var(--ws-blue);
+}
+
+.timespan-row {
+  display: flex;
+  gap: 10px;
+}
+
+.timespan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--ws-text-muted);
+}
+
+.timespan-field input {
+  width: 72px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ws-text);
+  border: 1px solid var(--ws-border);
+  border-radius: 3px;
+  background: var(--ws-white);
+}
+
+.timespan-field input:focus {
+  outline: none;
+  border-color: var(--ws-blue);
+}

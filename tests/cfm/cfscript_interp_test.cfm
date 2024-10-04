@@ -1,0 +1,31 @@
+<cfscript>
+x = 5;
+y = "world";
+b = true;
+arr = ArrayNew(1);
+ArrayAppend(arr, 10);
+ArrayAppend(arr, 20);
+s = StructNew();
+s.name = "boris";
+s.age = 42;
+writeOutput("basic=#x#|");
+writeOutput("two=#x#-#y#|");
+writeOutput("at-start=#x# is it|");
+writeOutput("at-end=it is #x#|");
+writeOutput("escaped-hash=a ## b|");
+writeOutput("double-quote=esc ""q""|");
+writeOutput("single-quote=esc ''q''|");
+writeOutput("single-quoted='#x#'|");
+writeOutput("func=#Len("hello")#|");
+writeOutput("paren=#(x)#|");
+writeOutput("arith=#x + 1#|");
+writeOutput("concat=#x & y#|");
+writeOutput("bool-literal=#true#|");
+writeOutput("bool-var=#b#|");
+writeOutput("float-lit=#8.0#|");
+writeOutput("array-index=#arr[2]#|");
+writeOutput("struct-key=#s.name#|");
+writeOutput("nested=#x# and #y# done|");
+writeOutput("empty=||");
+writeOutput("only=#x#");
+</cfscript>

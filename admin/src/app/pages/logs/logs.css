@@ -1,0 +1,33 @@
+:host {
+  display: block;
+}
+
+.table-wrap.no-border {
+  border: none;
+  border-radius: 0;
+  margin-bottom: 0;
+}
+
+.log-table .msg {
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 12px;
+}
+
+.log-table .nowrap {
+  white-space: nowrap;
+}
+
+.badge.error {
+  background: #f8e8e8;
+  color: #b13b3b;
+}
+
+.badge.warn {
+  background: #fbf3e0;
+  color: #a06b12;
+}
+
+.badge.debug {
+  background: #e8eefb;
+  color: #355a9c;
+}

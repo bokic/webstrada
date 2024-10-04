@@ -1,0 +1,2 @@
+<cfset str = "  ColdFusion ML  " />
+<cfoutput>Len:#Len(str)#|Trim:#Trim(str)#|LTrim:#LTrim(str)#|RTrim:#RTrim(str)#|UCase:#UCase(Trim(str))#|LCase:#LCase(Trim(str))#|Left:#Left(Trim(str), 4)#|Right:#Right(Trim(str), 2)#|Mid:#Mid(Trim(str), 5, 6)#|Reverse:#Reverse("abc")#|RepeatString:#RepeatString("X", 3)#|Find:#Find("Fusion", str)#|FindNoCase:#FindNoCase("fusion", str)#|Replace:#Replace("hello world", "world", "CFML")#|Compare:#Compare("A", "B")#|CompareNoCase:#CompareNoCase("A", "a")#</cfoutput>

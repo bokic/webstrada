@@ -1,0 +1,12 @@
+<cfoutput>
+AbsPositiveInt:#Abs(42)#
+AbsNegativeInt:#Abs(-42)#
+AbsPositiveFloat:#Abs(3.14)#
+AbsNegativeFloat:#Abs(-3.14)#
+AbsZeroInt:#Abs(0)#
+AbsZeroFloat:#Abs(0.0)#
+AbsStringInt:#Abs("-100")#
+AbsStringFloat:#Abs("-100.5")#
+AbsTrue:#Abs(true)#
+AbsFalse:#Abs(false)#
+</cfoutput>

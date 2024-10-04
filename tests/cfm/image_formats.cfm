@@ -1,0 +1,1 @@
+<cfoutput>#GetReadableImageFormats()#|#GetWriteableImageFormats()#</cfoutput>

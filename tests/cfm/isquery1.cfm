@@ -1,0 +1,1 @@
+<cfset str = "hello" /><cfset num = 42 /><cfset bool = true /><cfset arr = ArrayNew(1) /><cfset ArrayAppend(arr, "a") /><cfset st = StructNew() /><cfset StructInsert(st, "k", "v") /><cfset emptyStr = "" /><cfoutput>String:#isQuery(str)#|Number:#isQuery(num)#|Boolean:#isQuery(bool)#|Array:#isQuery(arr)#|Struct:#isQuery(st)#|EmptyStr:#isQuery(emptyStr)#</cfoutput>

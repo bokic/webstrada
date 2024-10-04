@@ -1,0 +1,136 @@
+<div class="page">
+  <h1 class="page-title">Data Sources</h1>
+  <p class="page-desc">
+    Configure the database data sources used by <code>&lt;cfquery&gt;</code> and
+    the query functions. A verified data source is reachable from the server.
+  </p>
+
+  @if (!loaded()) {
+    <div class="muted">Loading&hellip;</div>
+  }
+
+  @if (message()) {
+    <div class="settings-message">{{ message() }}</div>
+  }
+
+  <div class="page-actions">
+    <button class="btn-secondary" type="button" [disabled]="busy() || !loaded()" (click)="refresh()">Refresh Status</button>
+    <button class="btn-secondary" type="button" [disabled]="busy() || !loaded()" (click)="verifyAll()">Verify All</button>
+  </div>
+
+  <div class="table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Backend</th>
+          <th>Database</th>
+          <th>Host</th>
+          <th>Port</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (s of sources(); track s.name) {
+          <tr>
+            <td>
+              <strong>{{ s.name }}</strong>
+            </td>
+            <td class="muted">{{ s.backendLabel }}</td>
+            <td class="muted">{{ s.database }}</td>
+            <td class="muted">{{ s.host }}</td>
+            <td class="muted">{{ s.port }}</td>
+            <td>
+              @if (s.verified === null) {
+                <span class="muted">Unknown</span>
+              } @else {
+                <span class="status-dot" [class.ok]="s.verified" [class.bad]="!s.verified"></span>
+                {{ s.verified ? 'Verified' : 'Unreachable' }}
+              }
+            </td>
+            <td>
+              <button class="btn-secondary" type="button" (click)="edit(s.name)">Edit</button>
+              <button class="btn-secondary" type="button" (click)="verify(s.name)">Verify</button>
+              <button class="btn-secondary" type="button" (click)="remove(s.name)">Delete</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-box">
+    <div class="section-header">{{ editingName() ? 'Update Data Source: ' + editingName() : 'Add a New Data Source' }}</div>
+    <div class="section-body">
+      <div class="form-row">
+        <label for="ds-name">Data Source Name</label>
+        <div>
+          <input id="ds-name" type="text" placeholder="e.g. appdb" [ngModel]="form().name" (ngModelChange)="setField('name', $event)" [readonly]="!!editingName()" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="ds-backend">Backend</label>
+        <div>
+          <select id="ds-backend" [ngModel]="form().backend" (ngModelChange)="setField('backend', $event)">
+            <option value="sqlite">SQLite</option>
+            <option value="mysql">MySQL</option>
+            <option value="postgres">PostgreSQL</option>
+          </select>
+        </div>
+      </div>
+
+      @if (form().backend === 'sqlite') {
+        <div class="form-row">
+          <label></label>
+          <div class="muted">
+            A SQLite data source needs only a name &mdash; the database file is
+            <code>DNS_{{ form().name || 'name' }}.sqlite</code> in the datasource
+            DB directory.
+          </div>
+        </div>
+      } @else {
+        <div class="form-row">
+          <label for="ds-host">Host</label>
+          <div>
+            <input id="ds-host" type="text" placeholder="localhost" [ngModel]="form().host" (ngModelChange)="setField('host', $event)" />
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="ds-port">Port</label>
+          <div>
+            <input id="ds-port" type="number" placeholder="3306" [ngModel]="form().port" (ngModelChange)="setField('port', $event)" />
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="ds-db">Database</label>
+          <div>
+            <input id="ds-db" type="text" placeholder="app" [ngModel]="form().database" (ngModelChange)="setField('database', $event)" />
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="ds-user">Username</label>
+          <div>
+            <input id="ds-user" type="text" placeholder="dbuser" [ngModel]="form().username" (ngModelChange)="setField('username', $event)" />
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="ds-pass">Password</label>
+          <div>
+            <input id="ds-pass" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226; (leave blank to keep)" [ngModel]="form().password" (ngModelChange)="setField('password', $event)" />
+          </div>
+        </div>
+      }
+
+      <div class="form-row">
+        <label></label>
+        <div>
+          <button class="btn" type="button" [disabled]="busy()" (click)="save()">{{ editingName() ? 'Save Changes' : 'Create' }}</button>
+          @if (editingName()) {
+            <button class="btn-secondary" type="button" [disabled]="busy()" (click)="cancelEdit()">Cancel</button>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,16 @@
+:host {
+  display: block;
+}
+
+.settings-message {
+  margin-bottom: 14px;
+  color: var(--ws-blue);
+}
+
+code {
+  background: var(--ws-light);
+  border: 1px solid var(--ws-border);
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-size: 12px;
+}

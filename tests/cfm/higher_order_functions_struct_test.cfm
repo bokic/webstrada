@@ -1,0 +1,42 @@
+<cfscript>
+function keysOrdered(st) { var out = ""; StructEach(st, function(k, v, s){ out = out & k & ","; }); return out; }
+a = {x: 1, y: 2};
+b = {y: 20, z: 30};
+r = StructAppend(a, b);
+writeOutput(r & ";" & a.x & "," & a.y & "," & a.z & ";");
+c = StructAppend(a, {y: 99}, false);
+writeOutput(a.y & ";");
+d = StructAppend(a, {y: 99}, true);
+writeOutput(a.y & ";");
+copy = StructCopy(b);
+copy.z = 300;
+writeOutput(copy.z & ";" & b.z & ";");
+s = {m: 20, n: 30};
+seach = "";
+StructEach(s, function(k, v, ss){ seach = seach & k & "=" & v & "|"; });
+writeOutput(seach & ";");
+fs = StructFilter(s, function(k, v, ss){ return v GT 25; });
+writeOutput(keysOrdered(fs) & ";");
+ms = StructMap(s, function(k, v, ss){ return v * 10; });
+writeOutput(keysOrdered(ms) & ":" & ms.m & ":" & ms.n & ";");
+rr = StructReduce(s, function(acc, k, v, ss){ return acc + v; }, 0);
+writeOutput(rr & ";");
+data = {a: 1, b: {c: 2, d: {e: 3}}, f: 1};
+fk = StructFindKey(data, "e");
+writeOutput(ArrayLen(fk) & ":" & fk[1].path & ":" & fk[1].value & ";");
+fv = StructFindValue(data, 3);
+writeOutput(ArrayLen(fv) & ":" & fv[1].key & ":" & fv[1].path & ";");
+sg = StructGet("newroot.x.y");
+writeOutput(IsStruct(sg) & ";" & IsStruct(variables.newroot) & ";" & IsStruct(variables.newroot.x) & ";");
+meta = StructGetMetadata({p: 1});
+writeOutput(meta.ordered & ":" & meta.casesensistive & ";");
+sm = {q: 1};
+StructSetMetadata(sm, {foo: "bar"});
+meta2 = StructGetMetadata(sm);
+writeOutput(meta2.keys.foo & ";");
+ss = {b: 30, a: 10, c: 20};
+writeOutput(ArrayToList(StructSort(ss, "text")) & ";");
+writeOutput(ArrayToList(StructSort(ss, "text", "desc")) & ";");
+writeOutput(keysOrdered(StructToSorted(ss, "text")) & ";");
+writeOutput(keysOrdered(StructToSorted(ss, "text", "desc")) & ";");
+</cfscript>

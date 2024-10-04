@@ -1,0 +1,74 @@
+<div class="page">
+  <h1 class="page-title">Memory &amp; Runtime</h1>
+  <p class="page-desc">
+    Live view of the server runtime: memory usage, worker threads and process
+    information.
+  </p>
+
+  <div class="cards">
+    <div class="stat-card">
+      <div class="stat-label">Engine Version</div>
+      <div class="stat-value">{{ version }}</div>
+      <div class="stat-sub">built {{ built }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Process ID</div>
+      <div class="stat-value">4821</div>
+      <div class="stat-sub">owner: webstrada</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Requests</div>
+      <div class="stat-value">1 / 20</div>
+      <div class="stat-sub">worker pool capacity</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">CPU Usage</div>
+      <div class="stat-value">6.2%</div>
+      <div class="stat-sub">since last sample</div>
+    </div>
+  </div>
+
+  <div class="section-box">
+    <div class="section-header">Memory Usage</div>
+    <div class="section-body">
+      @for (m of memory; track m.name) {
+        <div class="mem-row">
+          <div class="mem-label">
+            {{ m.name }}
+            <span class="mem-nums">{{ m.used }} {{ m.unit }} / {{ m.max }} {{ m.unit }}</span>
+          </div>
+          <div class="meter">
+            <div class="meter-fill" [style.width.%]="(m.used / m.max) * 100"></div>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <div class="section-box">
+    <div class="section-header">Worker Threads</div>
+    <div class="table-wrap no-border">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Thread</th>
+            <th>State</th>
+            <th>CPU</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (t of threads; track t.name) {
+            <tr>
+              <td>{{ t.name }}</td>
+              <td>
+                <span class="status-dot" [class.ok]="t.state === 'Running'"></span>
+                {{ t.state }}
+              </td>
+              <td class="muted">{{ t.cpu }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

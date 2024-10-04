@@ -1,0 +1,12 @@
+.qtcreator
+.vscode
+.cache
+/tmp
+/definitions/cfml_definition.json.h
+/build-release
+/build-asan
+/build_dbg
+/build
+/bin
+compile_commands.json
+CMakeLists.txt.user

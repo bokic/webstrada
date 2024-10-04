@@ -1,0 +1,81 @@
+<div class="page">
+  <h1 class="page-title">Users &amp; Roles</h1>
+  <p class="page-desc">
+    Users allowed to sign in to the Administrator and the role granted to each.
+  </p>
+
+  <div class="page-actions">
+    <button class="btn" type="button" (click)="false">Add User</button>
+  </div>
+
+  <div class="table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Role</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Last Login</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (u of users; track u.username) {
+          <tr>
+            <td>
+              <strong>{{ u.username }}</strong>
+            </td>
+            <td><span class="badge gray">{{ u.role }}</span></td>
+            <td class="muted">{{ u.email }}</td>
+            <td>
+              <span class="status-dot" [class.ok]="u.status === 'Active'"></span>
+              {{ u.status }}
+            </td>
+            <td class="muted">{{ u.lastLogin }}</td>
+            <td>
+              <button class="btn-secondary" type="button" (click)="false">Edit</button>
+              <button class="btn-secondary" type="button" (click)="false">Disable</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-box">
+    <div class="section-header">Roles</div>
+    <div class="section-body">
+      <table class="admin-table no-border">
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Permissions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Administrator</strong></td>
+            <td class="muted">Full access to all settings, data sources and users.</td>
+          </tr>
+          <tr>
+            <td><strong>Server Manager</strong></td>
+            <td class="muted">Manage data sources, caches and runtime settings.</td>
+          </tr>
+          <tr>
+            <td><strong>Deployment</strong></td>
+            <td class="muted">Deploy applications and restart the server.</td>
+          </tr>
+          <tr>
+            <td><strong>Monitoring</strong></td>
+            <td class="muted">Read-only access to logs, runtime and dashboard.</td>
+          </tr>
+          <tr>
+            <td><strong>Read Only</strong></td>
+            <td class="muted">View the dashboard only.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

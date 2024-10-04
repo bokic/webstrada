@@ -1,0 +1,61 @@
+<div class="page">
+  <h1 class="page-title">Cache</h1>
+  <p class="page-desc">
+    Entries held in the server cache store: cached templates, query results and
+    objects from <code>&lt;cfcache&gt;</code> and the Cache* functions.
+  </p>
+
+  @if (!loaded()) {
+    <div class="muted">Loading&hellip;</div>
+  }
+
+  @if (message()) {
+    <div class="cache-message">{{ message() }}</div>
+  }
+
+  <div class="page-actions">
+    <button class="btn" type="button" [disabled]="busy() || !loaded()" (click)="clearAll()">Clear All Caches</button>
+    <button class="btn-secondary" type="button" [disabled]="busy() || !loaded()" (click)="refresh()">Refresh</button>
+  </div>
+
+  <div class="cards">
+    @for (s of stats(); track s.label) {
+      <div class="stat-card">
+        <div class="stat-label">{{ s.label }}</div>
+        <div class="stat-value">{{ s.value }}</div>
+        <div class="stat-sub">{{ s.sub }}</div>
+      </div>
+    }
+  </div>
+
+  <div class="table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th (click)="sortBy('region')" title="{{ sortTitle('region') }}">Region{{ sortIcon('region') }}</th>
+          <th (click)="sortBy('id')" title="{{ sortTitle('id') }}">Cache Key{{ sortIcon('id') }}</th>
+          <th (click)="sortBy('hits')" title="{{ sortTitle('hits') }}">Hits{{ sortIcon('hits') }}</th>
+          <th (click)="sortBy('size')" title="{{ sortTitle('size') }}">Size{{ sortIcon('size') }}</th>
+          <th (click)="sortBy('createdMs')" title="{{ sortTitle('createdMs') }}">Created{{ sortIcon('createdMs') }}</th>
+          <th (click)="sortBy('expiresMs')" title="{{ sortTitle('expiresMs') }}">Expires{{ sortIcon('expiresMs') }}</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (e of entries(); track e.region + '|' + e.id) {
+          <tr>
+            <td><span class="badge gray">{{ e.region }}</span></td>
+            <td><code>{{ e.id }}</code></td>
+            <td class="muted">{{ e.hits }}</td>
+            <td class="muted">{{ formatSize(e.size) }}</td>
+            <td class="muted">{{ formatTime(e.createdMs) }}</td>
+            <td class="muted">{{ expiresText(e) }}</td>
+            <td>
+              <button class="btn-secondary" type="button" (click)="evict(e)">Evict</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>

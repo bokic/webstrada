@@ -1,0 +1,1 @@
+<cfset WriteLog(text="hello world")><cfset WriteLog(text="warn msg", type="warning")><cfset WriteLog(text="err msg", type="error")><cfset WriteLog(text="fatal msg", type="fatal")><cfset WriteLog(text="custom file msg", file="WebStrada_verify")><cfset WriteLog(text="weird type", type="bogus")>

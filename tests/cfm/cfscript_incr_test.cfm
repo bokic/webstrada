@@ -1,0 +1,34 @@
+<cfscript>
+i = 1;
+i++;
+WriteOutput(i);
+WriteOutput("|");
+j = 5;
+j--;
+WriteOutput(j);
+WriteOutput("|");
+k = 1;
+WriteOutput(k++);
+WriteOutput("|");
+m = 1;
+WriteOutput(++m);
+WriteOutput("|");
+n = 1;
+n += 2;
+n += 3;
+WriteOutput(n);
+WriteOutput("|");
+n -= 1;
+WriteOutput(n);
+WriteOutput("|");
+n *= 3;
+WriteOutput(n);
+WriteOutput("|");
+p = 10;
+p /= 4;
+WriteOutput(p);
+WriteOutput("|");
+q = "abc";
+q &= "def";
+WriteOutput(q);
+</cfscript>

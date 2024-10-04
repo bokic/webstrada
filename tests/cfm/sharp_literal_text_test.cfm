@@ -1,0 +1,1 @@
+<cfset a = 5><cfoutput>V1=[#"x #a#"#]</cfoutput><cfoutput>V2=["x #a#"]</cfoutput><cfoutput>V3=[##]</cfoutput><cfoutput>V4=[#a#]</cfoutput><cfoutput>V5=[#a# x]</cfoutput><cfoutput>V6=[a ## b]</cfoutput><cfoutput>V7=[ab#a#cd]</cfoutput>

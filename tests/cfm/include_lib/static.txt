@@ -1,0 +1,1 @@
+static raw content with #hash# but no cfml
