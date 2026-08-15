@@ -559,6 +559,12 @@ void worker::process_cli_request(const string &pathname, const string &web_root)
     // Finalize a pending whole-page <cfcache> store (CachingFilter runs after
     // the page completes).
     cfml::cf_cache_store_page(&m_out);
+
+    m_form = cfvariant::Struct;
+    m_cgi = cfvariant::Struct;
+    m_url = cfvariant::Struct;
+    m_cookie = cfvariant::Struct;
+    m_variables = cfvariant::Struct;
 }
 
 

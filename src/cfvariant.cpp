@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 #include <set>
+#include <unordered_set>
+#include <unordered_map>
 #include <string>
 #include <map>
 #include <cmath>
@@ -100,12 +102,133 @@ StructData *webstrada::struct_data_retain(StructData *sd)
     return sd;
 }
 
+namespace {
+
+void collectStructChildren(const cfvariant &val, std::vector<StructData*> &out) {
+    if (val.m_type == cfvariant::Struct || val.m_type == cfvariant::Xml ||
+        val.m_type == cfvariant::JSon || val.m_type == cfvariant::Component) {
+        if (val.m_structData) out.push_back(val.m_structData);
+    } else if (val.m_type == cfvariant::Array && val.m_array) {
+        for (const auto &elem : *val.m_array) {
+            collectStructChildren(elem, out);
+        }
+    }
+}
+
+void getStructDataChildren(StructData *sd, std::vector<StructData*> &children) {
+    for (const auto &pair : sd->map) {
+        collectStructChildren(pair.second, children);
+    }
+}
+
+thread_local bool in_cycle_collection = false;
+
+void tryCollectCycles(StructData *root) {
+    if (in_cycle_collection || !root || root->refs <= 0) return;
+    in_cycle_collection = true;
+
+    // 1. Gather reachable StructData nodes
+    std::vector<StructData*> nodes;
+    std::unordered_set<StructData*> visited;
+    std::vector<StructData*> worklist = {root};
+    visited.insert(root);
+
+    while (!worklist.empty()) {
+        StructData *curr = worklist.back();
+        worklist.pop_back();
+        nodes.push_back(curr);
+
+        std::vector<StructData*> children;
+        getStructDataChildren(curr, children);
+        for (StructData *child : children) {
+            if (child && visited.insert(child).second) {
+                worklist.push_back(child);
+            }
+        }
+    }
+
+    // 2. Compute pending refcounts by subtracting internal references
+    std::unordered_map<StructData*, int> pending;
+    for (StructData *node : nodes) {
+        pending[node] = node->refs;
+    }
+
+    for (StructData *node : nodes) {
+        std::vector<StructData*> children;
+        getStructDataChildren(node, children);
+        for (StructData *child : children) {
+            auto it = pending.find(child);
+            if (it != pending.end()) {
+                it->second--;
+            }
+        }
+    }
+
+    // 3. Mark nodes reachable from externally-referenced nodes (pending > 0) as alive
+    std::unordered_set<StructData*> alive;
+    std::vector<StructData*> aliveWorklist;
+    for (StructData *node : nodes) {
+        if (pending[node] > 0) {
+            alive.insert(node);
+            aliveWorklist.push_back(node);
+        }
+    }
+
+    while (!aliveWorklist.empty()) {
+        StructData *curr = aliveWorklist.back();
+        aliveWorklist.pop_back();
+
+        std::vector<StructData*> children;
+        getStructDataChildren(curr, children);
+        for (StructData *child : children) {
+            if (child && alive.insert(child).second) {
+                aliveWorklist.push_back(child);
+            }
+        }
+    }
+
+    // 4. Any node not in `alive` is dead (part of an unreferenced cycle).
+    std::vector<StructData*> deadNodes;
+    for (StructData *node : nodes) {
+        if (alive.find(node) == alive.end()) {
+            deadNodes.push_back(node);
+        }
+    }
+
+    if (!deadNodes.empty()) {
+        for (StructData *dead : deadNodes) {
+            dead->refs++; // temporary protect
+        }
+        for (StructData *dead : deadNodes) {
+            dead->map.clear();
+            dead->insertOrder.clear();
+        }
+        for (StructData *dead : deadNodes) {
+            dead->refs--; // unprotect
+        }
+        for (StructData *dead : deadNodes) {
+            if (dead->refs <= 0) {
+                delete dead->meta;
+                dead->meta = nullptr;
+                delete dead;
+            }
+        }
+    }
+
+    in_cycle_collection = false;
+}
+
+} // namespace
+
 void webstrada::struct_data_release(StructData *sd)
 {
     if (!sd) return;
-    if (--sd->refs > 0) return;
-    delete sd->meta;
-    delete sd;
+    if (--sd->refs <= 0) {
+        delete sd->meta;
+        delete sd;
+        return;
+    }
+    tryCollectCycles(sd);
 }
 
 QueryData *webstrada::query_data_retain(QueryData *qd)
@@ -260,100 +383,8 @@ cfvariant& cfvariant::operator=(const cfvariant& other)
     if (&other != this)
     {
         TRACE_FUNCTION();
-
-        // Clean up current type (releases any shared Struct/Query payload).
-        set_type(NotSet);
-
-        m_type = other.m_type;
-        m_upcase = other.m_upcase;
-        m_autocreate = other.m_autocreate;
-        m_readOnly = other.m_readOnly;
-        m_disabled = other.m_disabled;
-        m_boolLiteral = other.m_boolLiteral;
-        m_isArguments = other.m_isArguments;
-        m_argumentsParamCount = other.m_argumentsParamCount;
-        m_serializeInsertOrder = other.m_serializeInsertOrder;
-        m_isXmlNodeList = other.m_isXmlNodeList;
-        m_isCustomException = other.m_isCustomException;
-        m_isAbort = other.m_isAbort;
-        m_isByteArrayOutputStream = other.m_isByteArrayOutputStream;
-        m_odbcStyle = other.m_odbcStyle;
-        m_tempRegistered = false;
-
-        if (other.m_literalText) {
-            m_literalText = new string(*other.m_literalText);
-        }
-
-        switch(m_type)
-        {
-        case NotSet:
-        case Null:
-            m_obj = nullptr;
-            break;
-        case Boolean:
-            m_bool = other.m_bool;
-            break;
-        case Number:
-            m_int = other.m_int;
-            break;
-        case Long:
-            m_long = other.m_long;
-            break;
-        case Float:
-            m_double = other.m_double;
-            break;
-        case DateTime:
-            m_double = other.m_double;
-            break;
-        case String:
-            m_str = new string(*other.m_str);
-            break;
-        case Function:
-            m_str = new string(*other.m_str);
-            m_udf = udf_info_retain(other.m_udf);
-            break;
-        case Array:
-            m_array = new std::vector<cfvariant>(*other.m_array);
-            break;
-        case Struct:
-        case Xml:
-        case JSon:
-        case Component:
-            // Structs are reference types in CF: share the payload instead of
-            // deep-cloning. The destination slot may live inside the shared map
-            // (`s = variables`); sharing avoids the old self-copy recursion.
-            m_structData = struct_data_retain(other.m_structData);
-            m_struct = m_structData ? &m_structData->map : nullptr;
-            m_structInsertOrder = m_structData ? &m_structData->insertOrder : nullptr;
-            if (m_type == Component) {
-                m_component = component_instance_retain(other.m_component);
-                m_superTargetInfo = other.m_superTargetInfo;
-            }
-            break;
-        case Query:
-            m_query = query_data_retain(other.m_query);
-            break;
-        case Image:
-            m_image = image_data_retain(other.m_image);
-            break;
-        case Binary:
-            m_binary = new std::vector<std::byte>(*other.m_binary);
-            break;
-        case File:
-            throw RUNTIME_WITH_STRING("Cannot copy File type");
-        default:
-            throw RUNTIME_WITH_STRING("Unsupported type in assignment.");
-        }
-
-        // See the copy constructor: the query-column back-reference survives
-        // assignment (retained), and the copied column is writable only for
-        // bracket-access origins. set_type(NotSet) above already released any
-        // owner the destination previously held.
-        m_queryColOwner = query_data_retain(other.m_queryColOwner);
-        m_queryColIndex = other.m_queryColIndex;
-        m_queryColFromBracket = other.m_queryColFromBracket;
-        m_queryColWritable = other.m_queryColFromBracket;
-        m_queryColCopyDepth = other.m_queryColCopyDepth;
+        cfvariant temp(other);
+        *this = std::move(temp);
     }
 
     return *this;

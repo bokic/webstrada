@@ -21864,6 +21864,62 @@ TEST_F(ConfigExtensionTest, ServerInfoJitDispatch) {
         variables).equals("UTF-8"), true);
 }
 
+class StructCycleTest : public testing::Test {};
+
+TEST_F(StructCycleTest, SelfReferenceCleared) {
+    {
+        cfvariant s = cfvariant::Struct;
+        s.structSet("self", s);
+        EXPECT_EQ(s.m_struct->size(), 1);
+        EXPECT_EQ(s.has("self"), true);
+    }
+}
+
+TEST_F(StructCycleTest, MutualReferenceCleared) {
+    {
+        cfvariant a = cfvariant::Struct;
+        cfvariant b = cfvariant::Struct;
+        a.structSet("b", b);
+        b.structSet("a", a);
+        EXPECT_EQ(a.has("b"), true);
+        EXPECT_EQ(b.has("a"), true);
+    }
+}
+
+TEST_F(StructCycleTest, ThreeNodeCycleCleared) {
+    {
+        cfvariant a = cfvariant::Struct;
+        cfvariant b = cfvariant::Struct;
+        cfvariant c = cfvariant::Struct;
+        a.structSet("b", b);
+        b.structSet("c", c);
+        c.structSet("a", a);
+        EXPECT_EQ(a.m_struct->size(), 1);
+        EXPECT_EQ(b.m_struct->size(), 1);
+        EXPECT_EQ(c.m_struct->size(), 1);
+    }
+}
+
+TEST_F(StructCycleTest, ArrayCycleCleared) {
+    {
+        cfvariant arr = cfvariant::Array;
+        cfvariant s = cfvariant::Struct;
+        arr.insert(s);
+        s.structSet("arr", arr);
+        EXPECT_EQ(s.has("arr"), true);
+    }
+}
+
+TEST_F(StructCycleTest, ScopeAliasCleared) {
+    {
+        cfvariant variables = cfvariant::Struct;
+        variables.structSet("x", cfvariant(42));
+        variables.structSet("s", variables);
+        EXPECT_EQ(variables.has("x"), true);
+        EXPECT_EQ(variables.has("s"), true);
+    }
+}
+
 }  // namespace webstrada
 
 int main(int argc, char **argv) {

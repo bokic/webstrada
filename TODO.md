@@ -9,8 +9,6 @@ Next areas to work on:
 * open source the project
 * generate/publish docker images(latest and per git tag)
 
-* Fix the residual ASan leaks: OpenSSL legacy-provider state is unloaded at process exit; the ~7 KB scope-store residue in struct_scope_functions_test.cfm (see BUGS.md "Every request leaked memory")
-
 * Implement all cfusion functions per UNIMPLEMENTED_TAGS.md
 * Implement all cfusion tags per UNIMPLEMENTED_TAGS.md
 

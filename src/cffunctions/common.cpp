@@ -2537,11 +2537,26 @@ webstrada::string uppercaseHex(const unsigned char *data, size_t len) {
     return out;
 }
 
+static OSSL_PROVIDER *s_legacyProv = nullptr;
+static OSSL_PROVIDER *s_defaultProv = nullptr;
+
+static void unloadCryptoProviders() {
+    if (s_legacyProv) {
+        OSSL_PROVIDER_unload(s_legacyProv);
+        s_legacyProv = nullptr;
+    }
+    if (s_defaultProv) {
+        OSSL_PROVIDER_unload(s_defaultProv);
+        s_defaultProv = nullptr;
+    }
+}
+
 void loadCryptoProviders() {
     static bool loaded = false;
     if (!loaded) {
-        OSSL_PROVIDER_load(nullptr, "legacy");
-        OSSL_PROVIDER_load(nullptr, "default");
+        s_legacyProv = OSSL_PROVIDER_load(nullptr, "legacy");
+        s_defaultProv = OSSL_PROVIDER_load(nullptr, "default");
+        std::atexit(unloadCryptoProviders);
         loaded = true;
     }
 }
