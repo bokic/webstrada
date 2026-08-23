@@ -413,6 +413,7 @@ class DevHandler(BaseHTTPRequestHandler):
         params = [
             ("REQUEST_METHOD", self.command),
             ("REQUEST_URI", rel),
+            ("SCRIPT_NAME", rel),
             ("DOCUMENT_ROOT", document_root or WEBROOT),
             ("QUERY_STRING", query),
             ("SERVER_PROTOCOL", self.request_version),

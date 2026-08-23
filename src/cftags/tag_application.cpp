@@ -127,7 +127,7 @@ void setSessionCookies(const string &cfid, const string &token)
     r.cookies.push_back(std::string(c2.constData(), c2.length()));
 }
 
-thread_local bool g_searchImplicitScopes = false;
+thread_local bool g_searchImplicitScopes = true;
 
 // Per-request REQUEST scope (reset in scope_begin; cleared at request end by
 // scope_end so one request's values never leak into the next).
@@ -140,7 +140,7 @@ void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session)
     sc.store = store;
     sc.application = application;
     sc.session = session;
-    g_searchImplicitScopes = false;
+    g_searchImplicitScopes = true;
     g_requestScope = cfvariant(cfvariant::Struct);
     cf_cfoutputonly_set(false);
     silent_buf_clear();
@@ -149,6 +149,7 @@ void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session)
     stored_proc_clear();
     invoke_clear();
     import_paths_clear();
+    app_mappings_clear();
     zip_ctx_clear();
     cfml::locale_reset();
     security_reset();

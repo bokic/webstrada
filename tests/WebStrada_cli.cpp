@@ -8,6 +8,7 @@
 #include <webstrada/cache_store.h>
 #include <webstrada/config.h>
 #include <webstrada/worker.h>
+#include "../src/cftags/common.h"
 
 #include <filesystem>
 #include <iostream>
@@ -75,7 +76,14 @@ int main(int argc, char** argv)
             webstrada::string output;
 
             webstrada::cfvariant cgi = webstrada::cfvariant::Struct;
+            cgi.set("SCRIPT_NAME") = webstrada::cfvariant("/stdin.cfm");
+            cgi.set("PATH_INFO") = webstrada::cfvariant("");
+            cgi.set("REQUEST_URI") = webstrada::cfvariant("/stdin.cfm");
+            cgi.set("REQUEST_METHOD") = webstrada::cfvariant("GET");
+            cgi.set("SERVER_PROTOCOL") = webstrada::cfvariant("HTTP/1.1");
+            cgi.set("DOCUMENT_ROOT") = webstrada::cfvariant(std::filesystem::current_path().string().c_str());
             webstrada::cfvariant server = webstrada::cfvariant::Struct;
+            cfml::init_server_scope(server);
             webstrada::cfvariant cookie = webstrada::cfvariant::Struct;
             webstrada::cfvariant application = webstrada::cfvariant::Struct;
             webstrada::cfvariant session = webstrada::cfvariant::Struct;

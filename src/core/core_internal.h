@@ -39,6 +39,16 @@ webstrada::cfvariant *udfVariablesScope(webstrada::cfvariant *passedVariables);
 // scope; unqualified names fall through to `arguments` after `local`.
 webstrada::cfvariant *udfArgumentsScope(const webstrada::cfvariant *localScope);
 
+// Resolves the target scope for an unqualified variable assignment, exactly
+// like cfvariant_assign's unqualified branch: inside a UDF a var-declared
+// (local) name writes to the local scope, a parameter name to the `arguments`
+// scope, and everything else to the captured parent scope; outside a UDF the
+// plain variables scope is used. Used by the cfloop index assignment so the
+// loop variable lands in the scope an unqualified <cfset> would target (a
+// `var`-declared loop index lives in `local`, not the component variables
+// scope — was a WebStrada divergence from CF in CFC methods).
+webstrada::cfvariant *udfAssignScope(webstrada::cfvariant *variables, const char *name);
+
 // ---- promoted from cf8.cpp (split into core/). These were file-scope helpers
 // defined at global scope with "using namespace webstrada; using namespace cfml;".
 // (Global-scope ones live in ::; the cfml::-qualified ones are wrapped below.)

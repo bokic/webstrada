@@ -472,8 +472,11 @@ static size_t compile_script_for(
         if (!fLen) fLen = llvm::Function::Create(llvm::FunctionType::get(builder.getInt64Ty(), {builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfforin_length", module);
         auto *fItem = module->getFunction("cfforin_item");
         if (!fItem) fItem = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getInt64Ty(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfforin_item", module);
-        auto *fIndexAssign = module->getFunction("cfvariant_index_assign");
-        if (!fIndexAssign) fIndexAssign = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_index_assign", module);
+        // The iteration variable is assigned like an unqualified <cfset> (see
+        // cfloop_assign_index): a `var`-declared name in a function lands in
+        // the local scope, not the (component) variables scope.
+        auto *fAssignIndex = module->getFunction("cfloop_assign_index");
+        if (!fAssignIndex) fAssignIndex = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), std::vector<llvm::Type*>(10, builder.getPtrTy()), false), llvm::Function::InternalLinkage, "cfloop_assign_index", module);
         auto *fStr = module->getFunction("cfvariant_create_string");
         if (!fStr) fStr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_create_string", module);
         auto *delimsVal = emitCall(builder, fStr, {builder.CreateGlobalString(",", "", 0, module, true)});
@@ -508,8 +511,8 @@ static size_t compile_script_for(
 
     builder.SetInsertPoint(bodyBB);
     auto *itemVal = emitCall(builder, fItem, {collVal, idxCur, delimsVal});
-    auto *itemKey = emitCall(builder, fStr, {builder.CreateGlobalString(llvm::StringRef(itemName.constData(), itemName.length()), "", 0, module, true)});
-    emitCall(builder, fIndexAssign, {variables, itemKey, itemVal});
+    auto *itemNamePtr = builder.CreateGlobalString(llvm::StringRef(itemName.constData(), itemName.length()), "", 0, module, true);
+    emitCall(builder, fAssignIndex, {cgi, server, cookie, application, session, url, form, variables, itemNamePtr, itemVal});
 
     loopStack.push_back({incBB, endBB, itemName, idxAlloca, false});
     size_t afterBody = compile_script_body(tokens, bodyStart, context, module, builder, mainfunc,

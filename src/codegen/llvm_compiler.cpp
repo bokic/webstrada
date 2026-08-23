@@ -127,6 +127,7 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cfloop_resolve_int", reinterpret_cast<void*>(cfml::cfloop_resolve_int));
     llvm::sys::DynamicLibrary::AddSymbol("cfloop_set_int", reinterpret_cast<void*>(cfml::cfloop_set_int));
     llvm::sys::DynamicLibrary::AddSymbol("cfloop_set_long", reinterpret_cast<void*>(cfml::cfloop_set_long));
+    llvm::sys::DynamicLibrary::AddSymbol("cfloop_assign_index", reinterpret_cast<void*>(cfml::cfloop_assign_index));
     llvm::sys::DynamicLibrary::AddSymbol("cfabort", reinterpret_cast<void*>(cfml::cfabort));
     llvm::sys::DynamicLibrary::AddSymbol("cf_exit", reinterpret_cast<void*>(cfml::cf_exit));
     llvm::sys::DynamicLibrary::AddSymbol("cf_exit_loop", reinterpret_cast<void*>(cfml::cf_exit_loop));

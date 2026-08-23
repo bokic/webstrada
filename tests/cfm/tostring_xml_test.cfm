@@ -1,0 +1,1 @@
+<cfset xmlStr = '<root><child id="1">text</child></root>' /><cfset doc = XmlParse(xmlStr) /><cfoutput>DocToString:#trim(toString(doc))#|ElemToString:#trim(toString(doc.XmlRoot.child))#|NumToString:#toString(123)#|BoolToString:#toString(true)#|</cfoutput>

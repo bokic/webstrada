@@ -794,10 +794,6 @@ llvm::Function *compileUdfFunction(
             wsBody.feed(module, builder, bodyOut, cfm_text + bodyPos, def.bodyEnd - bodyPos, WsRight::Tag);
         }
         wsBody.finish(module, builder, bodyOut, WsRight::Tag);
-        if (!def.output) {
-            auto *fEnd = module->getFunction("cf_silent_end");
-            emitCall(builder, fEnd, {});
-        }
     } else {
         bool savedInFunc = g_compileInFunctionBody;
         g_compileInFunctionBody = true;
@@ -812,6 +808,10 @@ llvm::Function *compileUdfFunction(
 
     // Normal exit path: restore all temps except the return value
     builder.SetInsertPoint(exitBB);
+    if (def.isTagForm && !def.output) {
+        auto *fEnd = getOrCreateHelper(module, builder, "cf_silent_end", builder.getVoidTy(), {});
+        builder.CreateCall(fEnd, {});
+    }
     llvm::Value *retVal = builder.CreateLoad(builder.getPtrTy(), retSlot);
     auto *fUdfEnd = getOrCreateHelper(module, builder, "cf_udf_end", builder.getVoidTy(), {});
     builder.CreateCall(fUdfEnd, {});
@@ -831,6 +831,10 @@ llvm::Function *compileUdfFunction(
     llvm::Value *udfExn = builder.CreateExtractValue(lp, 0, "udf.exn");
     emitStackCaptureOnException(module, builder, udfExn);
     emitStackPop(module, builder);
+    if (def.isTagForm && !def.output) {
+        auto *fEnd = getOrCreateHelper(module, builder, "cf_silent_end", builder.getVoidTy(), {});
+        builder.CreateCall(fEnd, {});
+    }
     builder.CreateCall(fUdfEnd, {});
     auto *fRestore = getOrCreateHelper(module, builder, "cfvariant_cleanup_restore",
                                        builder.getVoidTy(), {builder.getInt64Ty()});
@@ -1700,10 +1704,15 @@ void compile_token_list(
                 auto tagAttrs = parseTagAttrs(attrParts, cfm_text);
 
                 static const std::unordered_set<std::string> headerValidAttrs =
-                    {"name", "value", "charset", "statuscode"};
+                    {"name", "value", "charset", "statuscode", "statustext"};
                 std::vector<std::string> unknownAttrs;
+                bool hasStatustext = false;
                 for (const auto &a : tagAttrs) {
-                    if (headerValidAttrs.find(lowercase(a.first)) == headerValidAttrs.end()) {
+                    std::string aLow = lowercase(a.first);
+                    if (aLow == "statustext") {
+                        hasStatustext = true;
+                    }
+                    if (headerValidAttrs.find(aLow) == headerValidAttrs.end()) {
                         unknownAttrs.push_back(a.first);
                     }
                 }
@@ -1718,11 +1727,24 @@ void compile_token_list(
                     throw webstrada::exception(("Attribute validation error for tag CFHEADER. It does not allow the attribute(s) " + list + ". The valid attribute(s) are CHARSET,NAME,STATUSCODE,VALUE.").c_str());
                 }
 
+                if (hasStatustext) {
+                    int line = lineOfOffset(cfm_text, token.position);
+                    size_t line_idx = g_textparser ? textparser_get_line_number_at_position(g_textparser, token.position) : 0;
+                    size_t line_start = g_textparser ? textparser_get_line_start_position(g_textparser, line_idx) : 0;
+                    size_t col = (token.position >= line_start) ? (token.position - line_start + 1) : 1;
+                    std::string path = module ? module->getName().str() : "";
+                    fprintf(stderr, "[WebStrada] Warning: tag <cfheader> attribute 'statustext' is deprecated and ignored (%s:%d:%zu)\n",
+                            path.c_str(), line, col);
+                }
+
                 // Valid combinations (CF's HeaderTag bean): name (with optional
-                // value/charset) OR statuscode alone. Sorted-lowercase combo
-                // string appears in the error message like CF.
+                // value/charset) OR statuscode (optionally with deprecated statustext).
+                // Sorted-lowercase combo string appears in the error message like CF.
                 std::vector<std::string> combo;
-                for (const auto &a : tagAttrs) combo.push_back(lowercase(a.first));
+                for (const auto &a : tagAttrs) {
+                    std::string aLow = lowercase(a.first);
+                    if (aLow != "statustext") combo.push_back(aLow);
+                }
                 std::sort(combo.begin(), combo.end());
                 bool validCombo = (combo.size() == 1 && combo[0] == "statuscode");
                 if (!validCombo) {
@@ -4482,8 +4504,8 @@ void compile_token_list(
 
             auto lpSetFunc = module->getFunction("cfloop_set_long");
             if (!lpSetFunc) {
-                std::vector<llvm::Type*> sp(3, builder.getPtrTy());
-                sp[2] = builder.getInt64Ty();
+                std::vector<llvm::Type*> sp(10, builder.getPtrTy());
+                sp[9] = builder.getInt64Ty();
                 lpSetFunc = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), sp, false),
                     llvm::Function::InternalLinkage, "cfloop_set_long", module);
             }
@@ -4541,7 +4563,7 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
                 builder.CreateStore(lpStepVal, lpStepVar);
                 {
                     auto g = builder.CreateGlobalString(llvm::StringRef(lpIndexName.constData(), lpIndexName.length()), "", 0, module, true);
-                    llvm::Value *sa[] = {variables, g, lpFromVal};
+                    llvm::Value *sa[] = {cgi, server, cookie, application, session, url, form, variables, g, lpFromVal};
                     emitCall(builder, lpSetFunc, sa);
                 }
 
@@ -4672,18 +4694,20 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
             builder.SetInsertPoint(lpBodyBB);
 
             // Set the loop variable before each iteration for the iteration
-            // kinds (list/array/collection).
+            // kinds (list/array/collection). The index is assigned like an
+            // unqualified <cfset>: inside a function a `var`-declared loop
+            // variable lands in the local scope (in a component method the
+            // `variables` scope is the instance scope, NOT the function-local
+            // scope, so writing it there would leave the loop variable empty).
             if (loopKind == LOOP_LIST || loopKind == LOOP_ARRAY || loopKind == LOOP_COLLECTION) {
                 auto *fItem = module->getFunction("cfforin_item");
                 if (!fItem) fItem = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getInt64Ty(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfforin_item", module);
-                auto *fIndexAssign = module->getFunction("cfvariant_index_assign");
-                if (!fIndexAssign) fIndexAssign = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_index_assign", module);
-                auto *fStr = module->getFunction("cfvariant_create_string");
-                if (!fStr) fStr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_create_string", module);
+                auto *fAssignIndex = module->getFunction("cfloop_assign_index");
+                if (!fAssignIndex) fAssignIndex = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), std::vector<llvm::Type*>(10, builder.getPtrTy()), false), llvm::Function::InternalLinkage, "cfloop_assign_index", module);
                 auto *curIdx3 = builder.CreateLoad(builder.getInt64Ty(), lpIndexVar);
                 auto *itemVal = emitCall(builder, fItem, {collVal, curIdx3, delimsVal});
-                auto *varKey = emitCall(builder, fStr, {builder.CreateGlobalString(llvm::StringRef(lpLoopVarName.constData(), lpLoopVarName.length()), "", 0, module, true)});
-                emitCall(builder, fIndexAssign, {variables, varKey, itemVal});
+                auto *varName = builder.CreateGlobalString(llvm::StringRef(lpLoopVarName.constData(), lpLoopVarName.length()), "", 0, module, true);
+                emitCall(builder, fAssignIndex, {cgi, server, cookie, application, session, url, form, variables, varName, itemVal});
             }
 
             string lpIndexUpper = lpLoopVarName;
@@ -4727,7 +4751,7 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
                 builder.CreateStore(newIdx2, lpIndexVar);
                 {
                     auto g = builder.CreateGlobalString(llvm::StringRef(lpIndexName.constData(), lpIndexName.length()), "", 0, module, true);
-                    llvm::Value *sa2[] = {variables, g, newIdx2};
+                    llvm::Value *sa2[] = {cgi, server, cookie, application, session, url, form, variables, g, newIdx2};
                     emitCall(builder, lpSetFunc, sa2);
                 }
                 builder.CreateBr(lpCondBB);

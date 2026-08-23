@@ -548,17 +548,7 @@ cfvariant *cfml::cfvariant_assign(
         // names (verified on CF 2021). A parameter name, however, writes to the
         // `arguments` scope — even when a `local.arg1` was explicitly created
         // (CF: `local.arg1 = "L"; arg1 = "Y"` keeps local.arg1 == "L").
-        webstrada::string uname(name);
-        uname.toUpper();
-        if (g_udfCtx.back().localNames.find(uname) == g_udfCtx.back().localNames.end()) {
-            cfvariant *args = udfArgumentsScope(g_udfCtx.back().localScope);
-            bool isParam = false;
-            if (args) {
-                auto it = args->m_struct->find(uname);
-                isParam = (it != args->m_struct->end() && it->second.m_type != cfvariant::Null);
-            }
-            scope = isParam ? args : g_udfCtx.back().parentScope;
-        }
+        scope = udfAssignScope(variables, name);
     }
 
     if (!scope || (scope->m_type != cfvariant::Struct && scope->m_type != cfvariant::Component)) {
@@ -942,7 +932,39 @@ cfvariant *cfml::cfvariant_copy_value(const cfvariant *a) {
         v->m_str->clear();
         v->m_str->append(arr->m_str->at(i - 1));
         return tempRet(v);
-    } else if (arr->m_type == cfvariant::Struct || arr->m_type == cfvariant::Xml) {
+    } else if (arr->m_type == cfvariant::Xml) {
+        string key = const_cast<cfvariant*>(idx)->toString();
+        if (arr->m_struct) {
+            auto it = arr->m_struct->find(key);
+            if (it != arr->m_struct->end()) {
+                return &it->second;
+            }
+            auto itChildren = arr->m_struct->find("XMLCHILDREN");
+            if (itChildren != arr->m_struct->end() && itChildren->second.m_type == cfvariant::Array && itChildren->second.m_array) {
+                std::vector<cfvariant> matches;
+                for (auto &child : *itChildren->second.m_array) {
+                    if (child.m_type == cfvariant::Xml && child.m_struct) {
+                        auto itName = child.m_struct->find("XMLNAME");
+                        if (itName != child.m_struct->end() && itName->second.toString().compareCaseInsensitive(key) == 0) {
+                            matches.push_back(child);
+                        }
+                    }
+                }
+                if (matches.size() == 1) {
+                    (*arr->m_struct)[key] = matches[0];
+                    return &(*arr->m_struct)[key];
+                } else if (matches.size() > 1) {
+                    cfvariant childGroup(arr->m_upcase, false);
+                    childGroup.set_type(cfvariant::Array);
+                    childGroup.m_isXmlNodeList = true;
+                    for (auto const& ch : matches) childGroup.insert(ch);
+                    (*arr->m_struct)[key] = childGroup;
+                    return &(*arr->m_struct)[key];
+                }
+            }
+        }
+        return &arr->set(key);
+    } else if (arr->m_type == cfvariant::Struct) {
         string key = const_cast<cfvariant*>(idx)->toString();
         return &arr->set(key);
     } else if (arr->m_type == cfvariant::Component) {
@@ -2504,6 +2526,10 @@ static cfvariant *cf_call_builtin_dispatch(
         throw webstrada::exception(string("Variable ") + fname + " is undefined.");
     }
     cfvariant *vars = static_cast<cfvariant*>(variables);
+    if (!vars && !g_udfCtx.empty()) {
+        const UdfCallCtx &ctx = g_udfCtx.back();
+        vars = ctx.component ? ctx.component->variablesScope : ctx.localScope;
+    }
     if (!vars || vars->m_type != cfvariant::Struct) {
         throw webstrada::exception("Function execution error: invalid variables scope");
     }
@@ -2524,7 +2550,7 @@ static cfvariant *cf_call_builtin_dispatch(
     }
     expr += ")";
 
-    cfvariant res = evaluateExpr(out, expr, cgi, server, cookie, application, session, url, form, variables);
+    cfvariant res = evaluateExpr(out, expr, cgi, server, cookie, application, session, url, form, vars);
 
     for (int i = 0; i < arg_count; i++) {
         char keyBuf[64];

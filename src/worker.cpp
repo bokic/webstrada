@@ -66,25 +66,8 @@ static webstrada::ComponentInfo *component_loader(const char *path, void *opaque
 }
 
 worker::worker() {
-
     // Fill SERVER scope
-    m_server.setUpcase(false);
-    m_server.setAutoCreate();
-    m_server["coldfusion"]["appserver"] = "webstrada";
-    m_server["os"]["additionalinformation"] = cfml::readfile("/proc/sys/kernel/ostype");
-    m_server["os"]["arch"] = cfml::readfile("/proc/sys/kernel/arch");
-    m_server["os"]["buildnumber"] = cfml::readfile("/proc/sys/kernel/version");
-    m_server["os"]["name"] = "LINUX";
-    m_server["os"]["version"] = cfml::readfile("/proc/sys/kernel/osrelease");
-    char **s = environ;
-    while(*s) {
-        const char *separator = strstr(*s, "=");
-        string key(*s, separator - *s);
-        const char *value = separator + 1;
-        m_server["system"]["environment"][key.constData()] = value;
-        s++;
-    }
-    m_server.setReadOnly();
+    cfml::init_server_scope(m_server);
 
     // TODO: Init database connection pool.
 
@@ -145,6 +128,43 @@ void worker::process_request(FCGX_Request *request)
                     m_cgi[key] = value;
                 }
             }
+        }
+
+        // Normalize SCRIPT_NAME / PATH_INFO / REQUEST_URI to always have a leading slash and never be empty.
+        if (m_cgi.has("SCRIPT_NAME") && !m_cgi["SCRIPT_NAME"].toString().isEmpty()) {
+            string sn = m_cgi["SCRIPT_NAME"];
+            if (!sn.startWith("/")) {
+                m_cgi["SCRIPT_NAME"] = "/" + sn;
+            }
+        } else if (m_cgi.has("REQUEST_URI") && !m_cgi["REQUEST_URI"].toString().isEmpty()) {
+            string ru = m_cgi["REQUEST_URI"];
+            if (ru.contains('?')) {
+                ru = ru.left(ru.indexOf('?'));
+            }
+            if (!ru.startWith("/")) {
+                ru = "/" + ru;
+            }
+            m_cgi["SCRIPT_NAME"] = ru;
+        } else {
+            m_cgi["SCRIPT_NAME"] = "/";
+        }
+
+        if (m_cgi.has("PATH_INFO")) {
+            string pi = m_cgi["PATH_INFO"];
+            if (!pi.isEmpty() && !pi.startWith("/")) {
+                m_cgi["PATH_INFO"] = "/" + pi;
+            }
+        } else {
+            m_cgi["PATH_INFO"] = "";
+        }
+
+        if (m_cgi.has("REQUEST_URI")) {
+            string ru = m_cgi["REQUEST_URI"];
+            if (!ru.isEmpty() && !ru.startWith("/")) {
+                m_cgi["REQUEST_URI"] = "/" + ru;
+            }
+        } else {
+            m_cgi["REQUEST_URI"] = m_cgi["SCRIPT_NAME"];
         }
         m_cgi.setReadOnly();
 
@@ -544,6 +564,16 @@ void worker::process_cli_request(const string &pathname, const string &web_root)
         if (requestWebPath.empty() || requestWebPath[0] != '/') requestWebPath = "/" + requestWebPath;
     }
 
+    // Populate CGI scope for CLI execution.
+    m_cgi.setAutoCreate();
+    m_cgi["SCRIPT_NAME"] = string(requestWebPath.c_str());
+    m_cgi["PATH_INFO"] = "";
+    m_cgi["REQUEST_URI"] = string(requestWebPath.c_str());
+    m_cgi["DOCUMENT_ROOT"] = web_root;
+    m_cgi["REQUEST_METHOD"] = "GET";
+    m_cgi["SERVER_PROTOCOL"] = "HTTP/1.1";
+    m_cgi.setReadOnly();
+
     try {
         run_template(pathname, app_search_root);
     } catch (const webstrada::exit_exception &) {
@@ -738,6 +768,10 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
     cfvariant *atV = appCfcMember(thisScope, "APPLICATIONTIMEOUT");
     cfvariant *stV = appCfcMember(thisScope, "SESSIONTIMEOUT");
     cfvariant *sisV = appCfcMember(thisScope, "SEARCHIMPLICITSCOPES");
+    cfvariant *mappingsV = appCfcMember(thisScope, "MAPPINGS");
+    if (mappingsV) {
+        cfml::app_mappings_set(mappingsV);
+    }
     if (smV && cfml::cfmlBoolean(smV, false)) {
         cfml::cf_application_enable(&m_application, &m_session, &m_cookie,
                                     nameV, smV, atV, stV, sccV);
@@ -756,7 +790,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
             cfvariant *res = appCfcInvoke(compPtr, "onApplicationStart", nullptr, 0,
                                           m_out, &m_cgi, &m_server, &m_cookie,
                                           &m_application, &m_session, &m_url, &m_form);
-            if (res && !cfml::isTruthy(*res)) {
+            if (res && !cfml::cfmlBoolean(res, true)) {
                 return true;  // false stops the request
             }
         }
@@ -801,7 +835,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
             cfvariant *res = appCfcInvoke(compPtr, "onRequestStart", args, 1,
                                           m_out, &m_cgi, &m_server, &m_cookie,
                                           &m_application, &m_session, &m_url, &m_form);
-            if (res && !cfml::isTruthy(*res)) {
+            if (res && !cfml::cfmlBoolean(res, true)) {
                 return true;  // onRequestStart returned false: stop the request
             }
         }

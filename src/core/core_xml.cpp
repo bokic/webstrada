@@ -114,8 +114,7 @@ cfvariant cfml::create_xml_node(xmlNodePtr node, bool caseSensitive) {
             if (attrVal) xmlFree(attrVal);
             
             string keyName(attrName.c_str());
-            if (!caseSensitive) keyName.toUpper();
-            attrs.set(keyName) = cfvariant(attrValStr.c_str());
+            attrs.structSet(keyName, cfvariant(attrValStr.c_str()));
         }
     }
     var.set("XMLATTRIBUTES") = attrs;
@@ -227,24 +226,65 @@ std::string cfml::serialize_xml_node(const cfvariant &node) {
         
         if (node.m_struct->contains("XMLATTRIBUTES")) {
             cfvariant attrs = node.m_struct->at("XMLATTRIBUTES");
-            if (attrs.m_type == cfvariant::Struct) {
-                for (auto const& [key, val] : *attrs.m_struct) {
-                    res += " " + safe_to_std_string(key) + "=\"" + safe_to_std_string(val) + "\"";
+            if (attrs.m_type == cfvariant::Struct && attrs.m_struct) {
+                if (attrs.m_structData && !attrs.m_structData->insertOrder.empty()) {
+                    for (auto const& key : attrs.m_structData->insertOrder) {
+                        if (attrs.m_struct->contains(key)) {
+                            res += " " + safe_to_std_string(key) + "=\"" + safe_to_std_string(attrs.m_struct->at(key)) + "\"";
+                        }
+                    }
+                } else {
+                    for (auto const& [key, val] : *attrs.m_struct) {
+                        res += " " + safe_to_std_string(key) + "=\"" + safe_to_std_string(val) + "\"";
+                    }
                 }
             }
         }
         
+        // Serialize children: XMLNODES first (includes text/comment nodes), then
+        // any extra elements from XMLCHILDREN that are not covered by XMLNODES
+        // (those are user-appended via arrayAppend(node.xmlChildren, ...)).
+        bool hasContent = false;
+        std::string childContent;
+
         if (node.m_struct->contains("XMLNODES")) {
-            cfvariant children = node.m_struct->at("XMLNODES");
-            if (children.m_type == cfvariant::Array && !children.m_array->empty()) {
-                res += ">";
-                for (auto const& child : *children.m_array) {
-                    res += serialize_xml_node(child);
+            const cfvariant &xmlNodes = node.m_struct->at("XMLNODES");
+            if (xmlNodes.m_type == cfvariant::Array && !xmlNodes.m_array->empty()) {
+                for (auto const& child : *xmlNodes.m_array) {
+                    childContent += serialize_xml_node(child);
                 }
-                res += "</" + name + ">";
-            } else {
-                res += "/>";
+                hasContent = true;
             }
+        }
+
+        // Count element nodes in XMLNODES
+        size_t elemNodesCount = 0;
+        if (node.m_struct->contains("XMLNODES") && node.m_struct->at("XMLNODES").m_type == cfvariant::Array && node.m_struct->at("XMLNODES").m_array) {
+            for (auto const& n : *node.m_struct->at("XMLNODES").m_array) {
+                if (n.m_type == cfvariant::Xml && n.m_struct) {
+                    auto itType = n.m_struct->find("XMLTYPE");
+                    if (itType != n.m_struct->end()) {
+                        std::string nodeType = safe_to_std_string(itType->second.m_str);
+                        if (nodeType == "ELEMENT") elemNodesCount++;
+                    }
+                }
+            }
+        }
+
+        if (node.m_struct->contains("XMLCHILDREN") && node.m_struct->at("XMLCHILDREN").m_type == cfvariant::Array && node.m_struct->at("XMLCHILDREN").m_array) {
+            size_t childrenCount = node.m_struct->at("XMLCHILDREN").m_array->size();
+            if (childrenCount > elemNodesCount) {
+                for (size_t ci = elemNodesCount; ci < childrenCount; ci++) {
+                    childContent += serialize_xml_node(node.m_struct->at("XMLCHILDREN").m_array->at(ci));
+                    hasContent = true;
+                }
+            }
+        }
+
+        if (hasContent) {
+            res += ">" + childContent + "</" + name + ">";
+        } else if (node.m_struct->contains("XMLTEXT") && !node.m_struct->at("XMLTEXT").toString().isEmpty()) {
+            res += ">" + safe_to_std_string(node.m_struct->at("XMLTEXT").m_str) + "</" + name + ">";
         } else {
             res += "/>";
         }

@@ -122,6 +122,13 @@ void invoke_clear();
 extern thread_local std::vector<std::string> g_importPaths;
 void import_paths_clear();
 
+// Application.cfc this.mappings mappings: map of virtual prefix (e.g. "/org/mangoblog")
+// to filesystem path (e.g. "/path/to/components").
+extern thread_local std::map<std::string, std::string> g_appMappings;
+void app_mappings_clear();
+void app_mappings_set(const webstrada::cfvariant *mappingsVariant);
+bool app_mappings_resolve(const std::string &path, std::string &resolved);
+
 // Search implicit scopes flag
 extern thread_local bool g_searchImplicitScopes;
 
@@ -177,5 +184,7 @@ std::string serialize_xml_node(const webstrada::cfvariant &node);
 
 webstrada::string makeCfToken();
 void setSessionCookies(const webstrada::string &cfid, const webstrada::string &token);
+
+void init_server_scope(webstrada::cfvariant &serverScope);
 
 } // namespace cfml

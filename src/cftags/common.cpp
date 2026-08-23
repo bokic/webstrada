@@ -68,6 +68,90 @@ void import_paths_clear()
     g_importPaths.clear();
 }
 
+thread_local std::map<std::string, std::string> g_appMappings;
+
+void app_mappings_clear()
+{
+    g_appMappings.clear();
+}
+
+void app_mappings_set(const webstrada::cfvariant *mappingsVariant)
+{
+    g_appMappings.clear();
+    if (!mappingsVariant || mappingsVariant->m_type != webstrada::cfvariant::Struct || !mappingsVariant->m_struct) {
+        return;
+    }
+    for (const auto &pair : *mappingsVariant->m_struct) {
+        const char *kData = pair.first.constData();
+        std::string key = kData ? kData : "";
+        // Normalize virtual path: lowercase, ensure leading slash, strip trailing slash.
+        for (auto &c : key) {
+            if (c == '\\') c = '/';
+            c = (char)tolower((unsigned char)c);
+        }
+        if (key.empty() || key[0] != '/') {
+            key = "/" + key;
+        }
+        while (key.size() > 1 && key.back() == '/') {
+            key.pop_back();
+        }
+
+        webstrada::string targetStr = const_cast<webstrada::cfvariant&>(pair.second).toString();
+        const char *tData = targetStr.constData();
+        std::string target = tData ? tData : "";
+        for (auto &c : target) {
+            if (c == '\\') c = '/';
+        }
+        while (target.size() > 1 && target.back() == '/') {
+            target.pop_back();
+        }
+
+        g_appMappings[key] = target;
+    }
+}
+
+bool app_mappings_resolve(const std::string &path, std::string &resolved)
+{
+    if (g_appMappings.empty()) return false;
+    std::string p = path;
+    for (auto &c : p) {
+        if (c == '\\') c = '/';
+    }
+    if (p.empty() || p[0] != '/') {
+        p = "/" + p;
+    }
+    std::string pLower = p;
+    for (auto &c : pLower) {
+        c = (char)tolower((unsigned char)c);
+    }
+
+    // Longest prefix match
+    std::string bestKey;
+    for (const auto &kv : g_appMappings) {
+        const std::string &k = kv.first;
+        if (pLower == k || (pLower.size() > k.size() && pLower.compare(0, k.size(), k) == 0 && pLower[k.size()] == '/')) {
+            if (k.size() > bestKey.size()) {
+                bestKey = k;
+            }
+        }
+    }
+
+    if (!bestKey.empty()) {
+        const std::string &target = g_appMappings[bestKey];
+        std::string rest = p.substr(bestKey.size());
+        if (!rest.empty() && rest[0] == '/') {
+            resolved = target + rest;
+        } else if (!rest.empty()) {
+            resolved = target + "/" + rest;
+        } else {
+            resolved = target;
+        }
+        resolved = std::filesystem::path(resolved).lexically_normal().string();
+        return true;
+    }
+    return false;
+}
+
 namespace {
 
 using webstrada::string;
@@ -318,7 +402,7 @@ void responseSetHeader(cfml::response_state &r, const char *name,
 
 bool cfmlBoolean(const cfvariant *v, bool defaultValue)
 {
-    if (!v) return defaultValue;
+    if (!v || v->m_type == cfvariant::Null) return defaultValue;
     string s = variantToString(*v).trimmed();
     s.toLower();
     if (s.equals("yes") || s.equals("true") || s.equals("1") || s.equals("on")) return true;
@@ -642,5 +726,36 @@ void stored_proc_clear()
     g_spCtxs.clear();
 }
 
+void init_server_scope(webstrada::cfvariant &serverScope)
+{
+    serverScope.setUpcase(false);
+    serverScope.setAutoCreate();
+    serverScope["coldfusion"]["appserver"] = "webstrada";
+    serverScope["coldfusion"]["productname"] = "ColdFusion Server";
+    serverScope["coldfusion"]["productversion"] = "2025,0,12,331922";
+    serverScope["coldfusion"]["productlevel"] = "Developer";
+    serverScope["coldfusion"]["updatelevel"] = "12";
+    serverScope["coldfusion"]["installkit"] = "Native UNIX";
+    serverScope["coldfusion"]["rootdir"] = "/opt/coldfusion/cfusion";
+    serverScope["coldfusion"]["supportedlocales"] = ",Chinese (China),Chinese (Hong Kong),Chinese (Taiwan),Dutch (Belgian),Dutch (Standard),English (Australian),English (Canadian),English (New Zealand),English (UK),English (US),French (Belgian),French (Canadian),French (Standard),French (Swiss),German (Austrian),German (Standard),German (Swiss),Italian (Standard),Italian (Swiss),Japanese,Korean,Norwegian (Bokmal),Norwegian (Nynorsk),Portuguese (Brazilian),Portuguese (Standard),Spanish (Modern),Spanish (Standard),Swedish,ar,ar_AE,ar_BH,ar_DZ,ar_EG,ar_IQ,ar_JO,ar_KW,ar_LB,ar_LY,ar_MA,ar_OM,ar_QA,ar_SA,ar_SD,ar_SY,ar_TN,ar_YE,be,be_BY,bg,bg_BG,ca,ca_ES,cs,cs_CZ,da,da_DK,de,de_AT,de_CH,de_DE,de_LU,el,el_CY,el_GR,en,en_AU,en_CA,en_GB,en_IE,en_IN,en_MT,en_NZ,en_PH,en_SG,en_US,en_ZA,es,es_AR,es_BO,es_CL,es_CO,es_CR,es_CU,es_DO,es_EC,es_ES,es_GT,es_HN,es_MX,es_NI,es_PA,es_PE,es_PR,es_PY,es_SV,es_US,es_UY,es_VE,et,et_EE,fi,fi_FI,fr,fr_BE,fr_CA,fr_CH,fr_FR,fr_LU,ga,ga_IE,he,he_IL,hi,hi_IN,hr,hr_HR,hu,hu_HU,id,id_ID,is,is_IS,it,it_CH,it_IT,ja,ja_JP,ja_JP_JP_#u-ca-japanese,ko,ko_KR,lt,lt_LT,lv,lv_LV,mk,mk_MK,ms,ms_MY,mt,mt_MT,nb,nb_NO,nl,nl_BE,nl_NL,nn_NO,no,no_NO,no_NO_NY,pl,pl_PL,pt,pt_BR,pt_PT,ro,ro_RO,ru,ru_RU,sk,sk_SK,sl,sl_SI,sq,sq_AL,sr,sr_BA,sr_BA_#Latn,sr_CS,sr_ME,sr_ME_#Latn,sr_RS,sr_RS_#Latn,sr__#Latn,sv,sv_SE,th,th_TH,th_TH_TH_#u-nu-thai,tr,tr_TR,uk,uk_UA,vi,vi_VN,zh,zh_CN,zh_CN_#Hans,zh_HK,zh_HK_#Hant,zh_SG,zh_SG_#Hans,zh_TW,zh_TW_#Hant";
+
+    serverScope["os"]["additionalinformation"] = cfml::readfile("/proc/sys/kernel/ostype");
+    serverScope["os"]["arch"] = cfml::readfile("/proc/sys/kernel/arch");
+    serverScope["os"]["buildnumber"] = cfml::readfile("/proc/sys/kernel/version");
+    serverScope["os"]["name"] = "LINUX";
+    serverScope["os"]["version"] = cfml::readfile("/proc/sys/kernel/osrelease");
+
+    char **s = environ;
+    while(s && *s) {
+        const char *separator = strstr(*s, "=");
+        if (separator) {
+            webstrada::string key(*s, separator - *s);
+            const char *value = separator + 1;
+            serverScope["system"]["environment"][key.constData()] = value;
+        }
+        s++;
+    }
+    serverScope.setReadOnly();
+}
 
 } // namespace cfml

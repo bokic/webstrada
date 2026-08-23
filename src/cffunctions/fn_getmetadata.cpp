@@ -34,7 +34,7 @@ cfvariant *cf_getmetadata(const cfvariant *obj) {
                 std::filesystem::path cfc(info->cfcPath);
                 std::error_code ec;
                 std::string rel = std::filesystem::relative(cfc, root, ec).generic_string();
-                if (!ec && !rel.empty()) {
+                if (!ec && !rel.empty() && rel.rfind("..", 0) == std::string::npos) {
                     if (rel.size() >= 4 && rel.compare(rel.size() - 4, 4, ".cfc") == 0)
                         rel = rel.substr(0, rel.size() - 4);
                     for (auto &c : rel) if (c == '/') c = '.';

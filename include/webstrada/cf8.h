@@ -916,11 +916,31 @@ void cfloop_set_int(cfvariant *scope, const char *key, int val);
  * @brief Store a 64-bit loop index in a scope (used by cfloop to update
  *        the index variable each iteration).
  *
- * Values that fit in a signed 32-bit range are stored as a Number variant;
- * larger ones are stored as a Float (double) so the index renders like a
- * computed double (CF renders cfloop bounds/indices beyond int32 as doubles).
+ * The target scope is resolved like an unqualified assignment (see
+ * udfAssignScope): a `var`-declared loop index in a function is written to the
+ * function's `local` scope, otherwise to the variables/parent scope. Values
+ * that fit in a signed 32-bit range are stored as a Number variant; larger
+ * ones are stored as a Float (double) so the index renders like a computed
+ * double (CF renders cfloop bounds/indices beyond int32 as doubles).
  */
-void cfloop_set_long(cfvariant *scope, const char *key, long long val);
+void cfloop_set_long(
+    const cfvariant *cgi, const cfvariant *server,
+    const cfvariant *cookie, const cfvariant *application,
+    const cfvariant *session, const cfvariant *url,
+    const cfvariant *form, cfvariant *variables,
+    const char *key, long long val);
+
+/**
+ * @brief Assign a cfloop list/array/collection iteration value to the loop
+ *        index variable, resolving the target scope like an unqualified
+ *        assignment (udfAssignScope).
+ */
+void cfloop_assign_index(
+    const cfvariant *cgi, const cfvariant *server,
+    const cfvariant *cookie, const cfvariant *application,
+    const cfvariant *session, const cfvariant *url,
+    const cfvariant *form, cfvariant *variables,
+    const char *name, const cfvariant *value);
 
 /**
  * @brief Number of iterations a `for (x in coll)` loop will perform.

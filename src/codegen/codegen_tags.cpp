@@ -1408,8 +1408,16 @@ static size_t scanTagBody(const std::vector<TextParserTokenItem> &tokens, size_t
         body.push_back(tok);
     }
     if (!foundEnd) {
-        bodyEnd = cfm_text_size;
-        nextIdx = tokens.size();
+        // No matching end tag: this is a single tag (`<cffile>`/`<cfzip>` need
+        // no closing tag; only write/append-style bodies opt in with an
+        // explicit `</cffile>`). Treat it as body-less instead of swallowing
+        // the rest of the file as the tag body — the old behaviour compiled
+        // everything after an un-closed `<cffile action="read">` into a dead
+        // block, silently dropping the remainder of the template/CFC (was the
+        // MangoBlog "PARENT" Preferences error).
+        body.clear();
+        bodyEnd = bodyStart;
+        nextIdx = start + 1;
     }
     return nextIdx;
 }

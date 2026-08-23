@@ -209,7 +209,10 @@ thread_local std::vector<UdfCallCtx> g_udfCtx;
 
 void cfml::cf_udf_begin(cfvariant *localScope, cfvariant *parentScope)
 {
-    g_udfCtx.push_back({localScope, parentScope, {}});
+    UdfCallCtx ctx;
+    ctx.localScope = localScope;
+    ctx.parentScope = parentScope;
+    g_udfCtx.push_back(std::move(ctx));
 }
 
 webstrada::cfvariant *udfVariablesScope(webstrada::cfvariant *passedVariables)
@@ -219,10 +222,9 @@ webstrada::cfvariant *udfVariablesScope(webstrada::cfvariant *passedVariables)
     // variables scope — the captured parent scope (was BUGS.md "UDF:
     // variables.foo"). A component method's `variables` is the instance scope,
     // which is what was passed.
-    if (!g_udfCtx.empty()) {
-        const UdfCallCtx &inner = g_udfCtx.back();
-        if (!inner.component && passedVariables == inner.localScope && inner.parentScope) {
-            return inner.parentScope;
+    for (auto it = g_udfCtx.rbegin(); it != g_udfCtx.rend(); ++it) {
+        if (it->parentScope && (passedVariables == it->localScope || it->component)) {
+            return it->parentScope;
         }
     }
     return passedVariables;
@@ -242,6 +244,24 @@ webstrada::cfvariant *udfArgumentsScope(const webstrada::cfvariant *localScope)
     auto it = localScope->m_struct->find("ARGUMENTS");
     if (it == localScope->m_struct->end() || it->second.m_type != cfvariant::Struct) return nullptr;
     return &it->second;
+}
+
+webstrada::cfvariant *udfAssignScope(webstrada::cfvariant *variables, const char *name)
+{
+    if (g_udfCtx.empty() || !name) return variables;
+    webstrada::string uname(name);
+    uname.toUpper();
+    if (g_udfCtx.back().localNames.find(uname) != g_udfCtx.back().localNames.end()) {
+        return g_udfCtx.back().localScope;
+    }
+    cfvariant *args = udfArgumentsScope(g_udfCtx.back().localScope);
+    if (args) {
+        auto it = args->m_struct->find(uname);
+        if (it != args->m_struct->end() && it->second.m_type != cfvariant::Null) {
+            return args;
+        }
+    }
+    return g_udfCtx.back().parentScope;
 }
 void cfml::cf_udf_remove_params(cfvariant *localScope, const char **paramNames, int paramCount)
 {
@@ -396,6 +416,12 @@ cfvariant *cfml::cf_udf_coerce_arg(const cfvariant *val, const char *typeName, c
             cf_register_temp(ret);
             return ret;
         }
+    } else if (t.equals("xml")) {
+        if (val->m_type == cfvariant::Xml) {
+            auto *ret = new cfvariant(*val);
+            cf_register_temp(ret);
+            return ret;
+        }
     } else if (t.equals("struct")) {
         if (val->m_type == cfvariant::Struct || val->m_type == cfvariant::Xml) {
             auto *ret = new cfvariant(*val);
@@ -431,6 +457,16 @@ cfvariant *cfml::cf_udf_coerce_arg(const cfvariant *val, const char *typeName, c
         auto *ret = new cfvariant(const_cast<cfvariant*>(val)->toString());
         cf_register_temp(ret);
         return ret;
+    } else if (val->m_type == cfvariant::Component) {
+        cfvariant typeVar(typeName);
+        cfvariant *instMatch = cf_isinstanceof_impl(val, &typeVar);
+        bool match = instMatch && instMatch->m_bool;
+        delete instMatch;
+        if (match) {
+            auto *ret = new cfvariant(*val);
+            cf_register_temp(ret);
+            return ret;
+        }
     }
     // Unknown type names and mismatches throw the CF InvalidArgumentTypeException message.
     throw webstrada::exception(webstrada::string("The ") + argName + " argument passed to the " + funcName +
@@ -514,6 +550,17 @@ cfvariant *cfml::cf_udf_coerce_return(cfvariant *val, const char *returnType, co
         auto *ret = new cfvariant(*val);
         cf_register_temp(ret);
         return ret;
+    }
+    if (val->m_type == cfvariant::Component) {
+        cfvariant typeVar(returnType);
+        cfvariant *instMatch = cf_isinstanceof_impl(val, &typeVar);
+        bool match = instMatch && instMatch->m_bool;
+        delete instMatch;
+        if (match) {
+            auto *ret = new cfvariant(*val);
+            cf_register_temp(ret);
+            return ret;
+        }
     }
     throw webstrada::exception(webstrada::string("The value returned from the ") + funcName + " function is not of type " + returnType + ".");
 }

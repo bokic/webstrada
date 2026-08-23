@@ -70,6 +70,13 @@ cfvariant *cf_tostring(const cfvariant *value, const cfvariant *encoding) {
         if (!value->m_binary) throw webstrada::exception("ToString: invalid binary object");
         webstrada::string enc = encoding ? normalizeCharsetName(variantToString(*encoding)) : "UTF-8";
         out = bytesToText(*value->m_binary, enc);
+    } else if (value->m_type == cfvariant::Xml) {
+        std::string type = (value->m_struct && value->m_struct->contains("XMLTYPE")) ? safe_to_std_string(value->m_struct->at("XMLTYPE").m_str) : "";
+        if (type == "DOCUMENT") {
+            out = serialize_xml_node(*value).c_str();
+        } else {
+            out = ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + serialize_xml_node(*value)).c_str();
+        }
     } else {
         throw webstrada::exception("Complex object types cannot be converted to simple values.");
     }

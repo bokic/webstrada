@@ -113,32 +113,148 @@ cfvariant *componentThisValue(ComponentInstance *inst);
 
 // ---- Component definition loading (CreateObject / <cfobject> / `new`) ----
 
+// Backtracking search helper for dot-paths where segments could contain literal
+// dots (e.g. "MangoBlog_1.4.3").
+static bool searchDotPathOnDisk(const std::vector<std::string> &parts, size_t idx,
+                                const std::string &currPath, std::string &outResolved)
+{
+    if (idx == parts.size()) {
+        for (const char *ext : {"", ".cfc", ".cfml"}) {
+            std::string full = currPath + ext;
+            struct stat st;
+            if (stat(full.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+                outResolved = currPath;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 1. As a new path segment with '/'
+    std::string candSlash = currPath.empty() ? parts[idx] : (currPath + "/" + parts[idx]);
+    if (searchDotPathOnDisk(parts, idx + 1, candSlash, outResolved)) {
+        return true;
+    }
+
+    // 2. Joined with the previous segment with '.'
+    if (!currPath.empty()) {
+        std::string candDot = currPath + "." + parts[idx];
+        if (searchDotPathOnDisk(parts, idx + 1, candDot, outResolved)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Resolve a component dot/relative path against the include runtime (current
-// template dir for relative, web root for absolute), exactly like <cfinclude>.
+// template dir for relative, falling back to web root for dotted paths, or
+// web root for root-relative /... paths), matching Adobe ColdFusion component lookup.
 static bool componentResolvePath(const std::string &path, std::string &resolved)
 {
-    IncludeRuntime *rt = cfml::include_context();
-    if (!rt) return false;
     std::string p = path;
     for (auto &c : p) {
         if (c == '\\') c = '/';
     }
-    std::filesystem::path base;
-    if (!p.empty() && p[0] == '/') {
-        if (rt->webRoot.empty()) return false;
-        base = std::filesystem::path(rt->webRoot);
-    } else {
-        if (rt->currentPath.empty()) return false;
-        std::filesystem::path cur(rt->currentPath);
-        base = cur.has_parent_path() ? cur.parent_path() : std::filesystem::path("");
+    // Check Application.cfc this.mappings first
+    if (cfml::app_mappings_resolve(p, resolved)) {
+        return true;
     }
+
+    IncludeRuntime *rt = cfml::include_context();
+    if (!rt) return false;
+
     std::filesystem::path input(p);
     if (input.is_absolute()) {
         resolved = input.lexically_normal().string();
-    } else {
-        resolved = (base / input).lexically_normal().string();
+        return true;
     }
-    return true;
+
+    if (!p.empty() && p[0] == '/') {
+        if (rt->webRoot.empty()) return false;
+        std::filesystem::path base(rt->webRoot);
+        resolved = (base / input.relative_path()).lexically_normal().string();
+        return true;
+    }
+
+    // Split dotted path into parts to support directory/file names with literal dots
+    bool hadSlash = (p.find('/') != std::string::npos);
+    std::vector<std::string> parts;
+    if (!hadSlash && p.find('.') != std::string::npos) {
+        std::string cur;
+        for (char c : p) {
+            if (c == '.') {
+                parts.push_back(cur);
+                cur.clear();
+            } else {
+                cur += c;
+            }
+        }
+        parts.push_back(cur);
+    }
+
+    // Try relative to currentPath first (if exists on disk)
+    if (!rt->currentPath.empty()) {
+        std::filesystem::path cur(rt->currentPath);
+        std::filesystem::path base = cur.has_parent_path() ? cur.parent_path() : std::filesystem::path("");
+        if (!parts.empty()) {
+            std::string match;
+            if (searchDotPathOnDisk(parts, 0, base.string(), match)) {
+                resolved = match;
+                return true;
+            }
+        }
+        std::string cand = (base / input).lexically_normal().string();
+        std::string candWithExt = cand;
+        if (!(candWithExt.size() >= 4 && candWithExt.compare(candWithExt.size() - 4, 4, ".cfc") == 0) &&
+            !(candWithExt.size() >= 5 && candWithExt.compare(candWithExt.size() - 5, 5, ".cfml") == 0)) {
+            candWithExt += ".cfc";
+        }
+        struct stat st;
+        if (stat(candWithExt.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+            resolved = cand;
+            return true;
+        }
+        // If webRoot is not available, default to relative
+        if (rt->webRoot.empty()) {
+            resolved = cand;
+            return true;
+        }
+    }
+
+    // Fall back to web root (e.g. dot-paths like components.utilities.PreferencesFile or full root-relative dot-paths)
+    if (!rt->webRoot.empty()) {
+        std::filesystem::path base(rt->webRoot);
+        if (!parts.empty()) {
+            std::string match;
+            if (searchDotPathOnDisk(parts, 0, base.string(), match)) {
+                resolved = match;
+                return true;
+            }
+        }
+        std::string cand = (base / input).lexically_normal().string();
+        std::string candWithExt = cand;
+        if (!(candWithExt.size() >= 4 && candWithExt.compare(candWithExt.size() - 4, 4, ".cfc") == 0) &&
+            !(candWithExt.size() >= 5 && candWithExt.compare(candWithExt.size() - 5, 5, ".cfml") == 0)) {
+            candWithExt += ".cfc";
+        }
+        struct stat st;
+        if (stat(candWithExt.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+            resolved = cand;
+            return true;
+        }
+        // If neither exists on disk, default to relative to currentPath if present, else webRoot
+        if (!rt->currentPath.empty()) {
+            std::filesystem::path cur(rt->currentPath);
+            std::filesystem::path base = cur.has_parent_path() ? cur.parent_path() : std::filesystem::path("");
+            resolved = (base / input).lexically_normal().string();
+        } else {
+            resolved = cand;
+        }
+        return true;
+    }
+
+    return false;
 }
 
 // Resolve an `extends` value (a relative .cfc path or a dot path) against a
@@ -159,6 +275,10 @@ static bool resolveParentPath(const std::string &extends, const std::string &bas
     } else if (!(p.size() >= 4 && p.compare(p.size() - 4, 4, ".cfc") == 0) &&
                !(p.size() >= 5 && p.compare(p.size() - 5, 5, ".cfml") == 0)) {
         p += ".cfc";
+    }
+    // Check Application.cfc this.mappings first
+    if (cfml::app_mappings_resolve(p, resolved)) {
+        return true;
     }
     std::filesystem::path base(baseDir);
     std::filesystem::path input(p);
@@ -414,7 +534,11 @@ static void resolveAndValidateInterfaces(ComponentInfo *info)
         if (!resolveInterfacePath(n, info->cfcPath, resolved)) {
             throwInterfaceNotFound(n, info->cfcPath);
         }
+        IncludeRuntime *rt = cfml::include_context();
+        std::string prevCur = rt ? rt->currentPath : std::string();
+        if (rt && !info->cfcPath.empty()) rt->currentPath = info->cfcPath;
         ComponentInfo *iface = cf_component_load(resolved.c_str());
+        if (rt) rt->currentPath = prevCur;
         if (!iface) {
             throwInterfaceNotFound(n, info->cfcPath);
         }
@@ -442,16 +566,8 @@ ComponentInfo *cf_component_load(const char *path)
     if (!rt || !rt->componentLoader) {
         throw webstrada::exception("component", "Components are not available in this context.");
     }
-    // A dot path ("foo.bar", "a.b.comp") maps to a directory structure; only
-    // when it has no directory separators yet.
-    std::string dotPath = path;
-    if (dotPath.find('/') == std::string::npos) {
-        for (auto &c : dotPath) {
-            if (c == '.') c = '/';
-        }
-    }
     std::string resolved;
-    if (!componentResolvePath(dotPath, resolved)) {
+    if (!componentResolvePath(path, resolved)) {
         throw webstrada::exception("component",
             webstrada::string(("Could not resolve the component " + std::string(path) + ".").c_str()));
     }
@@ -532,7 +648,10 @@ ComponentInfo *cf_component_load(const char *path)
         std::filesystem::path cf(info->cfcPath);
         std::string baseDir = cf.has_parent_path() ? cf.parent_path().string() : std::string(".");
         if (resolveParentPath(info->extendsPath, baseDir, parentPath)) {
+            std::string prevCur = rt ? rt->currentPath : std::string();
+            if (rt && !info->cfcPath.empty()) rt->currentPath = info->cfcPath;
             ComponentInfo *parent = cf_component_load(parentPath.c_str());
+            if (rt) rt->currentPath = prevCur;
             if (parent) {
                 // `parent` is borrowed: the child's component_info_release
                 // chains to info->parent and drops the loader retain.
@@ -550,7 +669,10 @@ ComponentInfo *cf_component_load(const char *path)
             if (!resolveInterfacePath(ename, info->cfcPath, parentPath)) {
                 throwInterfaceNotFound(ename, info->cfcPath);
             }
+            std::string prevCur = rt ? rt->currentPath : std::string();
+            if (rt && !info->cfcPath.empty()) rt->currentPath = info->cfcPath;
             ComponentInfo *piface = cf_component_load(parentPath.c_str());
+            if (rt) rt->currentPath = prevCur;
             if (!piface) {
                 throwInterfaceNotFound(ename, info->cfcPath);
             }
@@ -604,6 +726,16 @@ static void runConstructionBody(ComponentInfo *info, ComponentInstance *inst,
     ctx.thisScope = inst->thisScope;
     ctx.component = inst;
     g_udfCtx.push_back(std::move(ctx));
+
+    IncludeRuntime *rt = cfml::include_context();
+    std::string prevPath;
+    if (rt) {
+        prevPath = rt->currentPath;
+        if (!info->cfcPath.empty()) {
+            rt->currentPath = info->cfcPath;
+        }
+    }
+
     try {
         bodyFn(&out, cgi, server, cookie, application, session, url, form,
                inst->variablesScope, inst->thisScope);
@@ -612,9 +744,11 @@ static void runConstructionBody(ComponentInfo *info, ComponentInstance *inst,
         // still completes (verified on CF: `new C()` with an `exit;` in the
         // body returns the instance and the page continues).
     } catch (...) {
+        if (rt) rt->currentPath = prevPath;
         g_udfCtx.pop_back();
         throw;
     }
+    if (rt) rt->currentPath = prevPath;
     g_udfCtx.pop_back();
 }
 
@@ -646,6 +780,9 @@ cfvariant *cf_component_instantiate(ComponentInfo *info, cfvariant *variables,
             }
         }
         runConstructionBody(info, inst, *out, cgi, server, cookie, application, session, url, form);
+        if (inst->thisScope && inst->thisScope->has("MAPPINGS")) {
+            cfml::app_mappings_set(&(*inst->thisScope)["MAPPINGS"]);
+        }
     } catch (...) {
         component_instance_release(inst);
         throw;
@@ -708,10 +845,26 @@ static cfvariant *invokeMethodEntry(ComponentInstance *inst, ComponentInfo *owne
     }
     size_t ctxSave = g_udfCtx.size();
     g_currentMethodOwnerInfo = ownerInfo;
+
+    IncludeRuntime *rt = cfml::include_context();
+    std::string prevPath;
+    if (rt) {
+        prevPath = rt->currentPath;
+        if (ownerInfo && !ownerInfo->cfcPath.empty()) {
+            rt->currentPath = ownerInfo->cfcPath;
+        } else if (inst && inst->info && !inst->info->cfcPath.empty()) {
+            rt->currentPath = inst->info->cfcPath;
+        }
+    }
+
     try {
-        return entry(&out, cgi, server, cookie, application, session, url, form,
-                     inst->variablesScope, inst->thisScope, inst, effectiveArgs, effectiveArgc);
+        cfvariant *res = entry(&out, cgi, server, cookie, application, session, url, form,
+                               inst->variablesScope, inst->thisScope, inst, effectiveArgs, effectiveArgc);
+        if (rt) rt->currentPath = prevPath;
+        while (g_udfCtx.size() > ctxSave) g_udfCtx.pop_back();
+        return res;
     } catch (...) {
+        if (rt) rt->currentPath = prevPath;
         while (g_udfCtx.size() > ctxSave) g_udfCtx.pop_back();
         throw;
     }
@@ -1312,7 +1465,36 @@ cfvariant *descendDottedPath(cfvariant *base, const std::vector<webstrada::strin
             return nullptr;
         }
         auto it = current->m_struct->find(parts[i]);
-        if (it == current->m_struct->end()) return nullptr;
+        if (it == current->m_struct->end()) {
+            if (current->m_type == cfvariant::Xml && current->m_struct) {
+                auto itChildren = current->m_struct->find("XMLCHILDREN");
+                if (itChildren != current->m_struct->end() && itChildren->second.m_type == cfvariant::Array && itChildren->second.m_array) {
+                    std::vector<cfvariant> matches;
+                    for (auto &child : *itChildren->second.m_array) {
+                        if (child.m_type == cfvariant::Xml && child.m_struct) {
+                            auto itName = child.m_struct->find("XMLNAME");
+                            if (itName != child.m_struct->end() && itName->second.toString().compareCaseInsensitive(parts[i]) == 0) {
+                                matches.push_back(child);
+                            }
+                        }
+                    }
+                    if (matches.size() == 1) {
+                        (*current->m_struct)[parts[i]] = matches[0];
+                        current = &(*current->m_struct)[parts[i]];
+                        continue;
+                    } else if (matches.size() > 1) {
+                        cfvariant childGroup(current->m_upcase, false);
+                        childGroup.set_type(cfvariant::Array);
+                        childGroup.m_isXmlNodeList = true;
+                        for (auto const& ch : matches) childGroup.insert(ch);
+                        (*current->m_struct)[parts[i]] = childGroup;
+                        current = &(*current->m_struct)[parts[i]];
+                        continue;
+                    }
+                }
+            }
+            return nullptr;
+        }
         current = &it->second;
     }
     return current;

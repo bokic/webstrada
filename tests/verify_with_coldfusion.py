@@ -195,6 +195,18 @@ def main():
                 uploaded_lib_files.append(rds_target)
             except subprocess.CalledProcessError as e:
                 print_colored(f"  [ERROR] Failed to upload component file {local_comp}.", COLOR_RED, sys.stderr)
+    # If base_dir contains Application.cfc or Application.cfm, upload them to RDS root
+    for app_file in ["Application.cfc", "Application.cfm"]:
+        local_app = os.path.join(base_dir, app_file)
+        if os.path.isfile(local_app):
+            rds_target = f"{args.rds.rstrip('/')}/{app_file}"
+            if args.verbose:
+                print(f"[RDS Upload app] {local_app} -> {rds_target}")
+            try:
+                subprocess.run(["cfrds", "upload", local_app, rds_target], capture_output=True, check=True)
+                uploaded_lib_files.append(rds_target)
+            except subprocess.CalledProcessError as e:
+                print_colored(f"  [ERROR] Failed to upload {app_file}.", COLOR_RED, sys.stderr)
                 if e.stderr:
                     print_colored(f"  Details: {e.stderr.strip()}", COLOR_YELLOW, sys.stderr)
                 error_count += 1

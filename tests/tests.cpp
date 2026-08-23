@@ -6,6 +6,7 @@
 #include <webstrada/cfimage.h>
 #include <webstrada/db.h>
 #include <webstrada/exceptions.h>
+#include <webstrada/parser.h>
 #include <webstrada/llvm_codegen.h>
 #include <webstrada/worker.h>
 #include <webstrada/config.h>
@@ -15,6 +16,7 @@
 #include "../src/cftags/common.h"
 #include "../src/cffunctions/common.h"
 #include <cairo.h>
+#include <fcgio.h>
 #include <unistd.h>
 #include <cstdlib>
 #include <cstddef>
@@ -3476,6 +3478,86 @@ TEST_F(ComponentTest, CreateObjectAndInit) {
          "<cfoutput>#p.getName()#|#p.getSpecies()#|#IsObject(p)#|#IsStruct(p)#</cfoutput>"},
     }, "main.cfm");
     EXPECT_EQ(out.equals("Alice|human|YES|YES"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, CfloopIndexScopesToLocalVarInMethod) {
+    // A var-declared <cfloop> index inside a component method must be written
+    // to the function's local scope (the `variables` scope is the instance
+    // scope, not the local scope — was BUGS.md "cfloop index in a CFC method").
+    string out = runCfc({
+        {"loopcomp.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"go\" returntype=\"string\" output=\"false\">\n"
+         "    <cfset var node = \"\" />\n"
+         "    <cfset var out = \"\" />\n"
+         "    <cfloop list=\"/generalSettings/system\" index=\"node\" delimiters=\"/\">\n"
+         "      <cfset out = out & \"[\" & node & \"]\" />\n"
+         "    </cfloop>\n"
+         "    <cfreturn out & \"|after=\" & node />\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset c = new loopcomp()><cfoutput>#c.go()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[generalSettings][system]|after=system"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, CfloopIndexNonVarWritesComponentVariables) {
+    // A non-var loop index in a component method lands in the component's
+    // variables scope (CF behaviour, verified on the RDS host).
+    string out = runCfc({
+        {"loopcomp.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"go\" returntype=\"string\" output=\"false\">\n"
+         "    <cfset var out = \"\" />\n"
+         "    <cfloop list=\"/x/y/z\" index=\"idx2\" delimiters=\"/\">\n"
+         "      <cfset out = out & \"{\" & idx2 & \"}\" />\n"
+         "    </cfloop>\n"
+         "    <cfreturn out & \"|after=\" & idx2 & \"|hasVars=\" & structKeyExists(variables,\"idx2\") & \"|hasLocal=\" & structKeyExists(local,\"idx2\") />\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset c = new loopcomp()><cfoutput>#c.go()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("{x}{y}{z}|after=z|hasVars=YES|hasLocal=NO"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, CfloopNumericIndexVar) {
+    string out = runCfc({
+        {"loopcomp.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"go\" returntype=\"string\" output=\"false\">\n"
+         "    <cfset var i = 0 />\n"
+         "    <cfset var out = \"\" />\n"
+         "    <cfloop from=\"1\" to=\"3\" index=\"i\">\n"
+         "      <cfset out = out & \"[\" & i & \"]\" />\n"
+         "    </cfloop>\n"
+         "    <cfreturn out & \"|after=\" & i />\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset c = new loopcomp()><cfoutput>#c.go()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[1][2][3]|after=4"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, CfscriptForInIndexScopesToLocalVar) {
+    string out = runCfc({
+        {"loopcomp.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"go\" returntype=\"string\" output=\"false\">\n"
+         "    <cfscript>\n"
+         "      var out = \"\";\n"
+         "      var arr = [\"p\",\"q\",\"r\"];\n"
+         "      for (it1 in arr) { out &= \"[\" & it1 & \"]\"; }\n"
+         "      return out & \"|after=\" & it1;\n"
+         "    </cfscript>\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset c = new loopcomp()><cfoutput>#c.go()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[p][q][r]|after=r"), true) << out.constData();
 }
 
 TEST_F(ComponentTest, VarFastPathPageAndComponentSameName) {
@@ -8863,6 +8945,42 @@ TEST_F(WorkerTest, ApplicationCfcRunsPageDirectlyWithoutOnRequest) {
     size_t pP = out.indexOf("PAGE:RS");
     size_t pE = out.indexOf(";END");
     EXPECT_EQ(pP != SIZE_MAX && pE != SIZE_MAX && pP < pE, true) << out.constData();
+}
+
+TEST_F(WorkerTest, ApplicationCfcVoidOnApplicationStartAndOnRequestStartRunsPage) {
+    // ColdFusion continues request processing if onApplicationStart or
+    // onRequestStart returns void / null (no cfreturn or cfreturn without value).
+    std::string root = makeAppCfmTree({
+        {"Application.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"onApplicationStart\" output=\"false\">\n"
+         "  </cffunction>\n"
+         "  <cffunction name=\"onRequestStart\" returntype=\"boolean\" output=\"false\">\n"
+         "    <cfargument name=\"targetPage\">\n"
+         "    <cfreturn true>\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"page.cfm", "<cfoutput>HELLO WORLD</cfoutput>"},
+    });
+    worker w;
+    string page = (root + "/page.cfm").c_str();
+    string out = runWorkerRequestWithContext(w, page, root.c_str());
+    EXPECT_EQ(out.trimmed().equals("HELLO WORLD"), true) << out.constData();
+}
+
+TEST_F(WorkerTest, CffunctionOutputFalseEarlyReturnDoesNotSuppressSubsequentOutput) {
+    std::string root = makeAppCfmTree({
+        {"page.cfm",
+         "<cffunction name=\"testFn\" output=\"false\">\n"
+         "  <cfreturn true>\n"
+         "</cffunction>\n"
+         "<cfset testFn()>\n"
+         "<cfoutput>AFTER CALL</cfoutput>"},
+    });
+    worker w;
+    string page = (root + "/page.cfm").c_str();
+    string out = runWorkerRequestWithContext(w, page, root.c_str());
+    EXPECT_EQ(out.trimmed().equals("AFTER CALL"), true) << out.constData();
 }
 
 TEST_F(WorkerTest, ApplicationCfcOnMissingTemplate) {
@@ -14907,6 +15025,24 @@ TEST_F(UdfTest, TypedParamInvalidThrows) {
     EXPECT_EQ(caught, true);
 }
 
+TEST_F(UdfTest, XmlTypedParamAcceptsXmlDocument) {
+    // A `type="xml"` argument accepts an XML document (was missing from the
+    // arg coercion, throwing "not of type xml" for valid documents).
+    string out = runJitTemplate("<cfscript>function takeXml(xml d) { return isXmlDoc(d); } x = XmlParse(\"<a><b>t</b></a>\"); writeOutput(takeXml(x));</cfscript>", variables);
+    EXPECT_EQ(out.equals("YES"), true) << out.constData();
+}
+
+TEST_F(UdfTest, XmlTypedParamRejectsNonXml) {
+    bool caught = false;
+    try {
+        runJitTemplate("<cfscript>function takeXml(xml d) { return isXmlDoc(d); } s = structNew(); writeOutput(takeXml(s));</cfscript>", variables);
+    } catch (const webstrada::exception &e) {
+        caught = true;
+        EXPECT_EQ(webstrada::string(e.what()).equals("The d argument passed to the takeXml function is not of type xml."), true);
+    }
+    EXPECT_EQ(caught, true);
+}
+
 TEST_F(UdfTest, ReturnTypeCoerces) {
     string out = runJitTemplate("<cfscript>function strFn() returntype=\"string\" { return 42; } writeOutput(strFn());</cfscript>", variables);
     EXPECT_EQ(out.equals("42"), true);
@@ -15021,17 +15157,18 @@ TEST_F(UdfTest, ArgumentsParamSlotSharedWriteThrough) {
     EXPECT_EQ(out.equals("viaargs"), true);
 }
 
-// An unqualified name must only resolve in the variables scope (plus UDF parent
-// scopes); it must NOT fall through to form/url/cgi/cookie/server/session/
-// application, matching ColdFusion's default `searchimplicitscopes=false`.
+// An unqualified name resolves in the variables scope and by default in
+// implicit scopes (form/url/cgi/cookie), matching ColdFusion's default.
+// When searchimplicitscopes="false" is set, implicit scopes are not searched.
 TEST_F(UdfTest, UnqualifiedNameDoesNotSearchImplicitScopes) {
+    // By default, implicit scopes are searched
     string out = runJitTemplate(
-        "<cfset form.ONLYFORM = \"formonly\"><cftry><cfoutput>#ONLYFORM#</cfoutput><cfcatch type=\"any\"><cfoutput>ERR_ONLYFORM</cfoutput></cfcatch></cftry>", variables);
-    EXPECT_EQ(out.equals("ERR_ONLYFORM"), true);
+        "<cfset form.ONLYFORM = \"formonly\"><cfoutput>#ONLYFORM#</cfoutput>", variables);
+    EXPECT_EQ(out.equals("formonly"), true);
 
     out = runJitTemplate(
-        "<cfset url.ONLYURL = \"urlonly\"><cftry><cfoutput>#ONLYURL#</cfoutput><cfcatch type=\"any\"><cfoutput>ERR_ONLYURL</cfoutput></cfcatch></cftry>", variables);
-    EXPECT_EQ(out.equals("ERR_ONLYURL"), true);
+        "<cfset url.ONLYURL = \"urlonly\"><cfoutput>#ONLYURL#</cfoutput>", variables);
+    EXPECT_EQ(out.equals("urlonly"), true);
 
     // variables-scope names still resolve unprefixed
     out = runJitTemplate(
@@ -15042,6 +15179,15 @@ TEST_F(UdfTest, UnqualifiedNameDoesNotSearchImplicitScopes) {
     out = runJitTemplate(
         "<cfset form.ONLYFORM = \"formonly\"><cfoutput>#form.ONLYFORM#</cfoutput>", variables);
     EXPECT_EQ(out.equals("formonly"), true);
+
+    // When searchimplicitscopes is explicitly disabled:
+    cfvariant falseVal(false);
+    cfml::cf_set_search_implicit_scopes(&falseVal);
+    out = runJitTemplate(
+        "<cfset form.ONLYFORM2 = \"formonly2\"><cftry><cfoutput>#ONLYFORM2#</cfoutput><cfcatch type=\"any\"><cfoutput>ERR_ONLYFORM</cfoutput></cfcatch></cftry>", variables);
+    EXPECT_EQ(out.equals("ERR_ONLYFORM"), true);
+    cfvariant trueVal(true);
+    cfml::cf_set_search_implicit_scopes(&trueVal);
 }
 
 
@@ -16571,10 +16717,15 @@ TEST_F(ResponseHeaderTest, CfHeaderNameAndStatuscodeIsCompileError) {
                  "Attribute validation error for tag CFHEADER. It has an invalid attribute combination: 'name,statuscode'. Possible combinations are: Required attributes: 'name'. Optional attributes: 'charset,value'. Required attributes: 'statuscode'. Optional attributes: None.");
 }
 
+TEST_F(ResponseHeaderTest, CfHeaderStatusCodeWithStatusTextIgnored) {
+    run("<cfheader statuscode=\"404\" statustext=\"Not Found\"><cfoutput>NOTFOUND</cfoutput>");
+    EXPECT_EQ(cfml::response().statusCode, 404);
+    EXPECT_EQ(cfml::response().headers.size(), (size_t)0);
+}
+
 TEST_F(ResponseHeaderTest, CfHeaderUnknownAttributeIsCompileError) {
-    // statustext was removed in CF2025 and is an unknown attribute.
-    expectThrows("<cfheader statustext=\"Not Found\"><cfoutput>X</cfoutput>",
-                 "Attribute validation error for tag CFHEADER. It does not allow the attribute(s) STATUSTEXT. The valid attribute(s) are CHARSET,NAME,STATUSCODE,VALUE.");
+    expectThrows("<cfheader foo=\"bar\"><cfoutput>X</cfoutput>",
+                 "Attribute validation error for tag CFHEADER. It does not allow the attribute(s) FOO. The valid attribute(s) are CHARSET,NAME,STATUSCODE,VALUE.");
 }
 
 TEST_F(ResponseHeaderTest, CfLocationAbortsPageAndSetsRedirectState) {
@@ -20429,6 +20580,25 @@ TEST_F(CfzipTagTest, CffileAndCfdirectoryBasic) {
                  "x");
 }
 
+TEST_F(CfzipTagTest, UnclosedCffileDoesNotSwallowRest) {
+    // An un-closed <cffile> (no `</cffile>`) is a single tag: everything after
+    // it must still execute (was BUGS.md "un-closed cffile swallows the rest").
+    std::string nested = workDir + "/u";
+    std::filesystem::create_directories(nested);
+    expectOutput(("<cffile action=\"write\" file=\"" + nested + "/t.txt\" output=\"x\" addnewline=\"no\">"
+                  "<cffile action=\"read\" file=\"" + nested + "/t.txt\" variable=\"c\">"
+                  "<cfoutput>AFTER_#c#</cfoutput>").c_str(),
+                 "AFTER_x");
+}
+
+TEST_F(CfzipTagTest, UnclosedCfzipDoesNotSwallowRest) {
+    std::string nested = workDir + "/u2";
+    std::filesystem::create_directories(nested);
+    expectOutput(("<cfzip action=\"zip\" file=\"" + zipPath + "\" source=\"" + nested + "\">"
+                  "<cfoutput>AFTER_ZIP#FileExists(\"" + zipPath + "\")#</cfoutput>").c_str(),
+                 "AFTER_ZIPYES");
+}
+
 // ---- <cfparam> ----
 
 class CfparamTagTest : public testing::Test {
@@ -21919,6 +22089,108 @@ TEST_F(StructCycleTest, ScopeAliasCleared) {
         EXPECT_EQ(variables.has("s"), true);
     }
 }
+
+class CgiScopeTest : public ::testing::Test {};
+
+TEST_F(CgiScopeTest, ScriptNameLeadingSlash) {
+    // Normalization edge cases: empty, relative without slash, with query string, with leading slash.
+    auto normalizeScriptName = [](const string &raw) -> string {
+        string sn = raw;
+        if (sn.contains('?')) {
+            sn = sn.left(sn.indexOf('?'));
+        }
+        if (sn.isEmpty() || !sn.startWith("/")) {
+            sn = "/" + sn;
+        }
+        return sn;
+    };
+
+    EXPECT_EQ(normalizeScriptName("index.cfm").equals("/index.cfm"), true);
+    EXPECT_EQ(normalizeScriptName("/index.cfm").equals("/index.cfm"), true);
+    EXPECT_EQ(normalizeScriptName("").equals("/"), true);
+    EXPECT_EQ(normalizeScriptName("path/to/script.cfm?foo=bar").equals("/path/to/script.cfm"), true);
+    EXPECT_EQ(normalizeScriptName("/path/to/script.cfm?foo=bar").equals("/path/to/script.cfm"), true);
+}
+
+class ServerScopeTest : public ::testing::Test {};
+
+TEST_F(ServerScopeTest, ColdFusionMetadata) {
+    cfvariant server = cfvariant::Struct;
+    cfml::init_server_scope(server);
+    EXPECT_EQ(server.has("coldfusion"), true);
+    EXPECT_EQ(server["coldfusion"]["appserver"].toString().equals("webstrada"), true);
+    EXPECT_EQ(server["coldfusion"]["productname"].toString().equals("ColdFusion Server"), true);
+    EXPECT_EQ(server["coldfusion"]["productversion"].toString().equals("2025,0,12,331922"), true);
+    EXPECT_EQ(server["coldfusion"]["productlevel"].toString().equals("Developer"), true);
+    EXPECT_EQ(server["coldfusion"]["updatelevel"].toString().equals("12"), true);
+    EXPECT_EQ(server["coldfusion"]["installkit"].toString().equals("Native UNIX"), true);
+    EXPECT_EQ(server["coldfusion"]["rootdir"].toString().equals("/opt/coldfusion/cfusion"), true);
+    EXPECT_EQ(server["coldfusion"].has("supportedlocales"), true);
+    EXPECT_EQ(server.has("system"), true);
+}
+
+class AppMappingsTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        cfml::app_mappings_clear();
+    }
+    void TearDown() override {
+        cfml::app_mappings_clear();
+    }
+};
+
+TEST_F(AppMappingsTest, ResolvePrefixAndLongestMatch) {
+    cfvariant mappings = cfvariant::Struct;
+    mappings.setAutoCreate();
+    mappings["/org/mangoblog"] = cfvariant("/var/www/mango/components");
+    mappings["/org/mangoblog/plugins"] = cfvariant("/var/www/mango/custom_plugins");
+    mappings["custom"] = cfvariant("/opt/custom");
+
+    cfml::app_mappings_set(&mappings);
+
+    std::string res;
+    EXPECT_TRUE(cfml::app_mappings_resolve("/org/mangoblog/MangoFacade", res));
+    EXPECT_EQ(res, "/var/www/mango/components/MangoFacade");
+
+    EXPECT_TRUE(cfml::app_mappings_resolve("/org/mangoblog/plugins/MyPlugin", res));
+    EXPECT_EQ(res, "/var/www/mango/custom_plugins/MyPlugin");
+
+    EXPECT_TRUE(cfml::app_mappings_resolve("/custom/util/Tool", res));
+    EXPECT_EQ(res, "/opt/custom/util/Tool");
+
+    EXPECT_FALSE(cfml::app_mappings_resolve("/other/path", res));
+}
+
+TEST_F(ComponentTest, MethodLocalVarDoesNotOverwriteVariablesScope) {
+    // Tests that `<cfset var settings = ""` / local variable inside a method
+    // does not overwrite the component instance `variables.settings` struct.
+    string out = runCfc({
+        {"var_shadow.cfc",
+         "<cfcomponent>\n"
+         "  <cfset variables.settings = structnew() />\n"
+         "  <cffunction name=\"init\">\n"
+         "    <cfset var settings = \"\" />\n"
+         "    <cfset variables.settings[\"baseDirectory\"] = \"abc\" />\n"
+         "    <cfreturn variables.settings[\"baseDirectory\"] />\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset obj = CreateObject(\"component\", \"var_shadow\")>"
+         "<cfoutput>#obj.init()#</cfoutput>"}
+    }, "main.cfm");
+    EXPECT_EQ(out.trimmed().equals("abc"), true) << out.constData();
+}
+
+TEST(ToStringTest, ToStringXml) {
+    string cfml = "<cfset xmlStr = '<root><child id=\"1\">text</child></root>' />"
+                  "<cfset doc = XmlParse(xmlStr) />"
+                  "<cfoutput>#trim(toString(doc))#|#trim(toString(doc.XmlRoot.child))#</cfoutput>";
+    cfvariant vars(cfvariant::Struct);
+    string out = runJitTemplate(cfml, vars);
+    EXPECT_EQ(out.contains("<root><child id=\"1\">text</child></root>"), true) << out.constData();
+    EXPECT_EQ(out.contains("<child id=\"1\">text</child>"), true) << out.constData();
+}
+
 
 }  // namespace webstrada
 

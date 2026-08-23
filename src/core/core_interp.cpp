@@ -4975,12 +4975,20 @@ cfvariant evaluateExpr(string &out, const string &expr,
             if (call.args.size() > 0 && !(call.args.size() == 1 && call.args[0].isEmpty())) {
                 throw webstrada::exception("GetBaseTemplatePath requires 0 arguments");
             }
+            IncludeRuntime *rt = cfml::include_context();
+            if (rt && !rt->currentPath.empty()) {
+                return cfvariant(std::filesystem::absolute(rt->currentPath).string().c_str());
+            }
             return cfvariant(std::filesystem::absolute("index.cfm").string().c_str());
         }
 
         if (fname.equals("GETCURRENTTEMPLATEPATH")) {
             if (call.args.size() > 0 && !(call.args.size() == 1 && call.args[0].isEmpty())) {
                 throw webstrada::exception("GetCurrentTemplatePath requires 0 arguments");
+            }
+            IncludeRuntime *rt = cfml::include_context();
+            if (rt && !rt->currentPath.empty()) {
+                return cfvariant(std::filesystem::absolute(rt->currentPath).string().c_str());
             }
             return cfvariant(std::filesystem::absolute("index.cfm").string().c_str());
         }
@@ -6407,8 +6415,22 @@ void cfml::cfloop_set_int(webstrada::cfvariant *scope, const char *key, int val)
     slot.m_int = val;
 }
 
-void cfml::cfloop_set_long(webstrada::cfvariant *scope, const char *key, long long val)
+void cfml::cfloop_set_long(
+    const cfvariant *cgi, const cfvariant *server,
+    const cfvariant *cookie, const cfvariant *application,
+    const cfvariant *session, const cfvariant *url,
+    const cfvariant *form, cfvariant *variables,
+    const char *key, long long val)
 {
+    // The loop index is assigned like an unqualified <cfset>: a var-declared
+    // loop variable lives in the function's local scope (a component method's
+    // `variables` is the instance scope, NOT the local scope — writing the
+    // index there leaves the local `var node` untouched and the loop body
+    // reads an empty value, a WebStrada divergence from CF).
+    webstrada::cfvariant *scope = udfAssignScope(variables, key);
+    if (!scope || (scope->m_type != webstrada::cfvariant::Struct && scope->m_type != webstrada::cfvariant::Component)) {
+        throw webstrada::exception("Cannot assign variable: target scope is not a valid structure.");
+    }
     webstrada::string k(key);
     k.toUpper();
     webstrada::cfvariant &slot = scope->set(k);
@@ -6423,6 +6445,22 @@ void cfml::cfloop_set_long(webstrada::cfvariant *scope, const char *key, long lo
         slot.set_type(webstrada::cfvariant::Float);
         slot.m_double = static_cast<double>(val);
     }
+}
+
+void cfml::cfloop_assign_index(
+    const cfvariant *cgi, const cfvariant *server,
+    const cfvariant *cookie, const cfvariant *application,
+    const cfvariant *session, const cfvariant *url,
+    const cfvariant *form, cfvariant *variables,
+    const char *name, const cfvariant *value)
+{
+    webstrada::cfvariant *scope = udfAssignScope(variables, name);
+    if (!scope || (scope->m_type != webstrada::cfvariant::Struct && scope->m_type != webstrada::cfvariant::Component)) {
+        throw webstrada::exception("Cannot assign variable: target scope is not a valid structure.");
+    }
+    webstrada::cfvariant &slot = scope->set(name);
+    slot = *value;
+    storeQueryColumnRef(slot);
 }
 
 void cfml::cfabort(void)

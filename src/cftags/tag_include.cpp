@@ -35,6 +35,11 @@ bool includeResolvePath(const std::string &tpl, const cfml::IncludeRuntime *rt,
     for (auto &c : normalizedTpl) {
         if (c == '\\') c = '/';
     }
+    // Check Application.cfc this.mappings first
+    if (cfml::app_mappings_resolve(normalizedTpl, resolved)) {
+        return true;
+    }
+
     std::filesystem::path base;
     if (!normalizedTpl.empty() && normalizedTpl[0] == '/') {
         if (rt->webRoot.empty()) return false;
