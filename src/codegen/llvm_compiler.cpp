@@ -39,6 +39,8 @@
 #include <functional>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 
 #include <dlfcn.h>
 
@@ -855,7 +857,12 @@ template_fn llvm_codegen::compile(const string &pathname, bool print_ast)
     const char *text = src.utf8Text.empty() ? &emptyStr : src.utf8Text.data();
     parse.parse(text, static_cast<int>(src.utf8Text.size()), TEXTPARSER_ENCODING_UTF_8,
                 pathname.constData());
-    return compile_parsed(parse, pathname.constData(), print_ast);
+    auto t0 = std::chrono::steady_clock::now();
+    template_fn result = compile_parsed(parse, pathname.constData(), print_ast);
+    auto t1 = std::chrono::steady_clock::now();
+    long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    printf("[WebStrada] compiled %s (%lldms)\n", pathname.constData(), ms);
+    return result;
 }
 
 template_fn llvm_codegen::compile_string(const char *buffer, size_t size, bool print_ast, const char *name)
@@ -1313,6 +1320,7 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
     const char *text = src.utf8Text.empty() ? &emptyStr : src.utf8Text.data();
     parse.parse(text, static_cast<int>(src.utf8Text.size()), TEXTPARSER_ENCODING_UTF_8,
                 pathname.constData());
+    auto t0 = std::chrono::steady_clock::now();
 
     // Resolve line numbers against this parser's line map for the whole compile.
     TextparserHandleGuard handleGuard(parse.handle());
@@ -1645,6 +1653,9 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
     }
 
     m_engines.push_back(std::move(engine));
+    auto t1 = std::chrono::steady_clock::now();
+    long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    printf("[WebStrada] compiled %s (%lldms)\n", pathname.constData(), ms);
     return info;
 }
 
