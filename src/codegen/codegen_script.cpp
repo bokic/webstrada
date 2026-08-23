@@ -29,7 +29,7 @@
 
 #include <dlfcn.h>
 
-#include <textparser.h>
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
 
 
@@ -635,13 +635,13 @@ static size_t compile_script_switch(
                 idx++;
                 if (isDefault) {
                     if (idx < bodyTokens.size() &&
-                        bodyTokens[idx].token_id == TextParser_cfml_Operator &&
+                        isOperatorToken(bodyTokens[idx].token_id) &&
                         string(cfm_text + bodyTokens[idx].position, bodyTokens[idx].len).equals(":")) {
                         idx++;
                     }
                 } else {
                     while (idx < bodyTokens.size() &&
-                           !(bodyTokens[idx].token_id == TextParser_cfml_Operator &&
+                           !(isOperatorToken(bodyTokens[idx].token_id) &&
                              string(cfm_text + bodyTokens[idx].position, bodyTokens[idx].len).equals(":"))) {
                         seg.valueTokens.push_back(bodyTokens[idx]);
                         idx++;
@@ -1147,7 +1147,7 @@ static size_t compile_script_throw_statement(
 
         bool hasAssign = false;
         for (const auto &p : *parts) {
-            if (p.token_id == TextParser_cfml_Operator &&
+            if (isOperatorToken(p.token_id) &&
                 string(cfm_text + p.position, p.len).equals("=")) {
                 hasAssign = true;
                 break;
@@ -1161,7 +1161,7 @@ static size_t compile_script_throw_statement(
                 if (clause.empty()) return;
                 if (clause.size() < 3 ||
                     clause[0].token_id != TextParser_cfml_Variable ||
-                    clause[1].token_id != TextParser_cfml_Operator ||
+                    !isOperatorToken(clause[1].token_id) ||
                     !string(cfm_text + clause[1].position, clause[1].len).equals("=")) {
                     throw webstrada::exception("Invalid throw() attribute; expected 'name = value'");
                 }
@@ -1514,7 +1514,7 @@ static size_t compile_script_statement(
         bool varIsNamedArg = (t.token_id == TextParser_cfml_Keyword &&
                               string(cfm_text + t.position, t.len).equals("var") &&
                               i + 1 < tokens.size() &&
-                              tokens[i + 1].token_id == TextParser_cfml_Operator);
+                              isOperatorToken(tokens[i + 1].token_id));
         if (varIsNamedArg) {
             std::string opText = tokenText(tokens[i + 1], cfm_text);
             while (!opText.empty() && isspace(opText.front())) opText.erase(opText.begin());

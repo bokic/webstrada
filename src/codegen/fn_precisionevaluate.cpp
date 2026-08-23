@@ -32,7 +32,7 @@
 
 #include "codegen_internal.h"
 
-#include <textparser.h>
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
 
 #include <webstrada/cf8.h>
@@ -902,7 +902,7 @@ cfvariant *cf_precisionevaluate(const cfvariant *expr,
         }
         // CF's precision grammar rejects the symbolic < > <= >= comparisons.
         for (const auto &tok : tokens) {
-            if (tok.token_id != TextParser_cfml_Operator) continue;
+            if (!isOperatorToken(tok.token_id)) continue;
             std::string op(wrappedText.c_str() + tok.position, tok.len);
             while (!op.empty() && isspace((unsigned char)op.front())) op.erase(op.begin());
             while (!op.empty() && isspace((unsigned char)op.back())) op.pop_back();

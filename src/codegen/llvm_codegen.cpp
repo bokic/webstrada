@@ -35,7 +35,7 @@
 
 #include <dlfcn.h>
 
-#include <textparser.h>
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
 
 using namespace webstrada;
@@ -150,7 +150,7 @@ size_t parseFunctionDecl(const std::vector<TextParserTokenItem> &tokens, size_t 
     // DoubleString triples between the parens and the body.
     while (idx + 2 < tokens.size() &&
            tokens[idx].token_id == TextParser_cfml_Variable &&
-           tokens[idx + 1].token_id == TextParser_cfml_Operator) {
+           isOperatorToken(tokens[idx + 1].token_id)) {
         std::string attrName = tokenText(tokens[idx], cfm_text);
         std::string attrUpper;
         for (auto &c : attrName) attrUpper.push_back((char)toupper((unsigned char)c));
@@ -1664,14 +1664,14 @@ void compile_token_list(
                     aname.toLower();
                     std::vector<TextParserTokenItem> valToks;
                     size_t vi = ai + 1;
-                    while (vi < attrParts->size() && (*attrParts)[vi].token_id == TextParser_cfml_Operator) vi++;
+                    while (vi < attrParts->size() && isOperatorToken((*attrParts)[vi].token_id)) vi++;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     llvm::Value *val = compileValue(valToks);
@@ -1915,9 +1915,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     llvm::Value *val = compileValue(valToks);
@@ -1975,9 +1975,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     llvm::Value *val = compileValue(valToks);
@@ -2034,9 +2034,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     llvm::Value *val = compileValue(valToks);
@@ -2107,10 +2107,10 @@ void compile_token_list(
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (logValidAttrs.find(anameLow.constData()) == logValidAttrs.end()) {
@@ -2265,10 +2265,10 @@ void compile_token_list(
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (timerValidAttrs.find(anameLow.constData()) == timerValidAttrs.end()) {
@@ -2408,10 +2408,10 @@ void compile_token_list(
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (traceValidAttrs.find(anameLow.constData()) == traceValidAttrs.end()) {
@@ -2533,10 +2533,10 @@ void compile_token_list(
                     while (vi < luAttrParts->size()) {
                         const auto &vt = (*luAttrParts)[vi];
                         bool nextIsAttr = (vi + 1 < luAttrParts->size() &&
-                                           (*luAttrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*luAttrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*luAttrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (luValidAttrs.find(anameLow.constData()) == luValidAttrs.end()) {
@@ -2620,10 +2620,10 @@ void compile_token_list(
                     while (vi < loAttrParts->size()) {
                         const auto &vt = (*loAttrParts)[vi];
                         bool nextIsAttr = (vi + 1 < loAttrParts->size() &&
-                                           (*loAttrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*loAttrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*loAttrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (loValidAttrs.find(anameLow.constData()) == loValidAttrs.end()) {
@@ -2698,10 +2698,10 @@ void compile_token_list(
                     while (vi < lgAttrParts->size()) {
                         const auto &vt = (*lgAttrParts)[vi];
                         bool nextIsAttr = (vi + 1 < lgAttrParts->size() &&
-                                           (*lgAttrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*lgAttrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*lgAttrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (lgValidAttrs.find(anameLow.constData()) == lgValidAttrs.end()) {
@@ -2869,10 +2869,10 @@ void compile_token_list(
                     while (vi < paramAttrParts->size()) {
                         const auto &vt = (*paramAttrParts)[vi];
                         bool nextIsAttr = (vi + 1 < paramAttrParts->size() &&
-                                           (*paramAttrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*paramAttrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*paramAttrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (paramValidAttrs.find(anameLow.constData()) == paramValidAttrs.end()) {
@@ -3052,10 +3052,10 @@ void compile_token_list(
                     while (vi < ocAttrParts->size()) {
                         const auto &vt = (*ocAttrParts)[vi];
                         bool nextIsAttr = (vi + 1 < ocAttrParts->size() &&
-                                           (*ocAttrParts)[vi + 1].token_id == TextParser_cfml_Operator &&
+                                           isOperatorToken((*ocAttrParts)[vi + 1].token_id) &&
                                            isAttrNameToken(*ocAttrParts, vi, cfm_text));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (ocValidAttrs.find(anameLow.constData()) == ocValidAttrs.end()) {
@@ -3218,9 +3218,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (!valToks.empty()) {
@@ -3309,9 +3309,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (!valToks.empty()) {
@@ -3376,9 +3376,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (!valToks.empty()) {
@@ -3444,9 +3444,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (!valToks.empty()) {
@@ -3518,9 +3518,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (!valToks.empty()) {
@@ -3614,9 +3614,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     llvm::Value *val = valToks.empty() ? nullptr : compileAttrValue(valToks);
@@ -3857,9 +3857,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (!valToks.empty()) {
@@ -3920,9 +3920,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     if (!valToks.empty()) {
@@ -4240,9 +4240,9 @@ void compile_token_list(
                         const auto &vt = (*attrParts)[vi];
                         bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                            vi + 1 < attrParts->size() &&
-                                           (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                           isOperatorToken((*attrParts)[vi + 1].token_id));
                         if (nextIsAttr) break;
-                        if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
                     }
                     llvm::Value *val = valToks.empty() ? nullptr : compileAttrValue(valToks);
@@ -4874,9 +4874,9 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
                     const auto &vt = (*attrParts)[vi];
                     bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                        vi + 1 < attrParts->size() &&
-                                       (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                       isOperatorToken((*attrParts)[vi + 1].token_id));
                     if (nextIsAttr) break;
-                    if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                    if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                     vi++;
                 }
                 if (!valToks.empty()) {

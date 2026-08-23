@@ -2,7 +2,7 @@
 
 #include "string.h"
 
-#include <textparser.h>
+#include <textparser.hpp>
 
 
 namespace webstrada {

@@ -11,7 +11,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
 
-#include <textparser.h>
+#include <textparser.hpp>
+#include <cfml_definition.json.h>
 
 #include <map>
 #include <memory>
@@ -19,6 +20,10 @@
 #include <vector>
 
 namespace webstrada {
+
+inline bool isOperatorToken(int token_id) {
+    return token_id >= TextParser_cfml_AssignOperator && token_id <= TextParser_cfml_Operator;
+}
 
 struct TextParserTokenItem
 {

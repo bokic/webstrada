@@ -1,9 +1,8 @@
 #include <webstrada/parser.h>
 #include <webstrada/exceptions.h>
 
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
-
-#include <textparser.h>
 #include <threads.h>
 
 
@@ -82,6 +81,10 @@ void parser::parse(const char* buffer, size_t buffer_size, textparser_encoding t
 
 textparser_token_item *parser::next_token()
 {
+    while (m_next_token && (m_next_token->token_id < TextParser_cfml_ScriptTagPair ||
+                            m_next_token->token_id > TextParser_cfml_ArrayIndex)) {
+        m_next_token = m_next_token->next;
+    }
     textparser_token_item *ret = m_next_token;
 
     if (ret) {

@@ -29,7 +29,7 @@
 
 #include <dlfcn.h>
 
-#include <textparser.h>
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
 
 
@@ -380,14 +380,14 @@ parseTagAttrs(const std::vector<TextParserTokenItem> *attrParts, const char *cfm
         string aname(cfm_text + at.position, at.len);
         std::vector<TextParserTokenItem> valToks;
         size_t vi = ai + 1;
-        while (vi < attrParts->size() && (*attrParts)[vi].token_id == TextParser_cfml_Operator) vi++;
+        while (vi < attrParts->size() && isOperatorToken((*attrParts)[vi].token_id)) vi++;
         while (vi < attrParts->size()) {
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
             vi++;
         }
         attrs.emplace_back(std::string(aname.constData(), aname.length()), std::move(valToks));
@@ -524,7 +524,21 @@ TextParserTokenItem convertToken(const textparser_token_item *src)
     auto child = src->child;
     while(child)
     {
-        ret.children.push_back(convertToken(child));
+        if (child->token_id >= TextParser_cfml_ScriptTagPair &&
+            child->token_id <= TextParser_cfml_ArrayIndex) {
+            if (child->token_id == TextParser_cfml_Operator && child->child) {
+                auto opChild = child->child;
+                while (opChild) {
+                    if (opChild->token_id >= TextParser_cfml_ScriptTagPair &&
+                        opChild->token_id <= TextParser_cfml_ArrayIndex) {
+                        ret.children.push_back(convertToken(opChild));
+                    }
+                    opChild = opChild->next;
+                }
+            } else {
+                ret.children.push_back(convertToken(child));
+            }
+        }
         child = child->next;
     }
 
@@ -633,7 +647,7 @@ void parseTagAttrs(const TextParserTokenItem &startTag, const char *cfm_text,
             std::string aname(cfm_text + children[ai].position, children[ai].len);
             for (auto &c : aname) c = (char)tolower((unsigned char)c);
             ai++;
-            while (ai < children.size() && children[ai].token_id == TextParser_cfml_Operator) ai++;
+            while (ai < children.size() && isOperatorToken(children[ai].token_id)) ai++;
             if (ai >= children.size()) break;
             const auto &vt = children[ai];
             if (vt.token_id == TextParser_cfml_DoubleString || vt.token_id == TextParser_cfml_SingleString) {

@@ -42,7 +42,7 @@
 
 #include <dlfcn.h>
 
-#include <textparser.h>
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
 
 using namespace webstrada;
@@ -914,7 +914,18 @@ template_fn llvm_codegen::compile_parsed(parser &parse, const char *name, bool p
     // Convert parser flat tokens into converted structure
     std::vector<TextParserTokenItem> topLevelTokens;
     while (auto token = parse.next_token()) {
-        topLevelTokens.push_back(convertToken(token));
+        if (token->token_id == TextParser_cfml_Operator && token->child) {
+            auto opChild = token->child;
+            while (opChild) {
+                if (opChild->token_id >= TextParser_cfml_ScriptTagPair &&
+                    opChild->token_id <= TextParser_cfml_ArrayIndex) {
+                    topLevelTokens.push_back(convertToken(opChild));
+                }
+                opChild = opChild->next;
+            }
+        } else {
+            topLevelTokens.push_back(convertToken(token));
+        }
     }
 
     // ---- User-defined functions (hoisted across the whole template in CF) ----
@@ -1095,7 +1106,7 @@ static void parseScriptComponentAttrs(const std::vector<TextParserTokenItem> &to
     while (i + 2 < end) {
         const auto &nameTok = tokens[i];
         if (nameTok.token_id != TextParser_cfml_Variable ||
-            tokens[i + 1].token_id != TextParser_cfml_Operator) {
+            !isOperatorToken(tokens[i + 1].token_id)) {
             i++;
             continue;
         }
@@ -1181,7 +1192,7 @@ static size_t parseScriptPropertyDecl(const std::vector<TextParserTokenItem> &to
     size_t i = start + 1; // skip the `property` Variable
     while (i + 2 < tokens.size() &&
            tokens[i].token_id == TextParser_cfml_Variable &&
-           tokens[i + 1].token_id == TextParser_cfml_Operator &&
+           isOperatorToken(tokens[i + 1].token_id) &&
            (tokens[i + 2].token_id == TextParser_cfml_DoubleString ||
             tokens[i + 2].token_id == TextParser_cfml_SingleString ||
             tokens[i + 2].token_id == TextParser_cfml_Number ||
@@ -1316,7 +1327,18 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
     // Convert parser flat tokens into converted structure.
     std::vector<TextParserTokenItem> tokens;
     while (auto *token = parse.next_token()) {
-        tokens.push_back(convertToken(token));
+        if (token->token_id == TextParser_cfml_Operator && token->child) {
+            auto opChild = token->child;
+            while (opChild) {
+                if (opChild->token_id >= TextParser_cfml_ScriptTagPair &&
+                    opChild->token_id <= TextParser_cfml_ArrayIndex) {
+                    tokens.push_back(convertToken(opChild));
+                }
+                opChild = opChild->next;
+            }
+        } else {
+            tokens.push_back(convertToken(token));
+        }
     }
 
     std::map<std::string, std::string> attrs;

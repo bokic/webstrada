@@ -30,7 +30,7 @@
 
 #include <dlfcn.h>
 
-#include <textparser.h>
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
 
 
@@ -147,7 +147,7 @@ void parseParamList(const TextParserTokenItem &parenToken, const char *cfm_text,
             name = std::string(cfm_text + group[0].position, group[0].len);
             start = 1;
         }
-        if (start < group.size() && group[start].token_id == TextParser_cfml_Operator) {
+        if (start < group.size() && isOperatorToken(group[start].token_id)) {
             std::string op(cfm_text + group[start].position, group[start].len);
             while (!op.empty() && isspace(op.front())) op.erase(op.begin());
             while (!op.empty() && isspace(op.back())) op.pop_back();
@@ -671,7 +671,7 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 auto flushPair = [&]() {
                     if (pairToks.empty()) return;
                     auto sep = std::find_if(pairToks.begin(), pairToks.end(), [&](const TextParserTokenItem &t) {
-                        if (t.token_id == TextParser_cfml_Operator) {
+                        if (isOperatorToken(t.token_id)) {
                             std::string op(cfm_text + t.position, t.len);
                             while (!op.empty() && isspace(op.front())) op.erase(op.begin());
                             while (!op.empty() && isspace(op.back())) op.pop_back();
@@ -732,7 +732,7 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             opStack.push_back({op, isUnary});
             nextCanBeUnary = true;
         }
-        else if (tok.token_id == TextParser_cfml_Operator) {
+        else if (isOperatorToken(tok.token_id)) {
             std::string op(cfm_text + tok.position, tok.len);
             while(!op.empty() && isspace(op.front())) op.erase(op.begin());
             while(!op.empty() && isspace(op.back())) op.pop_back();
@@ -787,39 +787,39 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 }
             }
 
-            // ++ / -- increment and decrement. The textparser tokenizes them
-            // as two adjacent + or - operators (there is no single "++" token
-            // in the grammar), so a run of two matching signs is special-cased
-            // here. x++ / ++x evaluate to the old / new value respectively.
-            bool isIncDecPair = (op == "+" || op == "-") &&
-                                i + 1 < tokens.size() &&
-                                tokens[i + 1].token_id == TextParser_cfml_Operator;
-            if (isIncDecPair) {
+            // ++ / -- increment and decrement. Supports both single token (new textparser)
+            // and two adjacent sign operators. x++ / ++x evaluate to old / new value.
+            bool isSingleTokenIncDec = (op == "++" || op == "--");
+            bool isTwoTokenIncDec = false;
+            if (!isSingleTokenIncDec && (op == "+" || op == "-") &&
+                i + 1 < tokens.size() && isOperatorToken(tokens[i + 1].token_id)) {
                 std::string op2(cfm_text + tokens[i + 1].position, tokens[i + 1].len);
                 while(!op2.empty() && isspace(op2.front())) op2.erase(op2.begin());
                 while(!op2.empty() && isspace(op2.back())) op2.pop_back();
-                isIncDecPair = (op2 == op);
+                isTwoTokenIncDec = (op2 == op);
             }
 
-            if (isIncDecPair) {
+            if (isSingleTokenIncDec || isTwoTokenIncDec) {
+                std::string baseOp = isSingleTokenIncDec ? op.substr(0, 1) : op;
                 if (nextCanBeUnary) {
                     // Pre-increment/dec: ++x (the operand is a plain variable).
-                    if (i + 2 >= tokens.size() ||
-                        tokens[i + 2].token_id != TextParser_cfml_Variable) {
+                    size_t varIdx = isSingleTokenIncDec ? (i + 1) : (i + 2);
+                    if (varIdx >= tokens.size() ||
+                        tokens[varIdx].token_id != TextParser_cfml_Variable) {
                         throw webstrada::exception("Increment/decrement requires a variable");
                     }
-                    const auto &operandTok = tokens[i + 2];
+                    const auto &operandTok = tokens[varIdx];
                     auto varNode = std::make_unique<ExprAST>();
                     varNode->type = ExprAST::Variable;
                     varNode->string_val = std::string(cfm_text + operandTok.position, operandTok.len);
                     varNode->token = operandTok;
                     auto incNode = std::make_unique<ExprAST>();
                     incNode->type = ExprAST::Increment;
-                    incNode->op_val = op;
+                    incNode->op_val = baseOp;
                     incNode->isPre = true;
                     incNode->left = std::move(varNode);
                     operandStack.push_back(std::move(incNode));
-                    i += 2; // consume both sign operators and the variable
+                    i = varIdx; // consume both operator and the variable
                     nextCanBeUnary = false;
                     continue;
                 } else {
@@ -829,11 +829,13 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                     operandStack.pop_back();
                     auto incNode = std::make_unique<ExprAST>();
                     incNode->type = ExprAST::Increment;
-                    incNode->op_val = op;
+                    incNode->op_val = baseOp;
                     incNode->isPre = false;
                     incNode->left = std::move(varNode);
                     operandStack.push_back(std::move(incNode));
-                    i++; // consume the second sign operator
+                    if (isTwoTokenIncDec) {
+                        i++; // consume the second sign operator
+                    }
                     nextCanBeUnary = false;
                     continue;
                 }
@@ -881,7 +883,7 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                         // A nested group; its children are self-contained.
                         continue;
                     }
-                    if (t.token_id == TextParser_cfml_Operator) {
+                    if (isOperatorToken(t.token_id)) {
                         std::string o(cfm_text + t.position, t.len);
                         while (!o.empty() && isspace(o.front())) o.erase(o.begin());
                         while (!o.empty() && isspace(o.back())) o.pop_back();
@@ -989,7 +991,7 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 // then a Variable), never `var = ..` or `.var`.
                 bool memberContext = (!opStack.empty() && opStack.back().first == "." && !opStack.back().second);
                 bool namedArg = (i + 1 < tokens.size() &&
-                                 tokens[i + 1].token_id == TextParser_cfml_Operator);
+                                 isOperatorToken(tokens[i + 1].token_id));
                 if (namedArg) {
                     std::string opText(cfm_text + tokens[i + 1].position, tokens[i + 1].len);
                     while (!opText.empty() && isspace(opText.front())) opText.erase(opText.begin());

@@ -31,7 +31,7 @@
 
 #include <dlfcn.h>
 
-#include <textparser.h>
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
 
 
@@ -683,9 +683,9 @@ size_t compile_tag_xml_statement(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
             vi++;
         }
         llvm::Value *val = compileValue(valToks);
@@ -856,9 +856,9 @@ size_t compile_tag_http_statement(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
             vi++;
         }
         if (!valToks.empty()) {
@@ -989,7 +989,7 @@ size_t compile_tag_transaction_statement(
         anameLow.toLower();
         if (anameLow.equals("action")) {
             size_t vi = ai + 1;
-            while (vi < attrParts->size() && (*attrParts)[vi].token_id == TextParser_cfml_Operator) vi++;
+            while (vi < attrParts->size() && isOperatorToken((*attrParts)[vi].token_id)) vi++;
             if (vi < attrParts->size() &&
                 ((*attrParts)[vi].token_id == TextParser_cfml_DoubleString ||
                  (*attrParts)[vi].token_id == TextParser_cfml_SingleString)) {
@@ -1170,9 +1170,9 @@ size_t compile_tag_storedproc_statement(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
             vi++;
         }
         if (!valToks.empty()) {
@@ -1317,9 +1317,9 @@ static llvm::Value* compileTagAttrsStruct(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
             vi++;
         }
         llvm::Value *val = compileTagAttrValue(module, builder, mainfunc,
@@ -1461,14 +1461,14 @@ size_t compile_tag_directory_statement(
         if (anameLow.equals("action")) {
             std::vector<TextParserTokenItem> valToks;
             size_t vi = ai + 1;
-            while (vi < attrParts->size() && (*attrParts)[vi].token_id == TextParser_cfml_Operator) vi++;
+            while (vi < attrParts->size() && isOperatorToken((*attrParts)[vi].token_id)) vi++;
             while (vi < attrParts->size()) {
                 const auto &vt = (*attrParts)[vi];
                 bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                    vi + 1 < attrParts->size() &&
-                                   (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                   isOperatorToken((*attrParts)[vi + 1].token_id));
                 if (nextIsAttr) break;
-                if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                 vi++;
             }
             std::string lit;
@@ -1559,9 +1559,9 @@ size_t compile_tag_zipparam_statement(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) pa.valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) pa.valToks.push_back(vt);
             vi++;
         }
         params.push_back(std::move(pa));
@@ -1734,9 +1734,9 @@ size_t compile_tag_zip_statement(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) za.valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) za.valToks.push_back(vt);
             vi++;
         }
         zipAttrs.push_back(std::move(za));
@@ -1917,14 +1917,14 @@ size_t compile_tag_file_statement(
         if (anameLow.equals("action")) {
             std::vector<TextParserTokenItem> valToks;
             size_t vi = ai + 1;
-            while (vi < attrParts->size() && (*attrParts)[vi].token_id == TextParser_cfml_Operator) vi++;
+            while (vi < attrParts->size() && isOperatorToken((*attrParts)[vi].token_id)) vi++;
             while (vi < attrParts->size()) {
                 const auto &vt = (*attrParts)[vi];
                 bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                    vi + 1 < attrParts->size() &&
-                                   (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                   isOperatorToken((*attrParts)[vi + 1].token_id));
                 if (nextIsAttr) break;
-                if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                 vi++;
             }
             std::string lit;
@@ -2112,9 +2112,9 @@ size_t compile_tag_cache_statement(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) ca.valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) ca.valToks.push_back(vt);
             vi++;
         }
         attrs.push_back(std::move(ca));
@@ -2452,9 +2452,9 @@ static llvm::Value* compileTagAttrsStructJsp(
             const auto &vt = (*attrParts)[vi];
             bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                vi + 1 < attrParts->size() &&
-                               (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
             if (nextIsAttr) break;
-            if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
             vi++;
         }
         llvm::Value *val = compileTagAttrValue(module, builder, mainfunc,
@@ -2489,9 +2489,9 @@ static void collectAttrTokens(const std::vector<TextParserTokenItem> *attrParts,
                 const auto &vt = (*attrParts)[vi];
                 bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
                                    vi + 1 < attrParts->size() &&
-                                   (*attrParts)[vi + 1].token_id == TextParser_cfml_Operator);
+                                   isOperatorToken((*attrParts)[vi + 1].token_id));
                 if (nextIsAttr) break;
-                if (vt.token_id != TextParser_cfml_Operator) valToks.push_back(vt);
+                if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                 vi++;
             }
             out = std::move(valToks);

@@ -33,8 +33,8 @@
 #include <webstrada/exceptions.h>
 #include <webstrada/string.h>
 
+#include <textparser.hpp>
 #include <cfml_definition.json.h>
-#include <textparser.h>
 
 #include <unicode/ucnv.h>
 #include <unicode/ucsdet.h>
