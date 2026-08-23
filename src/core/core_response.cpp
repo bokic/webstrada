@@ -85,6 +85,15 @@ bool config::enableQueryLogging = true;
 // <cftrace> tag are gated on it exactly like CF's DebuggingService.
 bool config::debugEnabled = false;
 
+// CF Administrator "compile extensions for include" (`compileextforinclude`).
+// ColdFusion's stock install ships `*` (see payload/core/WEB-INF/cfusion/lib/
+// neo-runtime.xml), and the RDS host keeps that default: every file included
+// via <cfinclude> is compiled and executed as CFML, not just .cfm/.cfml. This
+// is what lets MangoBlog's setup run its `<cfinclude template="mysql.sql">`
+// DDL script. An empty value reproduces the old engine behavior (only .cfm/
+// .cfml compile; other extensions are read and output raw).
+std::string config::compileExtForInclude = "*";
+
 void config::loadDatasourcesFromEnv()
 {
     extern char **environ;

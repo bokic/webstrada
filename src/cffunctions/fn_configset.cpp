@@ -51,6 +51,7 @@ static const std::set<std::string> &knownSettings()
         "defaultsessiontimeoutseconds",
         "enablequerylogging",
         "debugenabled",
+        "compileextforinclude",
     };
     return keys;
 }
@@ -151,6 +152,8 @@ static void applySettings(const cfvariant *settings)
             webstrada::config::enableQueryLogging = asBoolValue(value, key.c_str());
         } else if (key == "debugenabled") {
             webstrada::config::debugEnabled = asBoolValue(value, key.c_str());
+        } else if (key == "compileextforinclude") {
+            webstrada::config::compileExtForInclude = asStringValue(value, key.c_str());
         } else {
             std::string valid;
             for (const auto &k : knownSettings()) {

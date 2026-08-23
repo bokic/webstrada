@@ -109,6 +109,7 @@ static bool applyFile(json_object *root)
         defaultSessionTimeoutSeconds = jsonDoubleField(settings, "defaultSessionTimeoutSeconds", defaultSessionTimeoutSeconds);
         enableQueryLogging           = jsonBoolField(settings, "enableQueryLogging", enableQueryLogging);
         debugEnabled                 = jsonBoolField(settings, "debugEnabled", debugEnabled);
+        compileExtForInclude         = jsonStringField(settings, "compileExtForInclude", compileExtForInclude);
     }
 
     json_object *dsObjs = nullptr;
@@ -201,6 +202,7 @@ static json_object *globalsToJson()
     json_object_object_add(settings, "defaultSessionTimeoutSeconds", json_object_new_double(defaultSessionTimeoutSeconds));
     json_object_object_add(settings, "enableQueryLogging", json_object_new_boolean(enableQueryLogging));
     json_object_object_add(settings, "debugEnabled", json_object_new_boolean(debugEnabled));
+    json_object_object_add(settings, "compileExtForInclude", json_object_new_string(compileExtForInclude.c_str()));
     json_object_object_add(root, "settings", settings);
 
     json_object *dsObjs = json_object_new_object();
@@ -268,6 +270,7 @@ void resetToDefaults()
     defaultSessionTimeoutSeconds = 20.0 * 60.0;                // 20 minutes
     enableQueryLogging = true;
     debugEnabled = false;
+    compileExtForInclude = "*";
     save();
 }
 

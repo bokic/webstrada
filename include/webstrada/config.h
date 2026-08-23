@@ -126,10 +126,14 @@ extern double defaultApplicationTimeoutSeconds;
 extern double defaultSessionTimeoutSeconds;
 
 // Whether every executed <cfquery> is logged to stdout (datasource, name, row
-// count, elapsed ms and the evaluated SQL). On by default for the daemon so the
-// dev web server (http-dev.py) shows the queries each request runs; the CLI and
-// the unit-test binary disable it because their stdout is a data channel
-// (verify_with_coldfusion.py compares it byte-for-byte against CF).
+// count, elapsed ms and the evaluated SQL) — plus, since openConnection wraps
+// every backend connection in a LoggingConnection, every operation on the
+// abstract DB layer ([db] open/execute/begin/commit/rollback/savepoint/
+// rollbackTo/tableColumns/storedProc/close lines, see src/db/db.cpp). On by
+// default for the daemon so the dev web server (http-dev.py) shows the queries
+// each request runs; the CLI and the unit-test binary disable it because their
+// stdout is a data channel (verify_with_coldfusion.py compares it
+// byte-for-byte against CF).
 extern bool enableQueryLogging;
 
 // Whether the CF Administrator "Enable Debugging" setting is on. The engine
@@ -138,6 +142,20 @@ extern bool enableQueryLogging;
 // <cftrace> tag are gated on it exactly like CF's DebuggingService (when false,
 // cftimer still evaluates its body and cftrace is a complete no-op).
 extern bool debugEnabled;
+
+// The CF Administrator "compile extensions for include" setting
+// (`compileextforinclude`), a comma-delimited list of file extensions that
+// <cfinclude> compiles and executes as CFML in addition to `.cfm`/`.cfml`.
+// The wildcard `*` means every included file (`.sql`, `.txt`, `.xyz`, ...) is
+// compiled; an empty value restricts compilation to `.cfm`/`.cfml` targets and
+// everything else is read and output verbatim. ColdFusion's stock install
+// (neo-runtime.xml) ships `*` — the RDS host keeps that default — and
+// IncludeTag.checkForType matches the uppercased file name against each
+// extension. MangoBlog's setup relies on this: `<cfinclude template="mysql.sql">`
+// runs the <cfquery> DDL/INSERT statements that create the `blog`/`entry`/...
+// tables (was broken in this engine, which hardcoded the static-include path
+// for every non-CFML extension — BUGS.md "cfinclude of a .sql/.txt file").
+extern std::string compileExtForInclude;
 
 // ---------------------------------------------------------------------------
 // Configuration file support.

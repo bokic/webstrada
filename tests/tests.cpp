@@ -18,6 +18,8 @@
 #include <cairo.h>
 #include <fcgio.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <cstdio>
 #include <cstdlib>
 #include <cstddef>
 #include <cstring>
@@ -1320,6 +1322,54 @@ TEST_F(CfQueryTest, QueryColumnArithmetic) {
     cfml += "<cfquery name=\"cnt\" datasource=\"test\">SELECT COUNT(*) AS Total FROM q_colarith</cfquery>\n";
     cfml += "<cfoutput>[#cnt.Total#]|#(cnt.Total - 0)#|#Evaluate(cnt.Total - 0)#|#(cnt.Total * 2)#</cfoutput>";
     expectOutput(cfml, "[2]|2|2|4");
+}
+
+TEST_F(CfQueryTest, DbLayerDumpsOperationsToStdout) {
+    // With enableQueryLogging on, the abstract DB layer dumps every operation
+    // (open / execute / begin / commit / savepoint / rollback / close / ...) to
+    // stdout via the LoggingConnection wrapper in db.cpp, for every backend.
+    bool saved = webstrada::config::enableQueryLogging;
+    webstrada::config::enableQueryLogging = true;
+
+    // Redirect stdout to a temp file so the dump can be inspected.
+    char tmpPath[] = "/tmp/webstrada_db_dump_XXXXXX";
+    int tmpFd = mkstemp(tmpPath);
+    ASSERT_NE(tmpFd, -1);
+    int savedFd = dup(STDOUT_FILENO);
+    ASSERT_NE(savedFd, -1);
+    ASSERT_NE(dup2(tmpFd, STDOUT_FILENO), -1);
+
+    std::string captured;
+    try {
+        expectOutput(setupSql("q_dbldump") +
+                     "<cfquery name=\"q\" datasource=\"test\">SELECT name FROM q_dbldump ORDER BY id</cfquery>\n"
+                     "<cfoutput>#q.recordcount#</cfoutput>", "2");
+        fflush(stdout);
+        dup2(savedFd, STDOUT_FILENO);
+        close(savedFd);
+    } catch (...) {
+        dup2(savedFd, STDOUT_FILENO);
+        close(savedFd);
+        close(tmpFd);
+        unlink(tmpPath);
+        webstrada::config::enableQueryLogging = saved;
+        throw;
+    }
+
+    lseek(tmpFd, 0, SEEK_SET);
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(tmpFd, buf, sizeof(buf))) > 0) captured.append(buf, (size_t)n);
+    close(tmpFd);
+    unlink(tmpPath);
+
+    webstrada::config::enableQueryLogging = saved;
+
+    // Every DB-layer operation is dumped, including the connection lifecycle.
+    EXPECT_NE(captured.find("[db] sqlite open dsn=test"), std::string::npos);
+    EXPECT_NE(captured.find("[db] sqlite execute dsn=test maxrows=-1"), std::string::npos);
+    EXPECT_NE(captured.find("SELECT name FROM q_dbldump ORDER BY id"), std::string::npos);
+    EXPECT_NE(captured.find("[db] sqlite close dsn=test"), std::string::npos);
 }
 
 // ---- <cftransaction> ----
@@ -3087,15 +3137,63 @@ TEST_F(CfincludeTest, MissingIncludeMatchesMissingIncludeHierarchy) {
     removeTempDir(dir);
 }
 
+// With the stock-CF "compile extensions for include" setting (`*`, the
+// default; the RDS host keeps it) a non-CFML extension is COMPILED and
+// executed as CFML: the <cfset> runs (z=9), the tag produces no output, and
+// the text around it collapses to the literal text nodes (double space where
+// the tag was). #noeval# is outside <cfoutput> so it stays literal either way.
+TEST_F(CfincludeTest, NonCfmlFileCompiledByDefault) {
+    auto dir = makeTempDir({
+        {"main.cfm", "<cfoutput>A|</cfoutput><cfinclude template=\"data.txt\"><cfoutput>|#structKeyExists(variables, \"z\")#|B</cfoutput>"},
+        {"data.txt", "raw <cfset z = 9> #noeval#"},
+    });
+    EXPECT_EQ(runFile(dir, "main.cfm").equals("A|raw  #noeval#|YES|B"), true);
+    removeTempDir(dir);
+}
+
+// With an empty compileExtForInclude the engine reverts to the old default-CF
+// behavior: a non-CFML extension is included as static content, the CFML-
+// looking text is not executed (z stays undefined) and #noeval# is written
+// literally (CF's IncludeTag.checkForType with no matching extension).
 TEST_F(CfincludeTest, StaticNonCfmlFileOutputRaw) {
     auto dir = makeTempDir({
         {"main.cfm", "<cfoutput>A|</cfoutput><cfinclude template=\"data.txt\"><cfoutput>|#structKeyExists(variables, \"z\")#|B</cfoutput>"},
         {"data.txt", "raw <cfset z = 9> #noeval#"},
     });
-    // A non-CFML extension is included as static content: the CFML-looking text
-    // is not executed (z stays undefined) and #noeval# is written literally.
+    std::string saved = webstrada::config::compileExtForInclude;
+    webstrada::config::compileExtForInclude = "";
     EXPECT_EQ(runFile(dir, "main.cfm").equals("A|raw <cfset z = 9> #noeval#|NO|B"), true);
+    webstrada::config::compileExtForInclude = saved;
     removeTempDir(dir);
+}
+
+// A .sql file whose <cfquery> DDL runs is the MangoBlog setup pattern: the
+// include compiles the SQL script and executes its <cfquery> statements, so
+// the tables it creates are usable afterwards.
+TEST_F(CfincludeTest, SqlIncludeRunsCfqueryStatements) {
+    auto dir = makeTempDir({
+        {"main.cfm",
+         "<cfset dsn = \"sqlinc\"><cfset username = \"\"><cfset password = \"\">"
+         "<cfinclude template=\"schema.sql\">"
+         "<cfquery name=\"q\" datasource=\"sqlinc\">SELECT * FROM blog</cfquery>"
+         "<cfoutput>RC=[#q.recordcount#]</cfoutput>"},
+        {"schema.sql",
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "CREATE TABLE blog (id varchar(35) NOT NULL, title varchar(150))"
+         "</cfquery>"},
+    });
+    std::string savedDsnDir = webstrada::config::dsnDbDir;
+    std::string saved = webstrada::config::compileExtForInclude;
+    std::filesystem::path dsnDir = std::filesystem::temp_directory_path() /
+        ("webstrada_sqlinclude_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dsnDir);
+    webstrada::config::dsnDbDir = dsnDir.string();
+    webstrada::config::compileExtForInclude = "*";
+    EXPECT_EQ(runFile(dir, "main.cfm").equals("RC=[0]"), true);
+    webstrada::config::compileExtForInclude = saved;
+    webstrada::config::dsnDbDir = savedDsnDir;
+    removeTempDir(dir);
+    std::filesystem::remove_all(dsnDir);
 }
 
 TEST_F(CfincludeTest, MissingIncludeThrows) {

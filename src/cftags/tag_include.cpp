@@ -83,6 +83,47 @@ void includeStaticFile(string &out, const std::string &path)
     out.append(content.c_str());
 }
 
+// CF's IncludeTag.checkForType: an included file is compiled as CFML when its
+// name (uppercased) ends with .CFM/.CFML, or when the "compile extensions for
+// include" setting (CF Admin `compileextforinclude`; webstrada's default is the
+// stock-CF wildcard "*") lists the extension (or "*"). Anything else is read
+// and output verbatim, with no CFML evaluation.
+bool includeShouldCompile(const std::string &path)
+{
+    std::string name = path;
+    size_t slash = name.find_last_of('/');
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    for (auto &c : name) c = static_cast<char>(toupper((unsigned char)c));
+    if (name.size() >= 4 && name.compare(name.size() - 4, 4, ".CFM") == 0) return true;
+    if (name.size() >= 5 && name.compare(name.size() - 5, 5, ".CFML") == 0) return true;
+
+    const std::string &list = webstrada::config::compileExtForInclude;
+    if (list.empty()) return false;
+    size_t start = 0;
+    while (true) {
+        size_t comma = list.find(',', start);
+        std::string ext = list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        size_t b = 0, e = ext.size();
+        while (b < e && (ext[b] == ' ' || ext[b] == '\t')) b++;
+        while (e > b && (ext[e - 1] == ' ' || ext[e - 1] == '\t')) e--;
+        ext = ext.substr(b, e - b);
+        if (ext == "*") return true;
+        std::string extUp;
+        for (char c : ext) extUp += static_cast<char>(toupper((unsigned char)c));
+        if (!extUp.empty()) {
+            std::string suffix = ".";
+            suffix += extUp;
+            if (name.size() >= suffix.size() &&
+                name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                return true;
+            }
+        }
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return false;
+}
+
 } // namespace
 
 namespace cfml {
@@ -115,11 +156,7 @@ void cf_include(string *out, void *cgi, void *server, void *cookie, void *applic
         }
     }
 
-    std::string lower = resolved;
-    for (auto &c : lower) c = (char)tolower((unsigned char)c);
-    bool isCfml = lower.size() >= 4 &&
-                  (lower.compare(lower.size() - 4, 4, ".cfm") == 0 ||
-                   lower.compare(lower.size() - 5, 5, ".cfml") == 0);
+    bool isCfml = includeShouldCompile(resolved);
     if (!isCfml) {
         rt->runOnceIncluded.push_back(resolved);
         includeStaticFile(*out, resolved);
