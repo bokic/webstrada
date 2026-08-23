@@ -32,38 +32,6 @@ git submodule update --init --recursive
 ./build-release.sh  # Size-optimized release build (see below)
 ```
 
-Release builds (smaller binary) can be produced with `./build-release.sh`
-into the `build-release/` directory. It configures `-O3`,
-`-ffunction-sections/-fdata-sections` with `--gc-sections`, folds
-byte-identical functions with `gold --icf=safe`, and strips symbols. It
-uses `gold` because the project enables LTO (`-flto`) and GNU `ld`/`lld`
-cannot combine GCC's LTO plugin with ICF. Optional LTO is on by default
-via the project's CMake settings; pass `--lto` to also enable CMake
-interprocedural optimization. On this project this roughly halves the
-binary size versus the plain debug build.
-
-Release builds use precompiled headers (`include/webstrada/pch.h` for the
-runtime and `include/webstrada/pch_llvm.h` for the LLVM code generator) to
-speed up compilation: on a 24-core machine a full clean release build drops
-from ~54s to ~36s. PCH is enabled for **Release builds only**: in debug
-builds a developer edits headers frequently, and editing any header listed
-in the PCH invalidates it and forces a full project rebuild -- the opposite
-of a fast debug edit-rebuild cycle. Only *stable* headers are precompiled
-(the STL, the C libraries, and the core `webstrada/*` headers); frequently
-edited headers such as `cffunctions/common.h` stay out of the PCH so edits
-do not invalidate it. `pcre2.h` is also excluded because its API is
-selected by `PCRE2_CODE_UNIT_WIDTH` at include time. PCH can be forced on
-or off with `-DWEBSTRADA_USE_PCH=ON/OFF`.
-
-Artifacts are placed in `bin/`:
-
-| Binary | Description |
-|---|---|
-| `WebStrada` | FastCGI application server |
-| `WebStrada-cli` | CLI tool for compiling/running CFML from stdin or file |
-| `libwebstrada-core.a` | Core runtime static library |
-| `libwebstrada-compiler.a` | LLVM compiler static library |
-
 ### Docker image (Arch Linux)
 
 `build_docker.sh` builds a multi-stage Arch Linux Docker image: a `builder`
@@ -134,16 +102,14 @@ libraries and the built admin panel. Run it with your CFML site mounted as the
 web root:
 
 ```bash
+# cd to root of your cfml project
+cd {to root of your CFML application}
+
 # Serve a host directory as the web root (port 8501):
-docker run --rm -p 8501:8501 -v /path/to/your/cfml/site:/app/webroot -e WEBROOT=/app/webroot webstrada:latest
+docker run --rm -p 8501:8501 -v .:/app/webroot -e WEBROOT=/app/webroot bokic78/webstrada:latest
+
 # then visit http://localhost:8501/ (your pages) and http://localhost:8501/admin/ (admin panel)
-
-# Or just run the stock web root (the app dir, includes /admin):
-docker run --rm -p 8501:8501 webstrada:latest
 ```
-
-Build the image with `./build_docker.sh` (pass `--no-cache` to force a full
-rebuild).
 
 ## License
 

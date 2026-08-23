@@ -221,6 +221,29 @@ the variable when no timeout is given) and byte-verifies the with-timeout path,
 the timeout error message, the exec-failure message and the page-output case in
 `tests/cfm/cfexecute_test.cfm` (🟢).
 
+## CF 2025 RDS host: `cfrds graphing` always fails — GraphingServlet hard-codes PNG on a client chart
+
+The `cfrds graphing` command against the CF 2025 RDS host fails every time with
+`graphing FAILED: Format not supported for client charts: png`. Root cause is a
+server-side defect in `coldfusion.rds.GraphingServlet$GraphingGraphOperator.processCmd`
+(decompiled CF 2025, `tmp/cfdecomp/src/cfusion/sources/coldfusion/rds/GraphingServlet.java:169-170`):
+it creates an `InteractiveChart` and calls `_graph.setImageFormat(IChartConstants.PNG)`
+but never calls `_graph.setServerSideChart(true)`. `serverSideChart` defaults to
+`false`, so `setImageFormat("png")` is validated against `clientFormats` (which
+contains only `html` and `flash` — see `InteractiveChart.java:172-174`) and throws
+`InvalidClientImageFormatException` → `Format not supported for client charts: png`.
+
+There is **no client-side workaround**: the format is hard-coded and `chartMap`/
+`seriesMap` contain no FORMAT key, so the request cannot carry a format (and even a
+valid one like `html` would never be used). The GRAPH command can only succeed once
+the server is fixed to call `setServerSideChart(true)` before `setImageFormat` (or
+to stop forcing PNG). For reference, the RDS call the client must construct is
+`POST http://{host}:{port}/CFIDE/main/ide.cfm?ACTION=GRAPHING` with a meta body
+`{N}:{len:04d}:{data}...` where `meta[0]="GRAPH"`, `meta[1]` = `;`-separated chart
+attributes (CHARTHEIGHT/CHARTWIDTH/.../TITLE, 33 keys), `meta[2]` = series count,
+`meta[3+i]` = per-series attributes (SERIESLABEL/SERIESCOLOR/PAINTSTYLE/
+MARKERSTYLE/TYPE/DATALABELSTYLE), and the last item is `username;password`.
+
 ## CF 2025 RDS host: ICU charset detection is effectively disabled
 
 The RDS host's ColdFusion reads every template that has neither a BOM nor a
