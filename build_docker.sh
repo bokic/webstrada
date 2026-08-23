@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-# Build the WebStrada Docker image (Arch Linux based).
+# Build the WebStrada Docker image (Ubuntu based).
 #
-# The image is multi-stage: a builder stage (archlinux:base-devel) compiles
-# textparser from upstream plus the WebStrada sources, and a runtime stage
-# (archlinux) keeps only the binaries and shared libraries the server needs.
+# The image is multi-stage: a builder stage (ubuntu:26.04) compiles
+# textparser from upstream plus the WebStrada sources, an admin-builder stage
+# (node:22-alpine) builds the Angular admin UI, and a runtime stage
+# (ubuntu:26.04) keeps only the binaries and shared libraries the server needs.
 #
 # Usage:
 #   ./build_docker.sh [--no-cache] [extra docker build args...]
