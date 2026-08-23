@@ -95,10 +95,8 @@ RUN apt-get update && \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# textparser shared libraries + CLI built in the builder stage.
+# textparser shared library built in the builder stage.
 COPY --from=builder /usr/lib/libtextparser.so* /usr/lib/
-COPY --from=builder /usr/lib/libtextparser-json.so* /usr/lib/
-COPY --from=builder /usr/bin/textparser /usr/local/bin/
 
 # Web root: http-dev.py (HTTP front end) plus the FastCGI server binaries.
 # The scope SQLite database is created next to bin/WebStrada at runtime, so the
