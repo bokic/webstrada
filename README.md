@@ -48,7 +48,7 @@ docker run --rm -p 8501:8501 webstrada  # dev web server
 ```
 
 Environment overrides: `IMAGE=name:tag` (default `webstrada:latest`) and
-`TEXTPARSER_VERSION=x.y.z` (default `1.0.8`).
+`TEXTPARSER_VERSION=x.y.z` (default `1.0.10`).
 
 ## Usage
 

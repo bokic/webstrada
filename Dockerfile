@@ -8,7 +8,7 @@ FROM ubuntu:26.04 AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # textparser release tag to build from upstream (build-time dependency).
-ARG TEXTPARSER_VERSION=1.0.8
+ARG TEXTPARSER_VERSION=1.0.10
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
