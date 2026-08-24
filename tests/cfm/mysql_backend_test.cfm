@@ -75,6 +75,13 @@ SELECT name FROM mb_types WHERE born = <cfqueryparam value="1995-01-15" cfsqltyp
 </cfquery>
 <cfoutput>H[#q8.name#]</cfoutput>
 
+<!--- H2: timestamp param with ODBC string and DateTime object --->
+<cfquery name="q8b" datasource="mysql">
+SELECT name FROM mb_types WHERE created = <cfqueryparam value="{ts '2020-06-01 10:30:00'}" cfsqltype="cf_sql_timestamp">
+</cfquery>
+<cfoutput>H2[#q8b.name#]</cfoutput>
+
+
 <!--- I: transactions commit --->
 <cftransaction>
 <cfquery datasource="mysql">

@@ -62,3 +62,10 @@ SELECT <cfqueryparam value="30.9" cfsqltype="CF_SQL_INTEGER"> AS n
 SELECT id FROM cfq_param WHERE name = <cfqueryparam value="alice">
 </cfquery>
 <cfoutput>H[#q8.id#]</cfoutput>
+
+<!--- date / timestamp formatting --->
+<cfquery name="q9" datasource="webstrada">
+SELECT <cfqueryparam value="{ts '2026-08-24 23:08:57'}" cfsqltype="CF_SQL_TIMESTAMP"> AS ts_col
+</cfquery>
+<cfoutput>I[#q9.ts_col#]</cfoutput>
+

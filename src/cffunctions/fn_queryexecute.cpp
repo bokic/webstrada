@@ -71,6 +71,18 @@ std::string formatSqlLiteral(const cfvariant *v, bool isNull)
         }
         default: {
             std::string s = safe_to_std_string(*v);
+            double days = 0;
+            if (parseDateTimeStr(s.c_str(), days)) {
+                struct tm tmv = daysToTm(days);
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
+                              tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday,
+                              tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+                std::string out = "'";
+                out += buf;
+                out += "'";
+                return out;
+            }
             std::string out = "'";
             for (char c : s) {
                 if (c == '\'') out += "''";

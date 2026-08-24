@@ -145,8 +145,8 @@ std::string formatQueryParamValue(const cfvariant *v, const std::string &sqlType
     }
 
     if (isDateType(sqlType)) {
-        // A DateTime variant renders its canonical form; a string is validated
-        // like CF's ParseDateTime ("X is an invalid date or time string.").
+        // A DateTime variant or valid date string renders standard SQL format 'YYYY-MM-DD HH:MM:SS'
+        // or 'YYYY-MM-DD' / 'HH:MM:SS'. Throws CF's validation error if invalid.
         if (v->m_type == cfvariant::DateTime) {
             struct tm tmv = daysToTm(v->m_double);
             char buf[32];
@@ -162,13 +162,13 @@ std::string formatQueryParamValue(const cfvariant *v, const std::string &sqlType
         if (!parseDateTimeStr(s.c_str(), days)) {
             throw webstrada::exception((s + " is an invalid date or time string.").c_str());
         }
-        // Emit the validated text as a quoted literal (SQLite accepts ISO
-        // date strings; comparisons use the text form).
+        struct tm tmv = daysToTm(days);
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
+                      tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday,
+                      tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
         std::string out = "'";
-        for (char c : s) {
-            if (c == '\'') out += "''";
-            else out += c;
-        }
+        out += buf;
         out += "'";
         return out;
     }

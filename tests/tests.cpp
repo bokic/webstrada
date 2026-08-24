@@ -1863,6 +1863,19 @@ TEST_F(QueryDataTagTest, QueryParamDefaultCharType) {
     expectOutput(cfml, "1");
 }
 
+TEST_F(QueryDataTagTest, QueryParamTimestampFormatsSqlTimestamp) {
+    string cfml = "<cfquery name=\"q\" datasource=\"test\">SELECT <cfqueryparam value=\"{ts '2026-08-24 23:08:57'}\" cfsqltype=\"CF_SQL_TIMESTAMP\"> AS ts_col</cfquery>\n";
+    cfml += "<cfoutput>#q.ts_col#</cfoutput>";
+    expectOutput(cfml, "2026-08-24 23:08:57");
+}
+
+TEST_F(QueryDataTagTest, QueryParamTimestampDateTimeVariant) {
+    string cfml = "<cfset d = CreateDateTime(2026, 8, 24, 23, 8, 57)>\n";
+    cfml += "<cfquery name=\"q\" datasource=\"test\">SELECT <cfqueryparam value=\"#d#\" cfsqltype=\"CF_SQL_TIMESTAMP\"> AS ts_col</cfquery>\n";
+    cfml += "<cfoutput>#q.ts_col#</cfoutput>";
+    expectOutput(cfml, "2026-08-24 23:08:57");
+}
+
 TEST_F(QueryDataTagTest, QueryParamInvalidIntegerThrows) {
     bool threw = false;
     try {
