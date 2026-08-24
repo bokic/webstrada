@@ -88,23 +88,32 @@ std::string formatQueryParamValue(const cfvariant *v, const std::string &sqlType
         throw webstrada::exception(msg);
     }
 
-    // Numeric value of a cfvariant (int/long/float), used for the integer and
+    // Numeric value of a cfvariant (int/long/float/bool), used for the integer and
     // numeric type branches without re-parsing the string.
     auto doubleOf = [&](double &out) -> bool {
-        if (v->m_type == cfvariant::Number) { out = (double)v->m_int; return true; }
-        if (v->m_type == cfvariant::Long)   { out = (double)v->m_long; return true; }
-        if (v->m_type == cfvariant::Float)  { out = v->m_double; return true; }
+        if (v->m_type == cfvariant::Number)  { out = (double)v->m_int; return true; }
+        if (v->m_type == cfvariant::Long)    { out = (double)v->m_long; return true; }
+        if (v->m_type == cfvariant::Float)   { out = v->m_double; return true; }
+        if (v->m_type == cfvariant::Boolean) { out = v->m_bool ? 1.0 : 0.0; return true; }
         return false;
     };
 
     if (isIntegerType(sqlType)) {
         double d = 0;
         if (!doubleOf(d)) {
-            const char *p = s.c_str();
-            char *end = nullptr;
-            d = strtod(p, &end);
-            if (end == p || *end != '\0') {
-                throw webstrada::exception(("Invalid data " + s + " for CFSQLTYPE " + canonicalSqlType(sqlType) + ".").c_str());
+            webstrada::string low = s.c_str();
+            low.toLower();
+            if (low.equals("true") || low.equals("yes")) {
+                d = 1.0;
+            } else if (low.equals("false") || low.equals("no")) {
+                d = 0.0;
+            } else {
+                const char *p = s.c_str();
+                char *end = nullptr;
+                d = strtod(p, &end);
+                if (end == p || *end != '\0') {
+                    throw webstrada::exception(("Invalid data " + s + " for CFSQLTYPE " + canonicalSqlType(sqlType) + ".").c_str());
+                }
             }
         }
         if (std::isnan(d) || std::isinf(d)) {
@@ -117,11 +126,19 @@ std::string formatQueryParamValue(const cfvariant *v, const std::string &sqlType
     if (isNumericType(sqlType)) {
         double d = 0;
         if (!doubleOf(d)) {
-            const char *p = s.c_str();
-            char *end = nullptr;
-            d = strtod(p, &end);
-            if (end == p || *end != '\0') {
-                throw webstrada::exception(("Invalid data " + s + " for CFSQLTYPE " + canonicalSqlType(sqlType) + ".").c_str());
+            webstrada::string low = s.c_str();
+            low.toLower();
+            if (low.equals("true") || low.equals("yes")) {
+                d = 1.0;
+            } else if (low.equals("false") || low.equals("no")) {
+                d = 0.0;
+            } else {
+                const char *p = s.c_str();
+                char *end = nullptr;
+                d = strtod(p, &end);
+                if (end == p || *end != '\0') {
+                    throw webstrada::exception(("Invalid data " + s + " for CFSQLTYPE " + canonicalSqlType(sqlType) + ".").c_str());
+                }
             }
         }
         if (std::isnan(d) || std::isinf(d)) {

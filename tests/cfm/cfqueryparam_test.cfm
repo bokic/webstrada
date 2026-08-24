@@ -69,3 +69,17 @@ SELECT <cfqueryparam value="{ts '2026-08-24 23:08:57'}" cfsqltype="CF_SQL_TIMEST
 </cfquery>
 <cfoutput>I[#q9.ts_col#]</cfoutput>
 
+<!--- boolean values coerced to integer/numeric types (e.g. tinyint, smallint, integer, numeric) --->
+<cfset bTrue = true>
+<cfset bFalse = false>
+<cfquery name="q10" datasource="webstrada">
+SELECT
+  <cfqueryparam value="#bTrue#" cfsqltype="cf_sql_tinyint"> AS t1,
+  <cfqueryparam value="#bFalse#" cfsqltype="cf_sql_tinyint"> AS t0,
+  <cfqueryparam value="true" cfsqltype="cf_sql_integer"> AS i1,
+  <cfqueryparam value="false" cfsqltype="cf_sql_integer"> AS i0,
+  <cfqueryparam value="yes" cfsqltype="cf_sql_smallint"> AS s1,
+  <cfqueryparam value="no" cfsqltype="cf_sql_numeric"> AS n0
+</cfquery>
+<cfoutput>J[#q10.t1#|#q10.t0#|#q10.i1#|#q10.i0#|#q10.s1#|#q10.n0#]</cfoutput>
+

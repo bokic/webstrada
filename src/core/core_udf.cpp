@@ -423,7 +423,7 @@ cfvariant *cfml::cf_udf_coerce_arg(const cfvariant *val, const char *typeName, c
             return ret;
         }
     } else if (t.equals("struct")) {
-        if (val->m_type == cfvariant::Struct || val->m_type == cfvariant::Xml) {
+        if (val->m_type == cfvariant::Struct || val->m_type == cfvariant::Xml || val->m_type == cfvariant::Component) {
             auto *ret = new cfvariant(*val);
             cf_register_temp(ret);
             return ret;
@@ -521,12 +521,12 @@ cfvariant *cfml::cf_udf_coerce_return(cfvariant *val, const char *returnType, co
         cf_register_temp(ret);
         return ret;
     }
-    if ((t.equals("struct") || t.equals("xml")) && (val->m_type == cfvariant::Struct || val->m_type == cfvariant::Xml)) {
+    if ((t.equals("struct") || t.equals("xml")) && (val->m_type == cfvariant::Struct || val->m_type == cfvariant::Xml || val->m_type == cfvariant::Component)) {
         auto *ret = new cfvariant(*val);
         cf_register_temp(ret);
         return ret;
     }
-    if (t.equals("component") && val->m_type == cfvariant::Component) {
+    if ((t.equals("component") || t.equals("object")) && val->m_type == cfvariant::Component) {
         auto *ret = new cfvariant(*val);
         cf_register_temp(ret);
         return ret;

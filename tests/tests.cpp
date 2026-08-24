@@ -1876,6 +1876,20 @@ TEST_F(QueryDataTagTest, QueryParamTimestampDateTimeVariant) {
     expectOutput(cfml, "2026-08-24 23:08:57");
 }
 
+TEST_F(QueryDataTagTest, QueryParamBooleanCoercesToIntegerAndNumeric) {
+    string cfml = "<cfset bTrue = true>\n<cfset bFalse = false>\n";
+    cfml += "<cfquery name=\"q\" datasource=\"test\">\n";
+    cfml += "SELECT <cfqueryparam value=\"#bTrue#\" cfsqltype=\"cf_sql_tinyint\"> AS t1,\n";
+    cfml += "<cfqueryparam value=\"#bFalse#\" cfsqltype=\"cf_sql_tinyint\"> AS t0,\n";
+    cfml += "<cfqueryparam value=\"true\" cfsqltype=\"cf_sql_integer\"> AS i1,\n";
+    cfml += "<cfqueryparam value=\"false\" cfsqltype=\"cf_sql_integer\"> AS i0,\n";
+    cfml += "<cfqueryparam value=\"yes\" cfsqltype=\"cf_sql_smallint\"> AS s1,\n";
+    cfml += "<cfqueryparam value=\"no\" cfsqltype=\"cf_sql_numeric\"> AS n0\n";
+    cfml += "</cfquery>\n";
+    cfml += "<cfoutput>#q.t1#|#q.t0#|#q.i1#|#q.i0#|#q.s1#|#q.n0#</cfoutput>";
+    expectOutput(cfml, "1|0|1|0|1|0");
+}
+
 TEST_F(QueryDataTagTest, QueryParamInvalidIntegerThrows) {
     bool threw = false;
     try {
@@ -13775,6 +13789,17 @@ TEST(UdfMetaTest, DeserializeNullIsEmpty) {
     EXPECT_EQ(out.returnType.isEmpty(), true);
 }
 
+TEST(UdfTypeCoerceTest, ComponentAcceptedAsStruct) {
+    cfml::VariantCleanupGuard guard;
+    cfvariant comp(cfvariant::Component);
+    cfvariant *argRes = cfml::cf_udf_coerce_arg(&comp, "struct", "myArg", "myFunc");
+    ASSERT_TRUE(argRes != nullptr);
+    EXPECT_EQ(argRes->m_type, cfvariant::Component);
+
+    cfvariant *retRes = cfml::cf_udf_coerce_return(&comp, "struct", "myFunc");
+    ASSERT_TRUE(retRes != nullptr);
+    EXPECT_EQ(retRes->m_type, cfvariant::Component);
+}
 
 TEST(WriteLogTest, WritesCsvRowAndHeader) {
     char tmpl[] = "/tmp/WebStrada_log_test_XXXXXX";
