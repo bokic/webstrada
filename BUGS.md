@@ -170,6 +170,100 @@ file-read paths; store the charset on the `cfvariant::File` handle so
 `FileReadLine` decodes. FORM/URL/COOKIE and `<cfhttp>` use the same helper once
 a request charset is honored.
 
-## JIT `<cfset>` assignment of a two-level member chain directly on a call result yields an unsupported type
+## A SQLite-installed MangoBlog: date functions are ported, but two other queries still failMangoBlog's setup wizard (`admin/setup/setup.cfm`) offers **SQLite** as a
+database type and ships `sqlite.sql` (a SQLite port of `mysql.sql`), so choosing
+SQLite runs `setupDatabase()`'s `<cfinclude template="sqlite.sql">` and creates
+the 19-table blog schema as a `DNS_<name>.sqlite` file. The blog's
+`PostsGateway` date queries were then ported from the MySQL/MSSQL
+`YEAR()`/`MONTH()`/`DAY()` functions to SQLite's `strftime()` wrapped in
+`CAST(... AS INTEGER)` (all 27 usages in `getByDate`/`getCountByDate`/
+`getActiveYears`/`getActiveMonths`/`getActiveDays`). SQLite never equates TEXT
+with INTEGER, so the CAST is required both for `=` and for `LIKE` on the
+zero-padded `%m`/`%d` results (`'08' LIKE 8` is false). The port is deliberate:
+`strftime` does not exist on MySQL/MSSQL, which therefore now break on these
+queries (accepted tradeoff, the fixture is SQLite-targeted). Guarded by
+`CfincludeTest.MangoBlogSqliteSetupSchemaRuns` +
+`MangoBlogSqliteStrftimeCastDateQueries`.
 
-`<cfset x = fn().a>` (one level below the call result) works and `x` is a proper struct, but `<cfset x = fn().a.b>` (two levels) produces a broken value: `IsStruct(x)` is `NO` and outputting it fails with "Cannot output variable 'x' of unsupported type". Reproduces with any function whose result is a struct, e.g. `DeserializeJSON('{"a":{"b":"v"}}')` — the interpreter `#...#` path handles the same expression correctly (`#fn().a.b#` → `v`), so this is a JIT codegen bug in chained member access on a call expression. Workaround: bind the call result to a variable first (`<cfset j = fn()><cfset x = j.a.b>`), which is why the admin-extension tests do that. Found while writing `tests/cfm/admin_extension_test.cfm` (the `__configGet().datasources.appdb` pattern). Not fixed yet; needs a JIT chain-codegen investigation.
+**`getActiveYears` / `getActiveMonths` / `getActiveDays` now work on SQLite.**
+Three remaining SQLite/engine issues block the rest of the blog:
+
+- **Malformed JOIN chain in `getAll` / `getByDate` / `getByIds`**
+  (`PostsGateway.cfc` lines 44 / 226 / 570): `... INNER JOIN post ON entry.id =
+  post.id ON post_category.post_id = post.id LEFT OUTER JOIN ...` — the second
+  `ON` has no preceding join operator, which SQLite rejects with `near "ON":
+  syntax error` (MySQL tolerates the chain). This blocks the blog listing and
+  the date-archive post list on SQLite. Fix when picked up: rewrite the FROM to
+  valid join syntax, e.g. `category RIGHT OUTER JOIN post_category ON
+  category.id = post_category.category_id RIGHT OUTER JOIN post ON
+  post_category.post_id = post.id INNER JOIN entry ON entry.id = post.id INNER
+  JOIN author ON author.id = entry.author_id LEFT OUTER JOIN entry_custom_field
+  ON entry.id = entry_custom_field.entry_id`.
+- **`getCountByDate` returns a query column through `returntype="numeric"`**
+  and fails "The value returned from the getCountByDate function is not of type
+  numeric." This is an engine-wide behavior (not SQLite-specific): a `q.col`
+  query-column reference is materialized as an Array-typed lazy cell
+  (`cfvariant.cpp` `m_queryColOwner`/`m_queryColIndex`, toString() reads the
+  underlying cell), so `IsNumeric(q.col)` is `NO` and typed function returns
+  reject it, even when the cell is an integer. Any CFML that passes a raw query
+  column into a numeric-typed `returntype`/`cfargument` hits this. Fix when
+  picked up: make `IsNumeric`/numeric coercion resolve query-column
+  references to their cell value, or materialize `q.col` to the cell's variant
+  type instead of a lazy Array ref.
+- **`<cflocation>` inside `OnApplicationStart()` does not abort the request.**
+  MangoBlog's OnApplicationStart catches `MissingConfigFile` (no config.cfm) and
+  does `<cflocation URL="admin/setup/setup.cfm">`; on WebStrada the redirect
+  header is emitted but `onRequestStart()` still executes, dying with
+  "Element BLOGFACADE is undefined in APPLICATION". Fix when picked up:
+  cflocation during any Application.cfc event should terminate further event
+  processing for that request (and return the 302).
+- **`ExpandPath()` resolves relative paths against the server process CWD
+  instead of the base template's directory.** MangoBlog's setup wizard computes
+  `path = ExpandPath("../../")` from `admin/setup/setup.cfm`; on WebStrada this
+  produced `/home/boris/` (the daemon process CWD chain) instead of the site
+  root, writing `config.cfm` outside the webroot so `Mango.init()` never finds
+  it. Adobe CF expands against the directory of the currently executing
+  template. Related symptom seen earlier in the same flow: the SQLite
+  datasource file `DNS_<name>.sqlite` is created under `bin/` (process cwd)
+  rather than any deterministic location. Fix when picked up: make ExpandPath
+  (and default datasource-file resolution) use the executing template's
+  directory / webroot like CF does.
+- **`GetDirectoryFromPath()` of a directory path returns the same directory
+  instead of its parent.** Adobe CF semantics: `GetDirectoryFromPath("/a/b/")`
+  → `/a/`. On WebStrada it returns `/a/b/` unchanged, so chained calls never
+  ascend (`d2 == d1`, verified with admin/setup/_pathtest.cfm). MangoBlog's
+  setup wizard workaround uses `ListDeleteAt` instead. Fix when picked up:
+  strip the last non-empty segment when the input ends with a separator.
+- **`<cffile action="write">` (and likely the other file actions) do not
+  recognize absolute paths** — an absolute `file="/home/x/y"` is treated as
+  CWD-relative and creates `/home/boris/projects/webstrada/home/boris/...`
+  (observed writing MangoBlog's config.cfm via PreferencesFile.flush()).
+  Workaround in the dev setup: run the daemon with CWD = site root. Fix when
+  picked up: detect leading `/` (and drive-letter/UNC forms) and skip CWD
+  prefixing in the file tag path resolution.
+
+## Interpreter `#...#` expressions mis-parse member chains with spaces around the dots
+
+Adobe CF accepts whitespace around `.` in member chains everywhere; WebStrada's
+JIT paths (`<cfset>`, `<cfif>`, tag attributes) handle it, but the interpreter
+path used for `#...#` output expressions does not. The compiled template embeds
+the raw expression text (LLVM IR shows a string constant like `"s . a"`) and
+hands it to the runtime expression evaluator (`core_interp.cpp`
+`applyMemberChain`, which throws "Invalid member access in expression: ." when
+a `.` segment trims to empty). Observed with
+`<cfset s={a={b={c="w"}}}><cfset k="a">`:
+
+- `#s . a . b . c #` — Adobe prints `w`; we throw `[Expression] Element 'C' is
+  undefined` (or emit nothing, depending on surrounding output).
+- `#s[k]. b . c #` (space after a bracket hop) — Adobe prints `w`; we print `w`
+  followed by a leaked literal `</cfoutput>` (the chain scanner overruns into
+  the closing tag text) or throw.
+- `#s.a.b.c#` (no spaces) works on both.
+
+Repro/test file: `tests/cfm/member_chain_whitespace_test.cfm` (kept red until
+fixed; Adobe reference output is `A:w B:w C:w`). Fix when picked up: make the
+runtime expression evaluator's dot-segment scanner skip whitespace around `.`
+(the same normalization the JIT `splitMemberPath` helper in
+`src/codegen/codegen_expr.cpp` applies), or have codegen normalize spaced
+member names before embedding the expression text. Found while writing the
+unit test for the chained-member-access fix (2026-08-24).

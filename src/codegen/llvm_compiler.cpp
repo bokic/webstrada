@@ -861,7 +861,9 @@ template_fn llvm_codegen::compile(const string &pathname, bool print_ast)
     template_fn result = compile_parsed(parse, pathname.constData(), print_ast);
     auto t1 = std::chrono::steady_clock::now();
     long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-    printf("[WebStrada] compiled %s (%lldms)\n", pathname.constData(), ms);
+    // stderr: stdout carries the template's response payload (verify_with_coldfusion.py
+    // compares it byte-for-byte against Adobe CF).
+    fprintf(stderr, "[WebStrada] compiled %s (%lldms)\n", pathname.constData(), ms);
     return result;
 }
 
@@ -1655,7 +1657,7 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
     m_engines.push_back(std::move(engine));
     auto t1 = std::chrono::steady_clock::now();
     long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-    printf("[WebStrada] compiled %s (%lldms)\n", pathname.constData(), ms);
+    fprintf(stderr, "[WebStrada] compiled %s (%lldms)\n", pathname.constData(), ms);
     return info;
 }
 

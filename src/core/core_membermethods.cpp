@@ -304,7 +304,7 @@ static const char *variantTypeName(cfvariant::cfvariantType type)
 // holds the already-evaluated call arguments (without the receiver).
 cfvariant invokeMemberMethod(
     cfvariant &base, const string &methodName,
-    std::vector<cfvariant> &args,
+    const cfvariant **args, int arg_count,
     string &out, void *cgi, void *server, void *cookie, void *application,
     void *session, void *url, void *form, void *variables)
 {
@@ -318,17 +318,12 @@ cfvariant invokeMemberMethod(
         if (base.m_struct) {
             auto it = base.m_struct->find(upper);
             if (it != base.m_struct->end() && it->second.m_type == cfvariant::Function) {
-                std::vector<const cfvariant*> argPtrs;
-                for (auto &a : args) argPtrs.push_back(&a);
-                cfvariant *res = cfml::cf_udf_invoke(&it->second, argPtrs.data(), static_cast<int>(argPtrs.size()),
+                cfvariant *res = cfml::cf_udf_invoke(&it->second, args, arg_count,
                                                      out, cgi, server, cookie, application, session, url, form, variables);
                 return *res;
             }
         }
-        std::vector<const cfvariant*> argPtrs;
-        for (auto &a : args) argPtrs.push_back(&a);
-        cfvariant *res = cfml::cf_component_invoke(&base, methodName.constData(), argPtrs.data(),
-                                                   static_cast<int>(argPtrs.size()),
+        cfvariant *res = cfml::cf_component_invoke(&base, methodName.constData(), args, arg_count,
                                                    out, cgi, server, cookie, application, session, url, form);
         return *res;
     }
@@ -341,9 +336,7 @@ cfvariant invokeMemberMethod(
         if (it != base.m_struct->end()) {
             cfvariant &member = it->second;
             if (member.m_type == cfvariant::Function && member.m_udf && member.m_udf->fn) {
-                std::vector<const cfvariant*> argPtrs;
-                for (auto &a : args) argPtrs.push_back(&a);
-                cfvariant *res = cfml::cf_udf_invoke(&member, argPtrs.data(), static_cast<int>(argPtrs.size()),
+                cfvariant *res = cfml::cf_udf_invoke(&member, args, arg_count,
                                                      out, cgi, server, cookie, application, session, url, form, variables);
                 return *res;
             }
@@ -373,9 +366,9 @@ cfvariant invokeMemberMethod(
     //    dateAdd(part, n, date), datePart(part, date), dateConvert(type, date)).
     //    `push` is special: CF's arr.push(x) returns the array's NEW LENGTH
     //    (verified on the RDS host), while ArrayAppend/append return YES.
-    if (upper.equals("PUSH") && base.m_type == cfvariant::Array && args.size() == 1) {
+    if (upper.equals("PUSH") && base.m_type == cfvariant::Array && arg_count == 1) {
         if (base.m_isXmlNodeList) throwXmlNodeListUnsupported("ArrayPush");
-        base.insert(*args.begin());
+        base.insert(*args[0]);
         return cfvariant(static_cast<int>(base.m_array->size()));
     }
     const char *fnName = mapMemberMethod(base.m_type, upper);
@@ -386,19 +379,19 @@ cfvariant invokeMemberMethod(
             throw webstrada::exception(string("Function ") + fnUpper + " is not implemented");
         }
         std::vector<const cfvariant*> callArgs;
-        if (upper.equals("DATEDIFF") && args.size() == 2) {
-            callArgs.push_back(&args[0]); callArgs.push_back(&base); callArgs.push_back(&args[1]);
-        } else if (upper.equals("ADD") && args.size() == 2) {
-            callArgs.push_back(&args[0]); callArgs.push_back(&args[1]); callArgs.push_back(&base);
-        } else if ((upper.equals("DATEPART") || upper.equals("CONVERT")) && args.size() == 1) {
-            callArgs.push_back(&args[0]); callArgs.push_back(&base);
-        } else if ((upper.equals("FIND") || upper.equals("FINDNOCASE")) && args.size() == 1 &&
+        if (upper.equals("DATEDIFF") && arg_count == 2) {
+            callArgs.push_back(args[0]); callArgs.push_back(&base); callArgs.push_back(args[1]);
+        } else if (upper.equals("ADD") && arg_count == 2) {
+            callArgs.push_back(args[0]); callArgs.push_back(args[1]); callArgs.push_back(&base);
+        } else if ((upper.equals("DATEPART") || upper.equals("CONVERT")) && arg_count == 1) {
+            callArgs.push_back(args[0]); callArgs.push_back(&base);
+        } else if ((upper.equals("FIND") || upper.equals("FINDNOCASE")) && arg_count == 1 &&
                    base.m_type != cfvariant::Array && base.m_type != cfvariant::Struct &&
                    base.m_type != cfvariant::Query && base.m_type != cfvariant::Xml) {
-            callArgs.push_back(&args[0]); callArgs.push_back(&base);
+            callArgs.push_back(args[0]); callArgs.push_back(&base);
         } else {
             callArgs.push_back(&base);
-            for (auto &a : args) callArgs.push_back(&a);
+            for (int i = 0; i < arg_count; i++) callArgs.push_back(args[i]);
         }
         cfvariant *res = cfml::cfvariant_call_function(
             out, cgi, server, cookie, application, session, url, form, variables,
@@ -423,11 +416,7 @@ cfvariant *cfml::cfvariant_member_method(
     void *session, void *url, void *form, void *variables)
 {
     if (!base) throw webstrada::exception("Member method called on an undefined value");
-    std::vector<cfvariant> argVals;
-    for (int i = 0; i < arg_count; i++) {
-        argVals.emplace_back(*args[i]);
-    }
-    cfvariant res = invokeMemberMethod(*base, string(name), argVals,
+    cfvariant res = invokeMemberMethod(*base, string(name), args, arg_count,
         out, cgi, server, cookie, application, session, url, form, variables);
     auto *ret = new cfvariant(res);
     return tempRet(ret);

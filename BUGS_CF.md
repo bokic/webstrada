@@ -261,3 +261,17 @@ charsetDetectionMinConfidence`), so ICU4C 78 detects a BOM-less UTF-16LE source
 (confidence 100) where the RDS host does not. The detection-dependent fixture was
 therefore dropped from the byte-verified `input_encoding_*` suite and is pinned
 by the `TemplateEncodingTest.Utf16WithoutBomDetectedByIcu` unit test instead.
+
+## CF 2025 RDS host: `cffunction` without `output` defaults to `true` even with a `returnType`
+
+Contrary to Adobe's documented rule ("if a `returnType` is specified and `output` is
+omitted, `output` defaults to `false`"), the CF 2025 server at `192.168.100.10`
+defaults `output` to `true` regardless of `returnType` — verified both for UDFs in a
+`.cfm` page and for CFC methods (`returntype="void"`/`"string"`). Evidence (from the
+`ws_*` probes, since cleaned up): a function with `returntype="void"` and no `output`
+emitted its body whitespace (`[`<newline>`WS-VOID-BODY`<newline>`]`) and let a
+`cfinclude`'d template's text reach the client, exactly like an explicit
+`output="true"`. The `output="false"` semantics themselves match the docs: the
+function's direct whitespace AND `cfinclude` output are both discarded. Net effect
+for engine parity: default `output` must be treated as `true` for every function,
+and `output="false"` must suppress `cfinclude` output too.

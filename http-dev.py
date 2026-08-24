@@ -36,6 +36,11 @@ BACKLOG = 100
 
 WEBROOT = os.environ.get("WEBROOT") or APP_ROOT
 
+# URL path prefixes (e.g. "/" or "/app,/admin") that fall back to the SPA shell
+# (<webroot>/index.html) for extension-less GETs that resolve to no file.
+# Empty by default, so the stock behavior is unchanged.
+SPA_FALLBACK_PREFIXES = []
+
 # Built Angular admin panel (webstrada-admin), served at /admin/ with an SPA
 # fallback to index.html. Build it with `--base-href=/admin/`:
 #   (cd admin && npm run build -- --base-href=/admin/)
@@ -122,6 +127,16 @@ def fcgi_request(params, body):
         return stdout
     finally:
         sock.close()
+
+
+def _spa_fallback_match(rel):
+    """True when rel is covered by one of --spa-fallback's prefixes."""
+    for prefix in SPA_FALLBACK_PREFIXES:
+        if prefix == "/":
+            return True
+        if rel == prefix or rel.startswith(prefix.rstrip("/") + "/"):
+            return True
+    return False
 
 
 def parse_fcgi_response(data):
@@ -310,12 +325,11 @@ class DevHandler(BaseHTTPRequestHandler):
         if candidate is None:
             return self._send_error(403, "Forbidden")
 
-        # The built Angular admin panel is served from its dist directory
-        # (ADMIN_DIST) at /admin/, with a fallback to index.html so SPA routes
-        # (e.g. a browser refresh on /admin/datasources) work. CFML requests
-        # under /admin/ (the admin/api/*.cfm endpoints) still go to the engine
-        # and resolve against APP_ROOT (they live in the image, not the webroot).
-        if rel == "/admin" or rel.startswith("/admin/"):
+        # The engine's own Angular admin panel lives under APP_ROOT/admin and is
+        # only special-cased when the default webroot (the repo itself) is used;
+        # a custom webroot may have its own /admin directory (e.g. a deployed
+        # app) that must not be hijacked.
+        if (rel == "/admin" or rel.startswith("/admin/")) and os.path.abspath(WEBROOT) == APP_ROOT:
             if os.path.splitext(candidate)[1].lower() in (".cfm", ".cfc"):
                 norm = os.path.normpath("/admin" + rel[len("/admin"):])
                 if norm.startswith("/admin/"):
@@ -336,6 +350,16 @@ class DevHandler(BaseHTTPRequestHandler):
         ext = os.path.splitext(candidate)[1].lower()
         if ext in (".cfm", ".cfc"):
             return self._serve_cfml(candidate, rel, query)
+        if not os.path.isfile(candidate):
+            # Opt-in SPA fallback: extension-less paths that don't resolve to a
+            # file are served the SPA shell so client-side routes survive a
+            # refresh (--spa-fallback "/", for example). Real files always win,
+            # and anything with an extension 404s like a static server would.
+            if self.command == "GET" and ext == "" and _spa_fallback_match(rel):
+                shell = os.path.join(WEBROOT, "index.html")
+                if os.path.isfile(shell):
+                    return self._serve_static(shell)
+            return self._send_error(404, "Not Found")
         return self._serve_static(candidate)
 
     def _list_dir(self, fs_path, rel):
@@ -481,7 +505,15 @@ def main():
     ap.add_argument("--webroot", default=None,
                     help="directory to serve as the site root "
                          "(default: WEBROOT env var, else this script's directory)")
+    ap.add_argument("--spa-fallback", default="",
+                    help="comma-separated URL prefixes (e.g. '/' or '/app,/admin') that "
+                         "serve <webroot>/index.html for extension-less paths without a file; "
+                         "empty by default")
     args = ap.parse_args()
+
+    global SPA_FALLBACK_PREFIXES
+    if args.spa_fallback:
+        SPA_FALLBACK_PREFIXES = [p.strip() for p in args.spa_fallback.split(",") if p.strip()]
 
     if args.webroot:
         WEBROOT = os.path.abspath(args.webroot)

@@ -894,7 +894,7 @@ cfvariant *cfml::cfvariant_bare_identifier(
 static void maybeMemoizeVarSlot(VarFastSlot *slot, const cfvariant *v,
                                 const cfvariant *variables, const char *name)
 {
-    if (!slot || !v || !variables) return;
+    if (!slot || !v || !variables || !g_udfCtx.empty()) return;
     if (variables->m_type != cfvariant::Struct) return;
     StructData *sd = variables->m_structData;
     if (!sd) return;
@@ -924,12 +924,12 @@ const cfvariant *cfml::cfvariant_get_var_fast(
 {
     // Fast path: the memoized pointer is a direct variables-scope member whose
     // node is still alive (generation matches) and the value is defined. Inside
-    // a <cfloop query> the query scope shadows the variables scope for
-    // unqualified names, so the cache is bypassed there (verified behavior).
+    // a <cfloop query> or UDF/method call context the query/local scopes shadow
+    // the variables scope for unqualified names, so the cache is bypassed there.
     if (slot) {
         StructData *sd = variables && variables->m_type == cfvariant::Struct
                              ? variables->m_structData : nullptr;
-        if (g_queryScopes.empty() && slot->ptr && sd &&
+        if (g_queryScopes.empty() && g_udfCtx.empty() && slot->ptr && sd &&
             slot->sd == sd && slot->gen == sd->generation &&
             slot->ptr->m_type != cfvariant::NotSet) {
             return slot->ptr;
@@ -952,7 +952,7 @@ cfvariant *cfml::cfvariant_bare_identifier_fast(
     if (slot) {
         StructData *sd = variables && variables->m_type == cfvariant::Struct
                              ? variables->m_structData : nullptr;
-        if (g_queryScopes.empty() && slot->ptr && sd &&
+        if (g_queryScopes.empty() && g_udfCtx.empty() && slot->ptr && sd &&
             slot->sd == sd && slot->gen == sd->generation &&
             slot->ptr->m_type != cfvariant::NotSet) {
             return const_cast<cfvariant*>(slot->ptr);

@@ -66,7 +66,7 @@ webstrada::cfvariant evaluateExpr(webstrada::string &out, const webstrada::strin
     bool parseBinary = true);
 webstrada::cfvariant invokeMemberMethod(
     webstrada::cfvariant &base, const webstrada::string &methodName,
-    std::vector<webstrada::cfvariant> &args,
+    const webstrada::cfvariant **args, int arg_count,
     webstrada::string &out, void *cgi, void *server, void *cookie, void *application,
     void *session, void *url, void *form, void *variables);
 webstrada::cfvariant *resolveQueryMember(webstrada::cfvariant *query, const char *key);

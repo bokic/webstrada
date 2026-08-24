@@ -156,8 +156,43 @@ static bool componentResolvePath(const std::string &path, std::string &resolved)
     for (auto &c : p) {
         if (c == '\\') c = '/';
     }
-    // Check Application.cfc this.mappings first
-    if (cfml::app_mappings_resolve(p, resolved)) {
+
+    auto tryMapping = [](const std::string &inPath, std::string &outRes) -> bool {
+        if (cfml::app_mappings_resolve(inPath, outRes)) {
+            // If the resolved path doesn't end with .cfc / .cfml, check if appending .cfc exists or default to .cfc
+            if (!(outRes.size() >= 4 && outRes.compare(outRes.size() - 4, 4, ".cfc") == 0) &&
+                !(outRes.size() >= 5 && outRes.compare(outRes.size() - 5, 5, ".cfml") == 0)) {
+                std::string withCfc = outRes + ".cfc";
+                struct stat st;
+                if (stat(withCfc.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+                    outRes = withCfc;
+                    return true;
+                }
+                std::string withCfml = outRes + ".cfml";
+                if (stat(withCfml.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+                    outRes = withCfml;
+                    return true;
+                }
+            }
+            return true;
+        }
+        return false;
+    };
+
+    // If it's a dotted path without slashes (e.g. org.mangoblog.utilities.Preferences),
+    // convert dots to slashes for mapping lookup (e.g. org/mangoblog/utilities/Preferences).
+    if (p.find('/') == std::string::npos && p.find('.') != std::string::npos) {
+        std::string slashPath = p;
+        for (auto &c : slashPath) {
+            if (c == '.') c = '/';
+        }
+        if (tryMapping(slashPath, resolved)) {
+            return true;
+        }
+    }
+
+    // Check Application.cfc this.mappings directly
+    if (tryMapping(p, resolved)) {
         return true;
     }
 

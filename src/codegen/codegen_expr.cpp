@@ -107,6 +107,49 @@ static bool isSimpleNameChain(const ExprAST *n) {
     return false;
 }
 
+// mergeObjectMembers glues `Variable(k2) ObjectMember(.) Variable(k3)` into one
+// Variable("k2.k3") token even mid-chain (after an ArrayIndex hop). A Variable
+// name containing '.' can therefore only come from such merging — CFML
+// identifiers cannot contain dots — and must be walked as separate member hops,
+// never used as a single literal struct key.
+static std::vector<std::string> splitMemberPath(const std::string &name)
+{
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : name) {
+        if (c == '.') {
+            while (!cur.empty() && isspace(static_cast<unsigned char>(cur.back()))) cur.pop_back();
+            size_t s = 0;
+            while (s < cur.size() && isspace(static_cast<unsigned char>(cur[s]))) s++;
+            parts.push_back(cur.substr(s));
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    while (!cur.empty() && isspace(static_cast<unsigned char>(cur.back()))) cur.pop_back();
+    size_t s = 0;
+    while (s < cur.size() && isspace(static_cast<unsigned char>(cur[s]))) s++;
+    parts.push_back(cur.substr(s));
+    return parts;
+}
+
+// Emits chained cfvariant_index calls for every member-name segment in `parts`
+// starting from `lhs` and returns the final slot pointer.
+static llvm::Value *emitMemberWalk(llvm::Module *module, llvm::IRBuilder<> &builder, llvm::Value *lhs,
+                                   const std::vector<std::string> &parts)
+{
+    auto *fIdx = module->getFunction("cfvariant_index");
+    if (!fIdx) fIdx = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_index", module);
+    for (const auto &seg : parts) {
+        auto *fStr = module->getFunction("cfvariant_create_string");
+        if (!fStr) fStr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_create_string", module);
+        auto *keyVal = emitCall(builder, fStr, {builder.CreateGlobalString(seg, "", 0, module, true)});
+        lhs = emitCall(builder, fIdx, {lhs, keyVal});
+    }
+    return lhs;
+}
+
 static bool isCfParamTypeName(const std::string &s)
 {
     std::string t;
@@ -1317,6 +1360,15 @@ llvm::Value *CompileExprAST(
         auto *lhs = CompileExprAST(module, builder, function, node->left, cgi, server, cookie, application, session, url, form, variables, cfm_text);
 
         if (op == ".") {
+            // A dotted member name on the right ("k2.k3") comes from
+            // mergeObjectMembers gluing a chain whose head was an index access
+            // (s1[key].k2.k3): emit one hop per segment instead of a single
+            // literal-key lookup that always misses (BUGS.md "chained member
+            // access after an index hop").
+            if (node->right->type == ExprAST::Variable &&
+                node->right->string_val.find('.') != std::string::npos) {
+                return emitMemberWalk(module, builder, lhs, splitMemberPath(node->right->string_val));
+            }
             llvm::Value *keyVal = nullptr;
             if (node->right->type == ExprAST::Variable) {
                 auto *fStr = module->getFunction("cfvariant_create_string");
@@ -1490,6 +1542,30 @@ llvm::Value *CompileExprAST(
         }
         else if (node->left->type == ExprAST::BinaryOp && node->left->op_val == ".") {
             auto *arr = CompileExprAST(module, builder, function, node->left->left, cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            // A glued dotted member name in the assignment target (e.g.
+            // s1[key].k2.k3 = v) must walk the intermediate hops with
+            // cfvariant_index and only index_assign the final one (see
+            // splitMemberPath).
+            if (node->left->right->type == ExprAST::Variable &&
+                node->left->right->string_val.find('.') != std::string::npos) {
+                std::vector<std::string> parts = splitMemberPath(node->left->right->string_val);
+                std::vector<std::string> head(parts.begin(), parts.end() - 1);
+                llvm::Value *base = head.empty() ? arr : emitMemberWalk(module, builder, arr, head);
+                const std::string &lastSeg = parts.back();
+                auto *fStr = module->getFunction("cfvariant_create_string");
+                if (!fStr) fStr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_create_string", module);
+                auto *keyVal = emitCall(builder, fStr, {getPtrGlobalString(lastSeg)});
+                auto *rhs2 = CompileExprAST(module, builder, function, node->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
+                auto *fAssign = module->getFunction("cfvariant_index_assign");
+                if (!fAssign) fAssign = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_index_assign", module);
+                if (node->op_val == "=") {
+                    return emitCall(builder, fAssign, {base, keyVal, rhs2});
+                }
+                auto *fIdx = module->getFunction("cfvariant_index");
+                if (!fIdx) fIdx = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_index", module);
+                auto *cur = emitCall(builder, fIdx, {base, keyVal});
+                return emitCall(builder, fAssign, {base, keyVal, compoundOp(cur, rhs2)});
+            }
             llvm::Value *keyVal = nullptr;
             if (node->left->right->type == ExprAST::Variable) {
                 auto *fStr = module->getFunction("cfvariant_create_string");

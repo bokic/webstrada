@@ -53,7 +53,15 @@ public:
                    static_cast<long long>(maxrows), sql.c_str());
             fflush(stdout);
         }
-        return m_inner->execute(sql, maxrows);
+        try {
+            return m_inner->execute(sql, maxrows);
+        } catch (const webstrada::exception &ex) {
+            logError(ex, sql);
+            throw;
+        } catch (const std::exception &ex) {
+            logError(ex.what(), sql);
+            throw;
+        }
     }
 
     void begin() override { logOp("begin"); m_inner->begin(); }
@@ -86,7 +94,15 @@ public:
                    m_backend.c_str(), m_dsn.c_str(), proc.c_str(), params.size());
             fflush(stdout);
         }
-        return m_inner->storedProc(proc, params);
+        try {
+            return m_inner->storedProc(proc, params);
+        } catch (const webstrada::exception &ex) {
+            logError(ex, std::string("storedProc '") + proc + "'");
+            throw;
+        } catch (const std::exception &ex) {
+            logError(ex.what(), std::string("storedProc '") + proc + "'");
+            throw;
+        }
     }
 
 private:
@@ -100,6 +116,30 @@ private:
             printf("[db] %s %s dsn=%s\n", m_backend.c_str(), op.c_str(), m_dsn.c_str());
             fflush(stdout);
         }
+    }
+
+    // Log a failed database operation to stdout (with the statement that caused
+    // it when available) so a request's errors are visible in the terminal next
+    // to the [db] execute line, then rethrow the original exception unchanged
+    // (all backends raise a "Database"-type webstrada::exception that the JIT
+    // maps to a catchable CFML `database` exception). Gated by the same
+    // enableQueryLogging flag as the statement logging.
+    void logError(const webstrada::exception &ex, const std::string &what)
+    {
+        if (!config::enableQueryLogging) return;
+        printf("[db] %s ERROR dsn=%s\n  op=%s\n  message=%s\n  detail=%s\n",
+               m_backend.c_str(), m_dsn.c_str(), what.c_str(),
+               ex.m_message.constData(),
+               ex.m_detail.constData());
+        fflush(stdout);
+    }
+
+    void logError(const char *whatMsg, const std::string &what)
+    {
+        if (!config::enableQueryLogging) return;
+        printf("[db] %s ERROR dsn=%s\n  op=%s\n  exception=%s\n",
+               m_backend.c_str(), m_dsn.c_str(), what.c_str(), whatMsg);
+        fflush(stdout);
     }
 };
 

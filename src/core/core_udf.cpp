@@ -220,10 +220,10 @@ webstrada::cfvariant *udfVariablesScope(webstrada::cfvariant *passedVariables)
     // Inside a plain (non-component) UDF, `variables` (the body's passed
     // argument, which aliases the function local scope) is CF's CALLING page's
     // variables scope — the captured parent scope (was BUGS.md "UDF:
-    // variables.foo"). A component method's `variables` is the instance scope,
-    // which is what was passed.
+    // variables.foo"). In a component method, `variables` is the instance's
+    // variables scope (which is what was passed as passedVariables).
     for (auto it = g_udfCtx.rbegin(); it != g_udfCtx.rend(); ++it) {
-        if (it->parentScope && (passedVariables == it->localScope || it->component)) {
+        if (it->parentScope && passedVariables == it->localScope && !it->component) {
             return it->parentScope;
         }
     }

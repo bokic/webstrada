@@ -954,10 +954,12 @@ static cfvariant applyMemberChain(const cfvariant &base, cfvariant *slot,
                 for (const auto &a : fc.args) {
                     args.push_back(evaluateExpr(out, a, cgi, server, cookie, application, session, url, form, variables));
                 }
+                std::vector<const cfvariant*> argPtrs;
+                for (const auto &a : args) argPtrs.push_back(&a);
                 // Dispatch on the live slot when one exists so a mutating method
                 // writes through to the caller's variable; otherwise the snapshot.
                 cfvariant *recv = cur ? cur : &owned;
-                cfvariant result = invokeMemberMethod(*recv, key, args,
+                cfvariant result = invokeMemberMethod(*recv, key, argPtrs.data(), static_cast<int>(argPtrs.size()),
                     out, cgi, server, cookie, application, session, url, form, variables);
                 owned = result;
                 cur = nullptr;
@@ -1973,11 +1975,13 @@ cfvariant evaluateExpr(string &out, const string &expr,
             for (const auto &a : call.args) {
                 args.push_back(evaluateExpr(out, a, cgi, server, cookie, application, session, url, form, variables));
             }
+            std::vector<const cfvariant*> argPtrs;
+            for (const auto &a : args) argPtrs.push_back(&a);
             if (slot) {
-                return invokeMemberMethod(*slot, methodName, args,
+                return invokeMemberMethod(*slot, methodName, argPtrs.data(), static_cast<int>(argPtrs.size()),
                     out, cgi, server, cookie, application, session, url, form, variables);
             }
-            return invokeMemberMethod(base, methodName, args,
+            return invokeMemberMethod(base, methodName, argPtrs.data(), static_cast<int>(argPtrs.size()),
                 out, cgi, server, cookie, application, session, url, form, variables);
         }
 

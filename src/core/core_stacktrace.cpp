@@ -92,6 +92,23 @@ void cf_stack_capture_on_exception(void *exn)
     const webstrada::exception *e = static_cast<const webstrada::exception*>(obj);
     if (!e || !e->m_stackTrace.empty()) return;
     const_cast<webstrada::exception*>(e)->m_stackTrace = g_callStack;
+
+    // Log the exception to stderr / dev server log. Never stdout: stdout
+    // carries the template's response payload, and verify_with_coldfusion.py
+    // compares it byte-for-byte against Adobe CF.
+    std::string loc = "";
+    if (!g_callStack.empty()) {
+        const auto &top = g_callStack.back();
+        loc = " at " + top.path + ":" + std::to_string(top.line);
+        if (!top.function.empty()) loc += " in " + top.function + "()";
+    }
+    fprintf(stderr, "[WebStrada][Exception] [%s] %s%s%s%s\n",
+            e->m_type.constData() ? e->m_type.constData() : "Expression",
+            e->m_message.constData() ? e->m_message.constData() : "",
+            e->m_detail.isEmpty() ? "" : " | Detail: ",
+            e->m_detail.constData() ? e->m_detail.constData() : "",
+            loc.c_str());
+    fflush(stderr);
 }
 
 // Builds a TAGCONTEXT array (element [1] = innermost frame) from a captured

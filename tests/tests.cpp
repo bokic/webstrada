@@ -1372,6 +1372,72 @@ TEST_F(CfQueryTest, DbLayerDumpsOperationsToStdout) {
     EXPECT_NE(captured.find("[db] sqlite close dsn=test"), std::string::npos);
 }
 
+TEST_F(CfQueryTest, DbErrorLoggedToStdoutAndThrowsDatabase) {
+    // A failing <cfquery> must (1) dump the DB error to stdout (the
+    // LoggingConnection wrapper in db.cpp logs the statement and, on failure,
+    // an [db] ERROR line with message/detail) and (2) still raise the original
+    // "Database"-type exception so a CFML <cfcatch type="database"> catches it.
+    bool saved = webstrada::config::enableQueryLogging;
+    webstrada::config::enableQueryLogging = true;
+
+    char tmpPath[] = "/tmp/webstrada_db_err_XXXXXX";
+    int tmpFd = mkstemp(tmpPath);
+    ASSERT_NE(tmpFd, -1);
+    int savedFd = dup(STDOUT_FILENO);
+    ASSERT_NE(savedFd, -1);
+    ASSERT_NE(dup2(tmpFd, STDOUT_FILENO), -1);
+
+    std::string captured;
+    bool threw = false;
+    try {
+        // The statement executes, fails, and the error must propagate (the
+        // template wraps it in a catch so the CFML exception type is visible).
+        string cfml = "<cftry>"
+                      "<cfquery name=\"q\" datasource=\"test\">SELECT * FROM no_such_table_zzz</cfquery>"
+                      "<cfcatch type=\"any\"><cfoutput>[#cfcatch.type#]</cfoutput></cfcatch>"
+                      "</cftry>";
+        string out = run(cfml);
+        EXPECT_EQ(out.equals("[Database]"), true);
+        fflush(stdout);
+    } catch (const webstrada::exception &e) {
+        threw = true;
+    }
+    dup2(savedFd, STDOUT_FILENO);
+    close(savedFd);
+
+    lseek(tmpFd, 0, SEEK_SET);
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(tmpFd, buf, sizeof(buf))) > 0) captured.append(buf, (size_t)n);
+    close(tmpFd);
+    unlink(tmpPath);
+
+    webstrada::config::enableQueryLogging = saved;
+
+    // The error surfaced through CFML (caught as type Database), not as a C++
+    // exception escaping the template.
+    EXPECT_EQ(threw, false);
+    // The failed statement is dumped first, then the [db] ERROR line with the
+    // backend, dsn, op, and the SQLite detail text.
+    EXPECT_NE(captured.find("SELECT * FROM no_such_table_zzz"), std::string::npos);
+    EXPECT_NE(captured.find("[db] sqlite ERROR dsn=test"), std::string::npos);
+    EXPECT_NE(captured.find("no such table: no_such_table_zzz"), std::string::npos);
+
+    // A query that fails OUTSIDE a CFML catch still throws type "Database"
+    // (message + detail preserved) so callers see the real error.
+    bool threw2 = false;
+    try {
+        run("<cfquery name=\"q\" datasource=\"test\">SELECT * FROM no_such_table_zzz</cfquery>");
+    } catch (const webstrada::exception &e) {
+        threw2 = true;
+        EXPECT_EQ(string(e.m_type).equals("Database"), true);
+        EXPECT_EQ(string(e.m_message).equals("Error Executing Database Query."), true);
+        EXPECT_NE(std::string(e.m_detail.constData()).find("no such table: no_such_table_zzz"),
+                  std::string::npos);
+    }
+    EXPECT_EQ(threw2, true);
+}
+
 // ---- <cftransaction> ----
 
 class CfTransactionTest : public testing::Test {
@@ -2895,6 +2961,71 @@ TEST_F(CfLoopQueryTest, NestedQueryLoops) {
     expectOutput(cfml, "1;2;3;4;|1;2;3;4;|1;2;3;4;|1;2;3;4;|");
 }
 
+// ---- <cfoutput query> ----
+
+class CfOutputQueryTest : public CfLoopQueryTest {};
+
+TEST_F(CfOutputQueryTest, IteratesAllRows) {
+    string cfml = setupQuery("oq_basic");
+    cfml += "<cfoutput query=\"q\">#q.id#:#q.name#:#q.currentrow#;</cfoutput>";
+    expectOutput(cfml, "1:a1:1;2:a2:2;3:b1:3;4:b2:4;");
+}
+
+TEST_F(CfOutputQueryTest, UnqualifiedColumnAccess) {
+    string cfml = setupQuery("oq_unqual");
+    cfml += "<cfset name = \"VARSCOPE\">";
+    cfml += "<cfoutput query=\"q\">#name#:#currentrow#:#recordcount#:#columnlist#;</cfoutput>";
+    expectOutput(cfml, "a1:1:4:GRP,ID,NAME;a2:2:4:GRP,ID,NAME;b1:3:4:GRP,ID,NAME;b2:4:4:GRP,ID,NAME;");
+}
+
+TEST_F(CfOutputQueryTest, StartrowMaxrows) {
+    string cfml = setupQuery("oq_range");
+    cfml += "<cfoutput query=\"q\" startrow=\"2\" maxrows=\"2\">#q.id#:#q.name#:#q.currentrow#;</cfoutput>";
+    expectOutput(cfml, "2:a2:2;3:b1:3;");
+}
+
+TEST_F(CfOutputQueryTest, EmptyRangeSkipsBody) {
+    string cfml = setupQuery("oq_empty");
+    cfml += "<cfoutput query=\"q\" startrow=\"5\" maxrows=\"2\">X#q.id#</cfoutput>Y";
+    expectOutput(cfml, "Y");
+}
+
+TEST_F(CfOutputQueryTest, CursorRestoredAfterOutput) {
+    string cfml = setupQuery("oq_restore");
+    cfml += "<cfoutput query=\"q\">#q.id#;</cfoutput>";
+    cfml += "<cfoutput>|#q.currentrow#:#q.name#</cfoutput>";
+    expectOutput(cfml, "1;2;3;4;|1:a1");
+}
+
+TEST_F(CfOutputQueryTest, GroupFirstRowOfEachGroup) {
+    string cfml = setupQuery("oq_grp");
+    cfml += "<cfoutput query=\"q\" group=\"grp\">#q.id#:#q.name#;</cfoutput>";
+    expectOutput(cfml, "1:a1;3:b1;");
+}
+
+TEST_F(CfOutputQueryTest, GroupCaseSensitive) {
+    string cfml = "<cfquery datasource=\"test\">DROP TABLE IF EXISTS oq_gcs</cfquery>\n";
+    cfml += "<cfquery datasource=\"test\">CREATE TABLE oq_gcs (id INTEGER PRIMARY KEY AUTOINCREMENT, grp TEXT)</cfquery>\n";
+    cfml += "<cfquery datasource=\"test\">INSERT INTO oq_gcs (grp) VALUES ('G1')</cfquery>\n";
+    cfml += "<cfquery datasource=\"test\">INSERT INTO oq_gcs (grp) VALUES ('g1')</cfquery>\n";
+    cfml += "<cfquery name=\"q\" datasource=\"test\">SELECT id, grp FROM oq_gcs ORDER BY id</cfquery>";
+    cfml += "D<cfoutput query=\"q\" group=\"grp\">#q.id#;</cfoutput>";
+    cfml += "|CS<cfoutput query=\"q\" group=\"grp\" groupcasesensitive=\"true\">#q.id#;</cfoutput>";
+    expectOutput(cfml, "D1;|CS1;2;");
+}
+
+TEST_F(CfOutputQueryTest, CfscriptInsideOutputQueryResolvesColumns) {
+    string cfml = setupQuery("oq_script");
+    cfml += "<cfset res = ArrayNew(1)>";
+    cfml += "<cfoutput query=\"q\" maxrows=\"2\">";
+    cfml += "<cfscript>";
+    cfml += "ArrayAppend(res, name);";
+    cfml += "</cfscript>";
+    cfml += "</cfoutput>";
+    cfml += "<cfoutput>#ArrayToList(res)#</cfoutput>";
+    expectOutput(cfml, "a1,a2");
+}
+
 // ---- <cfinclude> ----
 
 // Loads a compiled template from a TemplateCache cache (the `opaque`
@@ -3191,6 +3322,130 @@ TEST_F(CfincludeTest, SqlIncludeRunsCfqueryStatements) {
     webstrada::config::compileExtForInclude = "*";
     EXPECT_EQ(runFile(dir, "main.cfm").equals("RC=[0]"), true);
     webstrada::config::compileExtForInclude = saved;
+    webstrada::config::dsnDbDir = savedDsnDir;
+    removeTempDir(dir);
+    std::filesystem::remove_all(dsnDir);
+}
+
+// The MangoBlog setup wizard's sqlite.sql DDL runs as an included .sql script:
+// multi-statement CREATE TABLE + CREATE (UNIQUE) INDEX blocks, FOREIGN KEY
+// constraints with ON DELETE/UPDATE CASCADE, and multi-row INSERTs are all
+// executed by the SQLite driver, leaving a queryable schema behind.
+TEST_F(CfincludeTest, MangoBlogSqliteSetupSchemaRuns) {
+    auto dir = makeTempDir({
+        {"main.cfm",
+         "<cfset dsn = \"mango\"><cfset username = \"\"><cfset password = \"\"><cfset prefix = \"mng_\">"
+         "<cfinclude template=\"sqlite.sql\">"
+         "<cfquery name=\"perms\" datasource=\"mango\">SELECT count(*) AS n FROM mng_permission</cfquery>"
+         "<cfquery name=\"roles\" datasource=\"mango\">SELECT count(*) AS n FROM mng_role</cfquery>"
+         "<cfquery name=\"rp\" datasource=\"mango\">SELECT count(*) AS n FROM mng_role_permission</cfquery>"
+         "<cfquery name=\"j\" datasource=\"mango\">"
+         "SELECT rp.role_id FROM mng_role_permission rp "
+         "JOIN mng_role r ON r.id = rp.role_id "
+         "JOIN mng_permission p ON p.id = rp.permission_id "
+         "WHERE rp.role_id = 'administrator' AND rp.permission_id = 'manage_system'"
+         "</cfquery>"
+         "<cfoutput>P[#perms.n#]|R[#roles.n#]|RP[#rp.n#]|ADMIN[#j.recordcount#]</cfoutput>"},
+        {"sqlite.sql",
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "CREATE TABLE #prefix#author (id varchar(35) NOT NULL default '', username varchar(50) NOT NULL default '', "
+         "alias varchar(100) NOT NULL default '', active tinyint(1) default 1, PRIMARY KEY (id));"
+         "CREATE UNIQUE INDEX IX_#prefix#author ON #prefix#author (username);"
+         "CREATE INDEX IX_#prefix#author_1 ON #prefix#author (alias);"
+         "</cfquery>"
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "CREATE TABLE #prefix#permission (id varchar(20) NOT NULL, name varchar(50) default NULL, "
+         "is_custom tinyint(1) default 1, PRIMARY KEY (id));"
+         "</cfquery>"
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "INSERT INTO #prefix#permission (id, name, is_custom) VALUES "
+         "('access_admin', 'Access site admin', 0), ('manage_system', 'Manage system', 0), "
+         "('publish_posts', 'Publish posts', 0), ('manage_plugins', 'Manage plugins', 0);"
+         "</cfquery>"
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "CREATE TABLE #prefix#role (id varchar(20) NOT NULL, name varchar(50) default NULL, PRIMARY KEY (id));"
+         "</cfquery>"
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "INSERT INTO #prefix#role (id, name) VALUES ('administrator', 'Administrator'), ('author', 'Author');"
+         "</cfquery>"
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "CREATE TABLE #prefix#role_permission (role_id varchar(20) NOT NULL, permission_id varchar(20) NOT NULL, "
+         "PRIMARY KEY (permission_id, role_id), "
+         "CONSTRAINT FK_#prefix#role_permission_role FOREIGN KEY (role_id) REFERENCES #prefix#role (id) "
+         "ON DELETE CASCADE ON UPDATE CASCADE, "
+         "CONSTRAINT FK_#prefix#role_permission_permission FOREIGN KEY (permission_id) REFERENCES #prefix#permission (id) "
+         "ON DELETE CASCADE ON UPDATE CASCADE);"
+         "</cfquery>"
+         "<cfquery datasource=\"#dsn#\" username=\"#username#\" password=\"#password#\">"
+         "INSERT INTO #prefix#role_permission (role_id, permission_id) VALUES "
+         "('administrator', 'access_admin'), ('administrator', 'manage_system'), ('author', 'publish_posts');"
+         "</cfquery>"},
+    });
+    std::string savedDsnDir = webstrada::config::dsnDbDir;
+    std::string saved = webstrada::config::compileExtForInclude;
+    std::filesystem::path dsnDir = std::filesystem::temp_directory_path() /
+        ("webstrada_mangoblog_sqlite_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dsnDir);
+    webstrada::config::dsnDbDir = dsnDir.string();
+    webstrada::config::compileExtForInclude = "*";
+    EXPECT_EQ(runFile(dir, "main.cfm").equals("P[4]|R[2]|RP[3]|ADMIN[1]"), true);
+    webstrada::config::compileExtForInclude = saved;
+    webstrada::config::dsnDbDir = savedDsnDir;
+    removeTempDir(dir);
+    std::filesystem::remove_all(dsnDir);
+}
+
+// MangoBlog's PostsGateway date queries were ported from the MySQL/MSSQL
+// YEAR()/MONTH()/DAY() functions to SQLite's strftime(), wrapped in
+// CAST(... AS INTEGER) so the returned TEXT ("2026", "08") compares equal to
+// the integer year/month/day parameters (SQLite never equates TEXT with
+// INTEGER). This exercises the exact SELECT / WHERE / GROUP BY / ORDER BY
+// forms used by getActiveYears / getActiveMonths / getActiveDays.
+TEST_F(CfincludeTest, MangoBlogSqliteStrftimeCastDateQueries) {
+    auto dir = makeTempDir({
+        {"main.cfm",
+         "<cfquery datasource=\"mango\">CREATE TABLE entry (id varchar(35), blog_id varchar(50))</cfquery>"
+         "<cfquery datasource=\"mango\">CREATE TABLE post (id varchar(35), posted_on datetime)</cfquery>"
+         "<cfquery datasource=\"mango\">INSERT INTO entry VALUES ('e1','default'),('e2','default'),('e3','default'),('e4','default')</cfquery>"
+         "<cfquery datasource=\"mango\">INSERT INTO post VALUES "
+         "('e1','2026-08-24 05:00:00'),('e2','2026-12-31 23:59:00'),('e3','2020-06-01 10:30:00'),('e4','2026-08-05 00:00:00')</cfquery>"
+         "<cfquery name=\"yrs\" datasource=\"mango\">"
+         "SELECT COUNT(post.id) AS post_count, CAST(strftime('%Y', posted_on) AS INTEGER) AS year "
+         "FROM post INNER JOIN entry ON entry.id = post.id "
+         "GROUP BY CAST(strftime('%Y', posted_on) AS INTEGER) "
+         "ORDER BY CAST(strftime('%Y', posted_on) AS INTEGER) DESC"
+         "</cfquery>"
+         "<cfquery name=\"mos\" datasource=\"mango\">"
+         "SELECT COUNT(post.id) AS post_count, CAST(strftime('%Y', posted_on) AS INTEGER) AS year, "
+         "CAST(strftime('%m', posted_on) AS INTEGER) AS month "
+         "FROM post INNER JOIN entry ON entry.id = post.id "
+         "WHERE CAST(strftime('%Y', posted_on) AS INTEGER) = 2026 "
+         "GROUP BY CAST(strftime('%m', posted_on) AS INTEGER), CAST(strftime('%Y', posted_on) AS INTEGER) "
+         "ORDER BY CAST(strftime('%Y', posted_on) AS INTEGER) DESC, CAST(strftime('%m', posted_on) AS INTEGER) DESC"
+         "</cfquery>"
+         "<cfquery name=\"dys\" datasource=\"mango\">"
+         "SELECT COUNT(post.id) AS post_count, CAST(strftime('%d', posted_on) AS INTEGER) AS day "
+         "FROM post INNER JOIN entry ON entry.id = post.id "
+         "WHERE CAST(strftime('%m', posted_on) AS INTEGER) = 8 "
+         "AND CAST(strftime('%Y', posted_on) AS INTEGER) = 2026 "
+         "GROUP BY CAST(strftime('%d', posted_on) AS INTEGER) "
+         "ORDER BY CAST(strftime('%d', posted_on) AS INTEGER) DESC"
+         "</cfquery>"
+         "<cfquery name=\"likeq\" datasource=\"mango\">"
+         "SELECT id FROM post WHERE CAST(strftime('%Y', posted_on) AS INTEGER) like 2026"
+         "</cfquery>"
+         "<cfoutput>YEARS=[#yrs.recordcount#|#yrs.year[1]#:#yrs.post_count[1]#,#yrs.year[2]#:#yrs.post_count[2]#]"
+         "|MONTHS=[#mos.recordcount#|#mos.year[1]#-#mos.month[1]#:#mos.post_count[1]#,#mos.year[2]#-#mos.month[2]#:#mos.post_count[2]#]"
+         "|DAYS=[#dys.recordcount#|#dys.day[1]#:#dys.post_count[1]#,#dys.day[2]#:#dys.post_count[2]#]"
+         "|LIKE=[#likeq.recordcount#]</cfoutput>"},
+    });
+    std::string savedDsnDir = webstrada::config::dsnDbDir;
+    std::filesystem::path dsnDir = std::filesystem::temp_directory_path() /
+        ("webstrada_mangoblog_strftime_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dsnDir);
+    webstrada::config::dsnDbDir = dsnDir.string();
+    EXPECT_EQ(runFile(dir, "main.cfm").equals(
+        "YEARS=[2|2026:3,2020:1]|MONTHS=[2|2026-12:1,2026-8:2]|DAYS=[2|24:1,5:1]|LIKE=[3]"), true);
     webstrada::config::dsnDbDir = savedDsnDir;
     removeTempDir(dir);
     std::filesystem::remove_all(dsnDir);
@@ -19407,6 +19662,46 @@ TEST_F(JitExpressionTest, VarFastPathInsideTagExpression) {
     EXPECT_EQ(runJitTemplate("<cfset n=7><cfset r = RepeatString(\"a\", n)><cfoutput>#r#</cfoutput>", variables).equals("aaaaaaa"), true);
 }
 
+TEST_F(JitExpressionTest, MemberChainAfterBracketIndex) {
+    // Regression (was BUGS.md "JIT <cfset> assignment of a two-level member
+    // chain"): mergeObjectMembers glues the dotted tail into ONE Variable token,
+    // which used to be emitted as a single literal-key lookup on the indexed
+    // base ("k2.k3" instead of .k2 then .k3), yielding NotSet/auto-created
+    // slots. Every hop after a [ ] hop must be its own cfvariant_index.
+    EXPECT_EQ(runJitTemplate(
+        "<cfset s1={k1={k2={k3=\"deep\"}}}>"
+        "<cfset key=\"k1\">"
+        "<cfoutput>#s1[key].k2.k3#</cfoutput>", variables).equals("deep"), true);
+
+    // Literal base + bracket + two hops.
+    EXPECT_EQ(runJitTemplate(
+        "<cfset s={a={b={c=\"v\"}}}>"
+        "<cfoutput>#s[\"a\"].b.c#|</cfoutput>"
+        "<cfset k=\"a\"><cfoutput>#s[k].b.c#</cfoutput>", variables).equals("v|v"), true);
+
+    // Writes through the chained path mutate the original struct.
+    EXPECT_EQ(runJitTemplate(
+        "<cfset s={a={b={c=\"x\"}}}>"
+        "<cfset k=\"a\">"
+        "<cfset s[k].b.c=\"mut\">"
+        "<cfoutput>#s.a.b.c#|#StructKeyList(s.a.b)#</cfoutput>", variables).equals("mut|C"), true);
+
+    // Compound assignment walks the same chain.
+    EXPECT_EQ(runJitTemplate(
+        "<cfset s={a={b={c=41}}}>"
+        "<cfset k=\"a\">"
+        "<cfset s[k].b.c+=1>"
+        "<cfoutput>#s.a.b.c#</cfoutput>", variables).equals("42"), true);
+
+    // Chain rooted at an array element.
+    EXPECT_EQ(runJitTemplate(
+        "<cfset arr=[{name=\"i1\"}]>"
+        "<cfset i=1>"
+        "<cfset arr[i].name=\"mut\">"
+        "<cfoutput>#arr[1].name#</cfoutput>", variables).equals("mut"), true);
+}
+
+
 TEST_F(CfincludeTest, VarFastPathIncludeSharesScope) {
     // An included template has its own slots but shares the caller's variables
     // scope; reads of a variable set by the caller work.
@@ -22257,6 +22552,51 @@ TEST_F(AppMappingsTest, ResolvePrefixAndLongestMatch) {
     EXPECT_EQ(res, "/opt/custom/util/Tool");
 
     EXPECT_FALSE(cfml::app_mappings_resolve("/other/path", res));
+}
+
+TEST_F(WorkerTest, CreateObjectWithDottedPathAndThisMappings) {
+    char tmpl[] = "/tmp/webstrada_app_mappings_test_XXXXXX";
+    char *dir = mkdtemp(tmpl);
+    ASSERT_TRUE(dir != nullptr);
+    std::string base(dir);
+
+    auto writeFile = [&](const std::string &rel, const std::string &content) {
+        std::filesystem::path p = std::filesystem::path(base) / rel;
+        std::filesystem::create_directories(p.parent_path());
+        std::ofstream ofs(p, std::ios::binary);
+        ofs.write(content.data(), static_cast<std::streamsize>(content.size()));
+    };
+
+    writeFile("Application.cfc",
+              "<cfcomponent>\n"
+              "  <cfscript>\n"
+              "    this.name = 'mappings_test_app';\n"
+              "    this.mappings = structNew();\n"
+              "    this.mappings['/org/mangoblog'] = GetDirectoryFromPath(GetCurrentTemplatePath()) & 'components';\n"
+              "  </cfscript>\n"
+              "</cfcomponent>");
+    writeFile("components/utilities/Preferences.cfc",
+              "<cfcomponent>\n"
+              "  <cffunction name=\"getVersion\" access=\"public\" returntype=\"string\" output=\"false\">\n"
+              "    <cfreturn 'v1.4.3' />\n"
+              "  </cffunction>\n"
+              "</cfcomponent>");
+    writeFile("components/utilities/SpecialPreferences.cfc",
+              "<cfcomponent extends=\"org.mangoblog.utilities.Preferences\">\n"
+              "  <cffunction name=\"getSpecial\" access=\"public\" returntype=\"string\" output=\"false\">\n"
+              "    <cfreturn 'special-' & getVersion() />\n"
+              "  </cffunction>\n"
+              "</cfcomponent>");
+    writeFile("main.cfm",
+              "<cfset obj = CreateObject('component', 'org.mangoblog.utilities.Preferences')><cfset subObj = CreateObject('component', 'org.mangoblog.utilities.SpecialPreferences')><cfoutput>#obj.getVersion()#|#subObj.getSpecial()#</cfoutput>");
+
+    worker w;
+    string mainPath = (base + "/main.cfm").c_str();
+    string webRoot = base.c_str();
+    string out = runWorkerRequestWithContext(w, mainPath, webRoot);
+
+    std::filesystem::remove_all(base);
+    EXPECT_EQ(out.trimmed().equals("v1.4.3|special-v1.4.3"), true) << out.constData();
 }
 
 TEST_F(ComponentTest, MethodLocalVarDoesNotOverwriteVariablesScope) {

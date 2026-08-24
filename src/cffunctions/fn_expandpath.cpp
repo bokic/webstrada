@@ -36,11 +36,26 @@ cfvariant *cf_expandpath(const cfvariant *path) {
         return ret;
     }
 
-    // CF's ExpandPath resolves relative to the current working directory (or template path).
-    // Leading "/" is treated as relative to base (not absolute filesystem root).
+    // CF's ExpandPath resolves relative to the current template path directory (or current working directory).
+    // Leading "/" is treated as relative to the web root.
+    IncludeRuntime *rt = include_context();
     std::filesystem::path base = std::filesystem::current_path();
     const char *inputCStr = pStr.constData();
+    bool isRootRelative = (!pStr.isEmpty() && (inputCStr[0] == '/' || inputCStr[0] == '\\'));
     bool hasTrailingSlash = (inputCStr[pStr.length() - 1] == '/' || inputCStr[pStr.length() - 1] == '\\');
+
+    if (isRootRelative) {
+        if (rt && !rt->webRoot.empty()) {
+            base = std::filesystem::path(rt->webRoot);
+        }
+    } else {
+        if (rt && !rt->currentPath.empty()) {
+            std::filesystem::path cur(rt->currentPath);
+            if (cur.has_parent_path()) {
+                base = cur.parent_path();
+            }
+        }
+    }
 
     // Strip leading root separators so the path resolves relative to base
     std::filesystem::path input(inputCStr);

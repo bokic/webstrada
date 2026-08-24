@@ -677,14 +677,14 @@ llvm::Function *compileUdfFunction(
                     else raw = raw.substr(ls, le - ls + 1);
                     if (raw.size() >= 2 && raw.front() == '#' && raw.back() == '#') {
                         std::string inner = raw.substr(1, raw.size() - 2);
-                        defVal = CompileStringExpression(module, builder, fn, cgi, server, cookie, application, session, url, form, localScope, string(inner.c_str()), cfm_text);
+                        defVal = CompileStringExpression(module, builder, fn, cgi, server, cookie, application, session, url, form, isComponentMethod ? variablesScope : localScope, string(inner.c_str()), cfm_text);
                     } else {
                         auto *fStr = getOrCreateHelper(module, builder, "cfvariant_create_string", builder.getPtrTy(), {builder.getPtrTy()});
                         defVal = emitCall(builder, fStr, {builder.CreateGlobalString(llvm::StringRef(raw), "", 0, module, true)});
                     }
                 } else {
                     auto defaultAst = parseTokensToAST(def.paramDefaults[i], cfm_text);
-                    defVal = CompileExprAST(module, builder, fn, defaultAst, cgi, server, cookie, application, session, url, form, localScope, cfm_text);
+                    defVal = CompileExprAST(module, builder, fn, defaultAst, cgi, server, cookie, application, session, url, form, isComponentMethod ? variablesScope : localScope, cfm_text);
                 }
                 auto *fIdxAssign = getOrCreateHelper(module, builder, "cfvariant_index_assign", builder.getPtrTy(),
                                                      {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
@@ -4331,6 +4331,22 @@ void compile_token_list(
                 validateOutputExpressionSharp(outputExpression, cfm_text);
             }
 
+            auto outTagText = string(cfm_text + outputStartTag.position, outputStartTag.len);
+            auto outAttrs = parse_attributes(outTagText);
+
+            string outQueryExpr = outAttrs.count("query") ? outAttrs["query"] : "";
+            string outStartRowExpr = outAttrs.count("startrow") ? outAttrs["startrow"] : "";
+            string outMaxRowsExpr = outAttrs.count("maxrows") ? outAttrs["maxrows"] : "";
+            string outGroupCol = outAttrs.count("group") ? outAttrs["group"] : "";
+            string outGroupCs = outAttrs.count("groupcasesensitive") ? outAttrs["groupcasesensitive"] : "";
+
+            auto compileAttrExpr = [&](const string &e) -> llvm::Value* {
+                string ex = e.trimmed();
+                if (ex.length() >= 2 && ex.first() == '#' && ex.at(ex.length() - 1) == '#')
+                    ex = ex.mid(1, ex.length() - 2).trimmed();
+                return CompileStringExpression(module, builder, mainfunc, cgi, server, cookie, application, session, url, form, variables, ex, cfm_text);
+            };
+
             size_t startTagEnd = outputStartTag.position + outputStartTag.len;
 
             // ColdFusion also applies whitespace management to whitespace-only
@@ -4339,33 +4355,166 @@ void compile_token_list(
             // single space, and leading whitespace before the first #expr# is
             // removed). Plain text runs are emitted verbatim, so management is
             // enabled with the <cfoutput> start tag as the left neighbour.
-            WhitespaceState wsOutput(ws.enabled, ws.flag);
-            wsOutput.markTag(false, false); // left neighbour is the <cfoutput> start tag
-
             // Inside <cfoutput> the text writes bypass the cfoutputonly gate:
             // <cfsetting enablecfoutputonly> only suppresses content outside
             // cfoutput tags.
             bool savedInCfoutput = g_insideCfoutput;
             g_insideCfoutput = true;
-            if (!hasOutputExpression) {
-                wsOutput.feed(module, builder, out, cfm_text + startTagEnd, outputEndTag.position - startTagEnd, WsRight::Tag);
-                wsOutput.finish(module, builder, out, WsRight::Tag);
+
+            if (outQueryExpr.isEmpty()) {
+                WhitespaceState wsOutput(ws.enabled, ws.flag);
+                wsOutput.markTag(false, false); // left neighbour is the <cfoutput> start tag
+
+                if (!hasOutputExpression) {
+                    wsOutput.feed(module, builder, out, cfm_text + startTagEnd, outputEndTag.position - startTagEnd, WsRight::Tag);
+                    wsOutput.finish(module, builder, out, WsRight::Tag);
+                } else {
+                    if (outputExpression.position > startTagEnd) {
+                        wsOutput.feed(module, builder, out, cfm_text + startTagEnd, outputExpression.position - startTagEnd, WsRight::Tag);
+                    }
+
+                    size_t exprPos = outputExpression.position;
+                    size_t oidx = 0;
+                    compile_token_list(outputExpression.children, oidx, exprPos, context, module, builder, mainfunc,
+                                       out, wsOutput, cgi, server, cookie, application, session, url, form, variables,
+                                       cfm_text, outputExpression.position + outputExpression.len, loopStack);
+
+                    size_t exprEnd = outputExpression.position + outputExpression.len;
+                    if (exprPos < exprEnd) {
+                        wsOutput.feed(module, builder, out, cfm_text + exprPos, exprEnd - exprPos, WsRight::Tag);
+                    }
+                    wsOutput.finish(module, builder, out, WsRight::Tag);
+                }
             } else {
-                if (outputExpression.position > startTagEnd) {
-                    wsOutput.feed(module, builder, out, cfm_text + startTagEnd, outputExpression.position - startTagEnd, WsRight::Tag);
+                // <cfoutput query="q" startrow=".." maxrows=".." group=".."
+                // groupcasesensitive=".."> iterates the query's rows (each
+                // group's first row when `group` is set), advancing the query's
+                // cursor so #q.col# / #col# and unqualified column names resolve
+                // to the current row.
+                auto *fRowcount = getOrCreateHelper(module, builder, "cf_query_rowcount", builder.getInt64Ty(), {builder.getPtrTy()});
+                auto *fSetRow = getOrCreateHelper(module, builder, "cf_query_set_row", builder.getVoidTy(), {builder.getPtrTy(), builder.getInt64Ty()});
+                auto *fScopePush = getOrCreateHelper(module, builder, "cf_query_scope_push", builder.getInt64Ty(), {builder.getPtrTy()});
+                auto *fScopePop = getOrCreateHelper(module, builder, "cf_query_scope_pop", builder.getVoidTy(), {});
+                auto *fToLong = getOrCreateHelper(module, builder, "cfvariant_to_long", builder.getInt64Ty(), {builder.getPtrTy()});
+                auto *fResolve = getOrCreateHelper(module, builder, "cf_query_resolve", builder.getPtrTy(),
+                    {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+                     builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+                     builder.getPtrTy(), builder.getPtrTy()});
+
+                llvm::Value *rawQueryVal = compileAttrExpr(outQueryExpr);
+                llvm::AllocaInst *lpQuerySlot = createEntryAlloca(builder, mainfunc, builder.getPtrTy());
+                builder.CreateStore(emitCall(builder, fResolve, {rawQueryVal, cgi, server, cookie, application,
+                                                                 session, url, form, variables}), lpQuerySlot);
+                llvm::Value *collVal = builder.CreateLoad(builder.getPtrTy(), lpQuerySlot);
+
+                llvm::Value *startRowVal;
+                if (outStartRowExpr.isEmpty()) {
+                    startRowVal = builder.getInt64(1);
+                } else {
+                    startRowVal = emitCall(builder, fToLong, {compileAttrExpr(outStartRowExpr)});
                 }
 
-                size_t exprPos = outputExpression.position;
-                size_t oidx = 0;
-                compile_token_list(outputExpression.children, oidx, exprPos, context, module, builder, mainfunc,
-                                   out, wsOutput, cgi, server, cookie, application, session, url, form, variables,
-                                   cfm_text, outputExpression.position + outputExpression.len, loopStack);
-
-                size_t exprEnd = outputExpression.position + outputExpression.len;
-                if (exprPos < exprEnd) {
-                    wsOutput.feed(module, builder, out, cfm_text + exprPos, exprEnd - exprPos, WsRight::Tag);
+                llvm::Value *endRowVal;
+                if (outMaxRowsExpr.isEmpty()) {
+                    endRowVal = emitCall(builder, fRowcount, {collVal});
+                } else {
+                    llvm::Value *maxRowsVal = emitCall(builder, fToLong, {compileAttrExpr(outMaxRowsExpr)});
+                    // endRow = startRow + maxRows - 1
+                    llvm::Value *sum = builder.CreateAdd(startRowVal, maxRowsVal);
+                    endRowVal = builder.CreateSub(sum, builder.getInt64(1));
                 }
-                wsOutput.finish(module, builder, out, WsRight::Tag);
+
+                llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getInt64Ty());
+                llvm::AllocaInst *lpLenVar = createEntryAlloca(builder, mainfunc, builder.getInt64Ty());
+                builder.CreateStore(endRowVal, lpLenVar);
+
+                auto *rowCountVal = emitCall(builder, fRowcount, {collVal});
+                llvm::AllocaInst *lpCollVal = createEntryAlloca(builder, mainfunc, builder.getInt64Ty());
+                builder.CreateStore(rowCountVal, lpCollVal);
+
+                llvm::AllocaInst *lpSaveRowSlot = createEntryAlloca(builder, mainfunc, builder.getInt64Ty());
+                builder.CreateStore(emitCall(builder, fScopePush, {collVal}), lpSaveRowSlot);
+
+                builder.CreateStore(startRowVal, lpIndexVar);
+                emitCall(builder, fSetRow, {collVal, startRowVal});
+
+                auto lpIncBB = llvm::BasicBlock::Create(context, "cfoutput.inc", mainfunc);
+                auto lpCondBB = llvm::BasicBlock::Create(context, "cfoutput.cond", mainfunc);
+                auto lpBodyBB = llvm::BasicBlock::Create(context, "cfoutput.body", mainfunc);
+                auto lpEndBB = llvm::BasicBlock::Create(context, "cfoutput.end", mainfunc);
+
+                builder.CreateBr(lpCondBB);
+                builder.SetInsertPoint(lpCondBB);
+                auto curIdx = builder.CreateLoad(builder.getInt64Ty(), lpIndexVar);
+                auto curEnd = builder.CreateLoad(builder.getInt64Ty(), lpLenVar);
+                auto curRowCount = builder.CreateLoad(builder.getInt64Ty(), lpCollVal);
+                auto pastEnd = builder.CreateICmpSGT(curIdx, curEnd);
+                auto pastCount = builder.CreateICmpSGT(curIdx, curRowCount);
+                auto done = builder.CreateOr(pastEnd, pastCount);
+                builder.CreateCondBr(done, lpEndBB, lpBodyBB);
+
+                builder.SetInsertPoint(lpBodyBB);
+
+                loopStack.push_back({lpIncBB, lpEndBB, "", lpIndexVar});
+
+                WhitespaceState wsOutput(ws.enabled, ws.flag);
+                wsOutput.markTag(false, false);
+
+                if (!hasOutputExpression) {
+                    wsOutput.feed(module, builder, out, cfm_text + startTagEnd, outputEndTag.position - startTagEnd, WsRight::Tag);
+                    wsOutput.finish(module, builder, out, WsRight::Tag);
+                } else {
+                    if (outputExpression.position > startTagEnd) {
+                        wsOutput.feed(module, builder, out, cfm_text + startTagEnd, outputExpression.position - startTagEnd, WsRight::Tag);
+                    }
+
+                    size_t exprPos = outputExpression.position;
+                    size_t oidx = 0;
+                    compile_token_list(outputExpression.children, oidx, exprPos, context, module, builder, mainfunc,
+                                       out, wsOutput, cgi, server, cookie, application, session, url, form, variables,
+                                       cfm_text, outputExpression.position + outputExpression.len, loopStack);
+
+                    size_t exprEnd = outputExpression.position + outputExpression.len;
+                    if (exprPos < exprEnd) {
+                        wsOutput.feed(module, builder, out, cfm_text + exprPos, exprEnd - exprPos, WsRight::Tag);
+                    }
+                    wsOutput.finish(module, builder, out, WsRight::Tag);
+                }
+
+                loopStack.pop_back();
+
+                if (!builder.GetInsertBlock()->getTerminator()) {
+                    builder.CreateBr(lpIncBB);
+                }
+                builder.SetInsertPoint(lpIncBB);
+
+                llvm::Value *nextRow;
+                if (!outGroupCol.isEmpty()) {
+                    auto *fGroupNext = getOrCreateHelper(module, builder, "cf_query_group_next", builder.getInt64Ty(),
+                        {builder.getPtrTy(), builder.getPtrTy(), builder.getInt64Ty(), builder.getInt64Ty(), builder.getPtrTy()});
+                    auto *fCreateString = getOrCreateHelper(module, builder, "cfvariant_create_string", builder.getPtrTy(), {builder.getPtrTy()});
+                    auto *groupColVal = emitCall(builder, fCreateString,
+                        {builder.CreateGlobalString(llvm::StringRef(outGroupCol.constData(), outGroupCol.length()), "", 0, module, true)});
+                    llvm::Value *caseSensVal = llvm::ConstantPointerNull::get(builder.getPtrTy());
+                    if (!outGroupCs.isEmpty()) {
+                        caseSensVal = emitCall(builder, fCreateString,
+                            {builder.CreateGlobalString(llvm::StringRef(outGroupCs.constData(), outGroupCs.length()), "", 0, module, true)});
+                    }
+                    auto curRowG = builder.CreateLoad(builder.getInt64Ty(), lpIndexVar);
+                    auto curEndG = builder.CreateLoad(builder.getInt64Ty(), lpLenVar);
+                    nextRow = emitCall(builder, fGroupNext, {collVal, groupColVal, curRowG, curEndG, caseSensVal});
+                } else {
+                    auto incIdx4 = builder.CreateLoad(builder.getInt64Ty(), lpIndexVar);
+                    nextRow = builder.CreateAdd(incIdx4, builder.getInt64(1));
+                }
+                builder.CreateStore(nextRow, lpIndexVar);
+                emitCall(builder, fSetRow, {collVal, nextRow});
+                builder.CreateBr(lpCondBB);
+
+                builder.SetInsertPoint(lpEndBB);
+                auto origRow = builder.CreateLoad(builder.getInt64Ty(), lpSaveRowSlot);
+                emitCall(builder, fSetRow, {collVal, origRow});
+                emitCall(builder, fScopePop, {});
             }
             g_insideCfoutput = savedInCfoutput;
             break;
