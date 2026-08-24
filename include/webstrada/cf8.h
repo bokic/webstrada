@@ -386,6 +386,13 @@ void cf_feed_tag(const cfvariant *attrs,
                  void *cgi, void *server, void *cookie, void *application,
                  void *session, void *url, void *form, void *variables);
 
+// <cfftp> / <cfschedule> runtimes: NOT implemented — these only log the call
+// (tag name + evaluated attributes) to the engine log on stderr and perform
+// no FTP/scheduling work. Templates using the tags compile and run instead of
+// failing with "Tag cfftp/cfschedule is not implemented".
+void cf_ftp_tag(const cfvariant *attrs);
+void cf_schedule_tag(const cfvariant *attrs);
+
 // <cfzip> / <cfzipparam> runtime: cf_zip_begin pushes a per-thread context and
 // a discard buffer for the tag body; each compiled <cfzipparam> calls
 // cf_zip_param to append to it; cf_zip_end pops the context and performs the

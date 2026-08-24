@@ -939,6 +939,7 @@ void compile_token_list(
                 "cfparam", "cfobjectcache",
                 "cfcookie", "cfhtmlhead", "cfprocessingdirective", "cfsavecontent", "cfsetting",
                 "cfexecute", "cffeed", "cfwddx",
+                "cfftp", "cfschedule",
                 "cflogin", "cfloginuser", "cflogout"
             };
 
@@ -4016,6 +4017,22 @@ void compile_token_list(
                 index = compile_tag_wddx_statement(tokens, index, context, module, builder, mainfunc,
                                                    out, ws, cgi, server, cookie, application, session, url, form, variables,
                                                    cfm_text, cfm_text_size, loopStack) - 1;
+                pos = token.position + token.len;
+                if (index < tokens.size()) {
+                    pos = tokens[index].position + tokens[index].len;
+                }
+            } else if (tagNameLow.startWith("<cfftp")) {
+                index = compile_tag_ftp_statement(tokens, index, context, module, builder, mainfunc,
+                                                  out, ws, cgi, server, cookie, application, session, url, form, variables,
+                                                  cfm_text, cfm_text_size, loopStack) - 1;
+                pos = token.position + token.len;
+                if (index < tokens.size()) {
+                    pos = tokens[index].position + tokens[index].len;
+                }
+            } else if (tagNameLow.startWith("<cfschedule")) {
+                index = compile_tag_schedule_statement(tokens, index, context, module, builder, mainfunc,
+                                                       out, ws, cgi, server, cookie, application, session, url, form, variables,
+                                                       cfm_text, cfm_text_size, loopStack) - 1;
                 pos = token.position + token.len;
                 if (index < tokens.size()) {
                     pos = tokens[index].position + tokens[index].len;

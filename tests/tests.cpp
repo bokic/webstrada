@@ -3963,7 +3963,7 @@ TEST_F(ComponentTest, PrivateMethodNotCallableFromOutside) {
 }
 
 TEST_F(ComponentTest, AbortedComponentCompileDoesNotPoisonNextCompile) {
-    // A compile-time abort (here: the unimplemented <cfschedule> tag inside a
+    // A compile-time abort (here: the unimplemented <cflock> tag inside a
     // try/catch inside a method) used to skip the manual g_ehContext /
     // g_currentFuncCleanupBB restore, leaving the thread_local pointing at dead
     // stack; the NEXT component compile then read a garbage landingPadBB and
@@ -3975,7 +3975,7 @@ TEST_F(ComponentTest, AbortedComponentCompileDoesNotPoisonNextCompile) {
          "<cfcomponent>\n"
          "  <cffunction name=\"setup\">\n"
          "    <cftry>\n"
-         "      <cfschedule action=\"update\">\n"
+         "      <cflock timeout=\"10\">\n"
          "      <cfcatch><cfset x = 1></cfcatch>\n"
          "    </cftry>\n"
          "  </cffunction>\n"
@@ -21970,6 +21970,127 @@ TEST_F(CfexecuteTagTest, UnknownAttrCompileError) {
                   "ARGUMENTS,ERRORFILE,ERRORVARIABLE,NAME,OUTPUTFILE,TIMEOUT,VARIABLE.");
     }
     EXPECT_EQ(caught, true);
+}
+
+// ---- <cfftp> / <cfschedule> (log-only stubs) ----
+// Both tags are deliberately NOT implemented: they compile (unknown
+// attributes are accepted/ignored exactly like CF; only a statically missing
+// `action` is a compile-time error with CF's message) and the runtime only
+// logs the call to the engine log on stderr — no FTP/scheduling work is
+// performed. The stubs therefore cannot be byte-verified against CF 2025 (CF
+// actually opens FTP connections / talks to the scheduler), so the behavior is
+// pinned here in unit tests.
+class FtpScheduleStubTest : public testing::Test {
+protected:
+    cfvariant variables;
+    cfml::VariantCleanupGuard guard;
+
+    void SetUp() override {
+        variables = cfvariant::Struct;
+    }
+
+    string run(const string &cfml_code) {
+        return runJitTemplate(cfml_code, variables);
+    }
+
+    void expectOutputOf(const string &cfml_code, const char *expected) {
+        string out = run(cfml_code);
+        EXPECT_EQ(out.equals(expected), true)
+            << "CFML: " << cfml_code.constData() << "\n  got: " << out.constData()
+            << "\n  want: " << expected;
+    }
+};
+
+TEST_F(FtpScheduleStubTest, FtpCompilesAndPreservesPageOutput) {
+    // The stub is a no-op: the page around the tag still runs and its output
+    // is intact (the log goes to stderr, not the response).
+    expectOutputOf(run(
+        "<cfoutput>A</cfoutput><cfftp action=\"open\" server=\"ftp.example.com\" username=\"u\" password=\"p\"><cfoutput>B</cfoutput>"),
+        "AB");
+    expectOutputOf(run(
+        "<cfoutput>A</cfoutput><cfftp action=\"getFile\" server=\"srv\" localfile=\"l\" remotefile=\"r\"><cfoutput>B</cfoutput>"),
+        "AB");
+}
+
+TEST_F(FtpScheduleStubTest, ScheduleCompilesAndPreservesPageOutput) {
+    expectOutputOf(run(
+        "<cfoutput>A</cfoutput><cfschedule action=\"update\" task=\"t1\" url=\"http://x/page.cfm\" interval=\"daily\"><cfoutput>B</cfoutput>"),
+        "AB");
+    expectOutputOf(run(
+        "<cfoutput>A</cfoutput><cfschedule action=\"delete\" task=\"t1\"><cfoutput>B</cfoutput>"),
+        "AB");
+}
+
+TEST_F(FtpScheduleStubTest, AttributesMayBeDynamic) {
+    // Attribute values compile like any CFML expression; the runtime logs them.
+    expectOutputOf(run(
+        "<cfset srv = \"dyn.example.com\">"
+        "<cfoutput>A</cfoutput><cfftp action=\"#srv EQ 'dyn.example.com' ? 'open' : 'close'#\" server=\"#srv#\"><cfoutput>B</cfoutput>"),
+        "AB");
+    expectOutputOf(run(
+        "<cfset task = \"dyn\">"
+        "<cfoutput>A</cfoutput><cfschedule action=\"delete\" task=\"#task#\"><cfoutput>B</cfoutput>"),
+        "AB");
+}
+
+TEST_F(FtpScheduleStubTest, FtpMissingActionCompileError) {
+    bool caught = false;
+    try {
+        run("<cfftp server=\"x\">");
+    } catch (const webstrada::exception &e) {
+        caught = true;
+        EXPECT_EQ(std::string(e.m_message.constData()), "Attribute validation error for the CFFTP tag.");
+        EXPECT_EQ(std::string(e.m_detail.constData()), "The tag requires the ACTION attribute.");
+    }
+    EXPECT_EQ(caught, true);
+}
+
+TEST_F(FtpScheduleStubTest, ScheduleMissingActionCompileError) {
+    bool caught = false;
+    try {
+        run("<cfschedule task=\"t\">");
+    } catch (const webstrada::exception &e) {
+        caught = true;
+        EXPECT_EQ(std::string(e.m_message.constData()), "Attribute validation error for the CFSCHEDULE tag.");
+        EXPECT_EQ(std::string(e.m_detail.constData()), "The tag requires the ACTION attribute.");
+    }
+    EXPECT_EQ(caught, true);
+}
+
+TEST_F(FtpScheduleStubTest, UnknownAttributesAreAcceptedAndIgnored) {
+    // cfftp/cfschedule are handler-validated in CF, not TagLibraryInfo-
+    // validated: unknown attributes are accepted and ignored (verified on CF
+    // 2025 — only per-action required-attribute validation fires). The stub
+    // keeps that: the page runs and the call is logged.
+    expectOutputOf(run(
+        "<cfoutput>A</cfoutput><cfftp action=\"open\" server=\"s\" bogus=\"1\" nosuch=\"2\"><cfoutput>B</cfoutput>"),
+        "AB");
+    expectOutputOf(run(
+        "<cfoutput>A</cfoutput><cfschedule action=\"update\" task=\"t\" nope=\"1\"><cfoutput>B</cfoutput>"),
+        "AB");
+}
+
+TEST_F(FtpScheduleStubTest, ValidDocumentedAttributesAccepted) {
+    // A representative set of documented cfftp/cfschedule attributes is
+    // accepted (the stub logs them); nothing is thrown.
+    expectOutputOf(run(
+        "<cfftp action=\"listDir\" server=\"s\" name=\"q\" directory=\"/pub\" "
+        "timeout=\"10\" port=\"21\" passive=\"yes\" transfermode=\"ascii\" "
+        "stoponerror=\"no\" retrycount=\"2\">"
+        "<cfftp action=\"rename\" server=\"s\" item=\"file\" existing=\"a\" new=\"b\">"
+        "<cfftp action=\"close\" connection=\"c\">"),
+        "");
+    expectOutputOf(run(
+        "<cfschedule action=\"update\" task=\"t\" operation=\"HTTPRequest\" url=\"http://x\" "
+        "publish=\"yes\" file=\"out.html\" path=\"/srv\" startdate=\"01/01/2026\" "
+        "starttime=\"06:00 AM\" interval=\"daily\" requesttimeout=\"60\">"),
+        "");
+}
+
+TEST_F(FtpScheduleStubTest, TagsAreCaseInsensitive) {
+    expectOutputOf(run(
+        "<CFOUTPUT>A</CFOUTPUT><CFFTP ACTION=\"open\" SERVER=\"s\"><CFSCHEDULE ACTION=\"delete\" TASK=\"t\"><CFOUTPUT>B</CFOUTPUT>"),
+        "AB");
 }
 
 // ---- <cffeed> ----

@@ -2479,6 +2479,51 @@ static llvm::Value* compileTagAttrsStructJsp(
     return attrsVal;
 }
 
+// Builds a cfvariant Struct of the tag's evaluated attributes under lowercased
+// keys, accepting ALL attributes (no whitelist). Used by tags that CF
+// validates by handler (not TagLibraryInfo), where unknown attributes are
+// accepted and ignored — <cfftp> and <cfschedule>.
+static llvm::Value* compileTagAttrsStructAll(
+    llvm::Module *module, llvm::IRBuilder<> &builder, llvm::Function *mainfunc,
+    llvm::Value *cgi, llvm::Value *server, llvm::Value *cookie, llvm::Value *application,
+    llvm::Value *session, llvm::Value *url, llvm::Value *form, llvm::Value *variables,
+    const std::vector<TextParserTokenItem> *attrParts, const char *cfm_text)
+{
+    auto *fCreateStruct = getOrCreateHelper(module, builder, "cfvariant_create_struct", builder.getPtrTy(), {});
+    auto *fIndexAssign = getOrCreateHelper(module, builder, "cfvariant_index_assign", builder.getPtrTy(),
+                                           {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
+    llvm::Value *attrsVal = emitCall(builder, fCreateStruct, {});
+    for (size_t ai = 0; ai < attrParts->size(); ) {
+        const auto &at = (*attrParts)[ai];
+        if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+        string aname(cfm_text + at.position, at.len);
+        string anameLow = aname;
+        anameLow.toLower();
+        std::vector<TextParserTokenItem> valToks;
+        size_t vi = ai + 1;
+        while (vi < attrParts->size()) {
+            const auto &vt = (*attrParts)[vi];
+            bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
+                               vi + 1 < attrParts->size() &&
+                               isOperatorToken((*attrParts)[vi + 1].token_id));
+            if (nextIsAttr) break;
+            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
+            vi++;
+        }
+        llvm::Value *val = compileTagAttrValue(module, builder, mainfunc,
+                                               cgi, server, cookie, application, session, url, form, variables,
+                                               valToks, cfm_text);
+        if (val) {
+            auto *keyStr = builder.CreateGlobalString(llvm::StringRef(anameLow.constData(), anameLow.length()), "", 0, module, true);
+            auto *fCreateString = getOrCreateHelper(module, builder, "cfvariant_create_string", builder.getPtrTy(), {builder.getPtrTy()});
+            emitCall(builder, fIndexAssign, {attrsVal,
+                emitCall(builder, fCreateString, {keyStr}), val});
+        }
+        ai = vi;
+    }
+    return attrsVal;
+}
+
 // Helper: reads a named attribute's value token list from the attr parts.
 static void collectAttrTokens(const std::vector<TextParserTokenItem> *attrParts,
                               const char *cfm_text, const std::string &target,
@@ -2783,6 +2828,101 @@ size_t compile_tag_wddx_statement(
          builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
          builder.getPtrTy(), builder.getPtrTy()});
     emitCall(builder, fTag, {out, attrsVal, cgi, server, cookie, application, session, url, form, variables});
+    return start + 1;
+}
+
+// <cfftp> / <cfschedule> — not implemented: the runtime (cf_ftp_tag /
+// cf_schedule_tag) only logs the call. Both tags are handler-validated in CF
+// (NOT TagLibraryInfo-validated), so unknown attributes are accepted and
+// ignored exactly like CF; only a missing `action` is rejected at compile
+// time with CF's message. The evaluated attributes are collected into a
+// struct (all of them) and the runtime logs the tag name + attributes.
+// No FTP/scheduling work is performed.
+size_t compile_tag_ftp_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack)
+{
+    (void)context; (void)ws; (void)cfm_text_size; (void)loopStack;
+    const std::vector<TextParserTokenItem> *attrParts = &tokens[start].children;
+    for (const auto &ch : tokens[start].children) {
+        if (ch.token_id == TextParser_cfml_Expression) {
+            attrParts = &ch.children;
+            break;
+        }
+    }
+    std::vector<TextParserTokenItem> actionToks;
+    collectAttrTokens(attrParts, cfm_text, "action", actionToks);
+    if (actionToks.empty()) {
+        throw webstrada::exception(webstrada::string("Attribute validation error for the CFFTP tag."),
+                                  webstrada::string("The tag requires the ACTION attribute."));
+    }
+    llvm::Value *attrsVal = compileTagAttrsStructAll(module, builder, mainfunc,
+                                                     cgi, server, cookie, application, session, url, form, variables,
+                                                     attrParts, cfm_text);
+    auto *fTag = getOrCreateHelper(module, builder, "cf_ftp_tag", builder.getVoidTy(),
+        {builder.getPtrTy()});
+    emitCall(builder, fTag, {attrsVal});
+    return start + 1;
+}
+
+size_t compile_tag_schedule_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack)
+{
+    (void)context; (void)ws; (void)cfm_text_size; (void)loopStack;
+    const std::vector<TextParserTokenItem> *attrParts = &tokens[start].children;
+    for (const auto &ch : tokens[start].children) {
+        if (ch.token_id == TextParser_cfml_Expression) {
+            attrParts = &ch.children;
+            break;
+        }
+    }
+    std::vector<TextParserTokenItem> actionToks;
+    collectAttrTokens(attrParts, cfm_text, "action", actionToks);
+    if (actionToks.empty()) {
+        throw webstrada::exception(webstrada::string("Attribute validation error for the CFSCHEDULE tag."),
+                                  webstrada::string("The tag requires the ACTION attribute."));
+    }
+    llvm::Value *attrsVal = compileTagAttrsStructAll(module, builder, mainfunc,
+                                                     cgi, server, cookie, application, session, url, form, variables,
+                                                     attrParts, cfm_text);
+    auto *fTag = getOrCreateHelper(module, builder, "cf_schedule_tag", builder.getVoidTy(),
+        {builder.getPtrTy()});
+    emitCall(builder, fTag, {attrsVal});
     return start + 1;
 }
 

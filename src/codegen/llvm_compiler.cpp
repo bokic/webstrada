@@ -114,6 +114,8 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cf_execute_tag", reinterpret_cast<void*>(cfml::cf_execute_tag));
     llvm::sys::DynamicLibrary::AddSymbol("cf_wddx_tag", reinterpret_cast<void*>(cfml::cf_wddx_tag));
     llvm::sys::DynamicLibrary::AddSymbol("cf_feed_tag", reinterpret_cast<void*>(cfml::cf_feed_tag));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_ftp_tag", reinterpret_cast<void*>(cfml::cf_ftp_tag));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_schedule_tag", reinterpret_cast<void*>(cfml::cf_schedule_tag));
     llvm::sys::DynamicLibrary::AddSymbol("cf_zip_begin", reinterpret_cast<void*>(cfml::cf_zip_begin));
     llvm::sys::DynamicLibrary::AddSymbol("cf_zip_param", reinterpret_cast<void*>(cfml::cf_zip_param));
     llvm::sys::DynamicLibrary::AddSymbol("cf_zip_end", reinterpret_cast<void*>(cfml::cf_zip_end));

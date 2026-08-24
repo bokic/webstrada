@@ -135,7 +135,7 @@ extern thread_local bool g_insideCfoutput;
 // state: the compile function unwinds without running the manual restore and
 // the NEXT component compile would read a dangling pointer. This was BUGS.md
 // "codegen state leak on aborted compile": a throw inside a <cftry> body (the
-// unimplemented <cfschedule> tag) skipped the g_ehContext restore, so the
+// unimplemented <cflock> tag) skipped the g_ehContext restore, so the
 // following component compile read a garbage landingPadBB and segfaulted in
 // LLVM IR construction (Use::set). The guard's destructor restores the slot on
 // every exit path, normal or exceptional.
@@ -727,6 +727,56 @@ size_t compile_tag_feed_statement(
 // input required for a static action, a static action value validated against
 // CFML2WDDX/CFML2JS/WDDX2CFML/WDDX2JS) and calls cf_wddx_tag.
 size_t compile_tag_wddx_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack);
+
+// <cfftp> (codegen_tags.cpp): not implemented — handler-validated like CF
+// (unknown attributes accepted/ignored; a static missing `action` is a
+// compile-time error with CF's message) and calls cf_ftp_tag, which only logs
+// the call.
+size_t compile_tag_ftp_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack);
+
+// <cfschedule> (codegen_tags.cpp): not implemented — handler-validated like
+// CF (unknown attributes accepted/ignored; a static missing `action` is a
+// compile-time error with CF's message) and calls cf_schedule_tag, which only
+// logs the call.
+size_t compile_tag_schedule_statement(
     const std::vector<TextParserTokenItem> &tokens,
     size_t start,
     llvm::LLVMContext &context,
