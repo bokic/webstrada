@@ -596,6 +596,20 @@ void cfml::cf_udf_build_arguments(cfvariant *localScope, const char **paramNames
         cf_udf_args_set_or_null(arguments, key.constData(), slot);
     }
     for (int i = 0; i < argc; i++) {
+        // A trailing extra-named-args marker (named arguments that matched no
+        // declared parameter, appended by cf_named_args_reorder) is merged into
+        // the arguments struct under its original casing instead of getting a
+        // positional key (CF silently accepts extra named args — see
+        // CFML_EXTRA_NAMED_ARGS_KEY).
+        if (args[i] && args[i]->m_type == cfvariant::Struct && args[i]->m_struct) {
+            auto mit = args[i]->m_struct->find(CFML_EXTRA_NAMED_ARGS_KEY);
+            if (mit != args[i]->m_struct->end() && mit->second.m_type == cfvariant::Struct) {
+                for (const auto &ekv : *mit->second.m_struct) {
+                    arguments->structSet(ekv.first, ekv.second);
+                }
+                continue;
+            }
+        }
         char buf[16];
         std::snprintf(buf, sizeof(buf), "%d", i + 1);
         if (args[i]) arguments->structSet(buf, *args[i]);
@@ -631,7 +645,17 @@ bool cfml::cf_named_args_reorder(const cfvariant **args, int argc,
 
     // Map each declared parameter name to a slot.
     std::vector<const cfvariant*> slots(paramCount > 0 ? paramCount : 0, nullptr);
-    // Place the named arguments into their matching parameter slots.
+    // Named arguments that match no declared parameter are NOT an error: CF
+    // silently accepts them and exposes them in the `arguments` scope under
+    // their original casing (verified on CF 2025: `g(x=1, y=2)` where g
+    // declares x returns arguments keys `X,y`, and `f(a=1, b=2)` where f
+    // declares nothing returns `a,b`). Collect them into an extra-named-args
+    // marker appended to the reordered vector so cf_udf_build_arguments can
+    // merge them (was BUGS.md "named args to a no-param function throw" —
+    // MangoBlog's paragraphFormatter Handler.cfc init called
+    // `initSettings(paragraphComments=true, ...)` where initSettings declares
+    // no parameters and every named arg was rejected).
+    cfvariant extra(cfvariant::Struct);
     for (const auto &kv : *namedStruct.m_struct) {
         const webstrada::string &k = kv.first;
         bool matched = false;
@@ -643,12 +667,7 @@ bool cfml::cf_named_args_reorder(const cfvariant **args, int argc,
                 break;
             }
         }
-        if (!matched) {
-            webstrada::string msg("The argument name ");
-            msg.append(k);
-            msg.append(" was not found in the function arguments.");
-            throw webstrada::exception(msg);
-        }
+        if (!matched) extra.structSet(k, kv.second);
     }
     // Fill the unfilled slots in order with the positional arguments (args[1..]).
     int posIdx = 1;
@@ -668,9 +687,15 @@ bool cfml::cf_named_args_reorder(const cfvariant **args, int argc,
     }
     // Trailing positional args beyond the declared params are kept as-is.
     int trailing = argc - posIdx;
-    out.reserve(slots.size() + trailing);
+    out.reserve(slots.size() + trailing + 1);
     for (const cfvariant *v : slots) out.push_back(v);
     for (int t = 0; t < trailing; t++) out.push_back(args[posIdx + t]);
+    if (extra.m_struct && !extra.m_struct->empty()) {
+        auto *extraMarker = new cfvariant(cfvariant::Struct);
+        extraMarker->structSet(CFML_EXTRA_NAMED_ARGS_KEY, extra);
+        cf_register_temp(extraMarker);
+        out.push_back(extraMarker);
+    }
     outArgc = static_cast<int>(out.size());
     return true;
 }

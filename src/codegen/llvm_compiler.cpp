@@ -897,9 +897,8 @@ template_fn llvm_codegen::compile_parsed(parser &parse, const char *name, bool p
     auto *mainEntry = llvm::BasicBlock::Create(m_context, "entry", mainfunc);
     builder.SetInsertPoint(mainEntry);
 
-    auto *savedCleanupBB = g_currentFuncCleanupBB;
     auto *mainCleanupBB = llvm::BasicBlock::Create(m_context, "main.cleanup", mainfunc);
-    g_currentFuncCleanupBB = mainCleanupBB;
+    ScopedCodegenState<llvm::BasicBlock*> cleanupBBGuard(g_currentFuncCleanupBB, mainCleanupBB);
 
     auto *fCleanupSave = getOrCreateHelper(module, builder, "cfvariant_cleanup_save", builder.getInt64Ty(), {});
     llvm::Value *mainSavepoint = builder.CreateCall(fCleanupSave, {});
@@ -1062,8 +1061,6 @@ template_fn llvm_codegen::compile_parsed(parser &parse, const char *name, bool p
     emitStackPop(module, builder);
     builder.CreateCall(fRestore, {mainSavepoint});
     builder.CreateResume(lp);
-
-    g_currentFuncCleanupBB = savedCleanupBB;
 
     // Attach the C++ Itanium personality to every JIT function so `invoke`/
     // `landingpad` can participate in exception handling. Runtime exceptions
@@ -1541,9 +1538,8 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
     {
         auto *bodyEntry = llvm::BasicBlock::Create(m_context, "entry", bodyFn);
         builder.SetInsertPoint(bodyEntry);
-        auto *savedCleanupBB = g_currentFuncCleanupBB;
         auto *bodyCleanupBB = llvm::BasicBlock::Create(m_context, "body.cleanup", bodyFn);
-        g_currentFuncCleanupBB = bodyCleanupBB;
+        ScopedCodegenState<llvm::BasicBlock*> bodyCleanupBBGuard(g_currentFuncCleanupBB, bodyCleanupBB);
 
         auto *fCleanupSave = getOrCreateHelper(module, builder, "cfvariant_cleanup_save", builder.getInt64Ty(), {});
         llvm::Value *savepoint = builder.CreateCall(fCleanupSave, {});
@@ -1610,7 +1606,6 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
         emitStackPop(module, builder);
         builder.CreateCall(fRestore, {savepoint});
         builder.CreateResume(lp);
-        g_currentFuncCleanupBB = savedCleanupBB;
     }
 
     // ---- Compile each method body (component_method_entry_fn) ----

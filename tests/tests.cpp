@@ -3962,6 +3962,38 @@ TEST_F(ComponentTest, PrivateMethodNotCallableFromOutside) {
     EXPECT_EQ(out.equals("PRIV |S|NO"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, AbortedComponentCompileDoesNotPoisonNextCompile) {
+    // A compile-time abort (here: the unimplemented <cfschedule> tag inside a
+    // try/catch inside a method) used to skip the manual g_ehContext /
+    // g_currentFuncCleanupBB restore, leaving the thread_local pointing at dead
+    // stack; the NEXT component compile then read a garbage landingPadBB and
+    // segfaulted in LLVM IR construction. The thread_local save/restores are
+    // now exception-safe (ScopedCodegenState), so a later component must
+    // compile and run normally.
+    string out = runCfc({
+        {"bad.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"setup\">\n"
+         "    <cftry>\n"
+         "      <cfschedule action=\"update\">\n"
+         "      <cfcatch><cfset x = 1></cfcatch>\n"
+         "    </cftry>\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"good.cfc",
+         "<cfcomponent>\n"
+         "  <cfset variables.name = \"Favorite Links\">\n"
+         "  <cffunction name=\"getName\" output=\"false\"><cfreturn variables.name></cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cftry><cfset b = createObject(\"component\", \"bad\")>"
+         "<cfcatch type=\"any\"><cfoutput>BAD</cfoutput></cfcatch></cftry>"
+         "<cfset g = createObject(\"component\", \"good\")>"
+         "<cfoutput>|#g.getName()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("BAD|Favorite Links"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, ExtendsOverridesAndInherits) {
     string out = runCfc({
         {"shape.cfc",
@@ -5480,6 +5512,31 @@ TEST_F(TagBodyTextTest, BracketedTextInCfswitchCase) {
     expectOutput("<cfswitch expression=\"2\"><cfcase value=\"1\">A[B]C</cfcase><cfdefaultcase>[D]</cfdefaultcase></cfswitch>", "[D]");
 }
 
+TEST_F(TagBodyTextTest, NestedQuotesInsideSharpInAttribute) {
+    // A `#...#` expression inside a double-quoted attribute may itself contain
+    // double-quoted string literals: `expression="#getSetting("x")#"` — the
+    // inner quote must not terminate the attribute value (verified on CF 2025:
+    // tests/cfm/nested_quote_expr_test.cfm; was BUGS.md "nested quotes inside
+    // #...# in a tag attribute terminate the value early", seen in MangoBlog's
+    // cfformprotect plugin Handler.cfc processEvent which threw "Parsing error!
+    // Parsing failed at line 1, col 33: Reached end of text before finding end
+    // token!" when the plugin was instantiated from PluginLoader.cfc:105).
+    expectOutput(
+        "<cffunction name=\"getSetting\"><cfargument name=\"key\"/><cfreturn \"1\"/></cffunction>"
+        "<cfswitch expression=\"#getSetting(\"confirmationMethod\")#\">"
+        "<cfcase value=\"1\">ONE</cfcase><cfcase value=\"2\">TWO</cfcase>"
+        "</cfswitch>",
+        "ONE"
+    );
+    // cfhtmlhead attribute with nested quotes + a #...# inside it.
+    expectOutput(
+        "<cffunction name=\"getAssetPath\"><cfargument name=\"x\"/><cfreturn \"a/\"/></cffunction>"
+        "<cfhtmlhead text=\"<script type=\"\"text/javascript\"\" src=\"\"#getAssetPath()#f.js\"\"></script>\" />"
+        "<cfoutput>OK</cfoutput>",
+        "OK"
+    );
+}
+
 TEST_F(TagBodyTextTest, UnterminatedBracketIsLiteral) {
     expectOutput("A[hello", "A[hello");
     expectOutput("[", "[");
@@ -5679,6 +5736,122 @@ TEST_F(ParenthesizedIndexRejectionTest, AllowedFormsStillWork) {
     // A parenthesized expression assigned on its own is fine (no chain).
     out = runJitTemplate("<cfset s = {a:5}><cfset x = (s)><cfoutput>#x.a#</cfoutput>", v);
     EXPECT_EQ(out.equals("5"), true);
+}
+
+// An operator keyword (contains, eq, mod, and, not, or, gt, ...) used directly
+// after a member-access dot is a property/method name, never the CFML operator.
+// The JIT expression parser previously classified `contains` after '.' as the
+// CONTAINS operator, so `<cfif NOT s.adminmode AND cacheresult.contains>`
+// failed to compile with "Binary operator missing operand" (observed on
+// MangoBlog's PostManager.cfc:199). Adobe CF always treats an identifier
+// following '.' as a member name. Verified against CF 2025 in
+// tests/cfm/operator_word_member_test.cfm.
+class OperatorWordAsMemberTest : public testing::Test {
+protected:
+    cfvariant variables;
+
+    void SetUp() override {
+        variables = cfvariant::Struct;
+    }
+
+    void expectOutput(const string &cfml_code, const char *expected) {
+        string out = runJitTemplate(cfml_code, variables);
+        EXPECT_EQ(out.equals(expected), true) << "CFML: " << cfml_code.constData() << " -> " << out.constData();
+    }
+};
+
+TEST_F(OperatorWordAsMemberTest, PropertyNameMatchingOperatorWords) {
+    // Tag-attribute path (cfif condition): unmerged member tokens.
+    expectOutput("<cfset s = {contains: 5}><cfif s.contains>Y<cfelse>N</cfif>", "Y");
+    expectOutput("<cfset s = {contains: 5, eq: 6, mod: 7, not: 8, and: 9}>"
+                 "<cfoutput>#s.contains#|#s.eq#|#s.mod#|#s.not#|#s.and#</cfoutput>", "5|6|7|8|9");
+    expectOutput("<cfset s = {or: 10, gt: 11, lt: 12, is: 13}>"
+                 "<cfoutput>#s.or#|#s.gt#|#s.lt#|#s.is#</cfoutput>", "10|11|12|13");
+    // Chained member access ending in an operator word.
+    expectOutput("<cfset s = {inner: {contains: 42}}><cfoutput>#s.inner.contains#</cfoutput>", "42");
+    // cfscript path (mergeObjectMembers leaves the base with a trailing dot).
+    expectOutput("<cfscript>s = {mod: 7, contains: 5}; writeOutput(s.mod & \"|\" & s.contains);</cfscript>", "7|5");
+}
+
+TEST_F(OperatorWordAsMemberTest, NegationAndBooleanCombo) {
+    // The exact MangoBlog PostManager.cfc:199 shape.
+    expectOutput("<cfset s = {contains: 5, adminmode: false}>"
+                 "<cfif NOT s.adminmode AND s.contains>Y<cfelse>N</cfif>", "Y");
+    expectOutput("<cfset s = {contains: 0, adminmode: true}>"
+                 "<cfif NOT s.adminmode AND s.contains>Y<cfelse>N</cfif>", "N");
+    // A real AND operator after a complete member access is still an operator,
+    // including when a parenthesized group follows (previously mis-parsed as a
+    // member call `a.AND(...)` which also orphaned the dot's left operand).
+    expectOutput("<cfset s = {a: true}><cfset b = false>"
+                 "<cfif s.a AND (b EQ false)>Y<cfelse>N</cfif>", "Y");
+    expectOutput("<cfset s = {a: true}><cfset b = true>"
+                 "<cfif s.a AND (b EQ false)>Y<cfelse>N</cfif>", "N");
+}
+
+TEST_F(OperatorWordAsMemberTest, RealOperatorsUnaffected) {
+    // CONTAINS / AND / NOT / MOD used as actual operators must keep working.
+    expectOutput("<cfif \"hello world\" contains \"wor\">Y<cfelse>N</cfif>", "Y");
+    expectOutput("<cfif \"hello world\" contains \"xyz\">Y<cfelse>N</cfif>", "N");
+    expectOutput("<cfif 10 GT 5 AND 2 LT 3 AND NOT false>Y<cfelse>N</cfif>", "Y");
+    expectOutput("<cfset x = 5><cfif x MOD 2 EQ 1>Y<cfelse>N</cfif>", "Y");
+}
+
+TEST_F(OperatorWordAsMemberTest, MemberMethodCallsNamedLikeOperators) {
+    // arr.contains(2) / list.contains("b") must remain method calls.
+    expectOutput("<cfset a = [1,2,3]><cfoutput>#a.contains(2)#</cfoutput>", "YES");
+    expectOutput("<cfset l = listToArray(\"x,y,z\")><cfoutput>#l.contains(\"y\")#</cfoutput>", "YES");
+    expectOutput("<cfset l = listToArray(\"x,y,z\")><cfoutput>#l.contains(\"q\")#</cfoutput>", "NO");
+}
+
+TEST_F(OperatorWordAsMemberTest, QueryColumnNamedLikeOperator) {
+    // A query column named "contains" accessed as q.contains[1].
+    expectOutput("<cfset q = querynew(\"contains\")><cfset queryaddrow(q)>"
+                 "<cfset querysetcell(q, \"contains\", \"cq\")>"
+                 "<cfoutput>#q.contains[1]#</cfoutput>", "cq");
+}
+
+// cfdump var="#expr#" compiles the expression like any CFML expression, so
+// member chains, function arguments and dotted names resolve correctly.
+// Previously only a bare VARIABLES key worked (cfgetvar(variables,
+// "arguments.obj") could never find dotted names), so
+// Logger.cfc's `<cfdump var="#arguments.obj#">` inside <cfsavecontent> threw
+// "Variable 'arguments.obj' not found in scope for cfdump".
+class CfdumpExpressionTest : public testing::Test {
+protected:
+    cfvariant variables;
+
+    void SetUp() override {
+        variables = cfvariant::Struct;
+    }
+
+    void expectOutput(const string &cfml_code, const char *needle) {
+        string out = runJitTemplate(cfml_code, variables);
+        EXPECT_EQ(out.contains(needle), true)
+            << "CFML: " << cfml_code.constData() << " -> " << out.constData();
+    }
+};
+
+TEST_F(CfdumpExpressionTest, DumpArgumentsMemberInFunction) {
+    // The MangoBlog Logger.cfc:45 shape: cfdump of an argument inside
+    // cfsavecontent inside a function.
+    expectOutput(
+        "<cffunction name=\"f\">"
+        "<cfargument name=\"obj\">"
+        "<cfsavecontent variable=\"out\"><cfdump var=\"#arguments.obj#\"></cfsavecontent>"
+        "<cfreturn out>"
+        "</cffunction>"
+        "<cfoutput>#f({k: 7})#</cfoutput>",
+        "k");
+}
+
+TEST_F(CfdumpExpressionTest, DumpDottedProperty) {
+    expectOutput("<cfset s = {a: {b: \"dotted\"}}>"
+                 "<cfoutput><cfdump var=\"#s.a.b#\"></cfoutput>", "dotted");
+}
+
+TEST_F(CfdumpExpressionTest, DumpScopeStillWorks) {
+    expectOutput("<cfset x = \"scalar\">"
+                 "<cfoutput><cfdump var=\"#x#\"></cfoutput>", "scalar");
 }
 
 // Struct functions (StructKeyExists, StructCount, StructIsEmpty, StructFind,
@@ -8552,6 +8725,82 @@ TEST_F(JitExpressionTest, TernaryAssignsResult) {
     );
     EXPECT_EQ(variables["A"].toString().equals("first"), true);
     EXPECT_EQ(variables["B"].toString().equals("not-second"), true);
+}
+
+TEST_F(JitExpressionTest, AndOrShortCircuitJit) {
+    // CF short-circuits AND/OR: the right operand is not evaluated when the
+    // left side decides the result. `lastIndex EQ 0 OR arr[lastIndex]...` with
+    // lastIndex=0 must never touch arr[0] (was MangoBlog's Queue.cfc:30
+    // "element at position 0 ... cannot be found"). Verified against CF 2025
+    // in tests/cfm/or_shortcircuit_test.cfm.
+    string out = runJitTemplate(
+        "<cfset elements = arraynew(1) />"
+        "<cfset lastIndex = arraylen(elements) />"
+        "<cfif lastIndex EQ 0 OR elements[lastIndex].priority GTE 5>"
+        "<cfset arrayappend(elements, \"END\") />"
+        "</cfif>"
+        "<cfoutput>#arraylen(elements)#|</cfoutput>"
+        "<cfset r = lastIndex GT 0 AND elements[lastIndex].priority GTE 5 />"
+        "<cfoutput>#r#</cfoutput>",
+        variables
+    );
+    EXPECT_EQ(out.equals("1|NO"), true);
+}
+
+TEST_F(JitExpressionTest, AndOrShortCircuitInterpreter) {
+    // The cfoutput #...# interpreter path short-circuits AND/OR identically.
+    string out = runJitTemplate(
+        "<cfset elements = arraynew(1) />"
+        "<cfset lastIndex = arraylen(elements) />"
+        "<cfoutput>#(lastIndex EQ 0 OR elements[lastIndex].priority GTE 5)#|</cfoutput>"
+        "<cfoutput>#(lastIndex GT 0 AND elements[lastIndex].priority GTE 5)#|</cfoutput>"
+        "<cfset a = false />"
+        "<cfoutput>#(a AND (undefinedVar EQ 1))#|</cfoutput>"
+        "<cfoutput>#(true OR [1,2,3][5])#|</cfoutput>"
+        "<cfoutput>#(false AND \"x\" & \"y\")#|</cfoutput>"
+        "<cfoutput>#(true OR 1 GT 2)#|</cfoutput>"
+        "<cfoutput>#(a OR \"fallback\")#</cfoutput>",
+        variables
+    );
+    EXPECT_EQ(out.equals("YES|NO|false|true|false|true|fallback"), true);
+}
+
+TEST_F(JitExpressionTest, AndOrResults) {
+    // The result values of AND/OR match CF (verified against CF 2025 in
+    // tests/cfm/andor_results_test.cfm): AND/OR return one of their operands.
+    string out = runJitTemplate(
+        "<cfset r1 = true AND false />"
+        "<cfset r2 = false OR true />"
+        "<cfset r3 = 0 AND true />"
+        "<cfset r4 = 2.5 AND true />"
+        "<cfset r5 = false OR 5 />"
+        "<cfset r6 = 0 OR false />"
+        "<cfset r7 = true OR \"x\" />"
+        "<cfset r8 = (5 GT 3) OR true />"
+        "<cfset r9 = 1 AND 2 />"
+        "<cfset r10 = 1 OR 2 />"
+        "<cfset r11 = 0 AND 0 />"
+        "<cfset r12 = 0 OR 0 />"
+        "<cfoutput>#r1#|#r2#|#r3#|#r4#|#r5#|#r6#|#r7#|#r8#|#r9#|#r10#|#r11#|#r12#</cfoutput>",
+        variables
+    );
+    EXPECT_EQ(out.equals("false|true|0|true|5|false|true|YES|2|1|0|0"), true);
+}
+
+TEST_F(JitExpressionTest, AndOrShortCircuitNoSideEffect) {
+    // A function call on the skipped side never runs (CF: `false AND fn()` and
+    // `true OR fn()` both skip fn). Counter a global to prove it.
+    variables.set("CALLS");
+    variables["CALLS"] = cfvariant(0);
+    runJitTemplate(
+        "<cfscript>function bump() { CALLS = CALLS + 1; return true; }</cfscript>"
+        "<cfset a = false AND bump() />"
+        "<cfset b = true OR bump() />"
+        "<cfset c = true AND bump() />"
+        "<cfset d = false OR bump() />",
+        variables
+    );
+    EXPECT_EQ(variables["CALLS"].toString().equals("2"), true);
 }
 
 TEST_F(UndefinedVarOutputTest, BareVariableThrows) {
@@ -15165,15 +15414,40 @@ TEST_F(UdfTest, NamedArgumentsInterpreter) {
 }
 
 TEST_F(UdfTest, NamedArgumentsUnknownNameThrows) {
-    // An unknown named-argument name must throw (CF: "The parameter name X
-    // was not found in the function arguments.").
-    bool caught = false;
-    try {
-        runJitTemplate("<cfscript>function f(a) { return a; } writeOutput(f(zzz=\"x\"));</cfscript>", variables);
-    } catch (const webstrada::exception &) {
-        caught = true;
-    }
-    EXPECT_EQ(caught, true);
+    // An unknown named-argument name must NOT throw: CF silently accepts it
+    // into the `arguments` scope and only binds the matching declared params
+    // (verified on CF 2025: `f(zzz="x")` where f declares `a` -> "Variable A
+    // is undefined.", not an argument-name error; `f(a="DA")` called
+    // `f(zzz="x")` -> arguments keys `A,zzz`). Was BUGS.md "named args to a
+    // no-param function throw" — `cf_named_args_reorder` rejected any name
+    // that matched no declared parameter, so MangoBlog's paragraphFormatter
+    // `initSettings(paragraphComments=true, ...)` (which declares no
+    // parameters) threw on every call.
+    string out = runJitTemplate(
+        "<cfscript>function g(a=\"DA\") { return structKeyList(arguments) & \"=\" & arguments.a; }"
+        "writeOutput(g(zzz=\"x\"));"
+        "writeOutput(\"|\" & g(a=\"ok\"));"
+        "writeOutput(\"|\" & g(y=\"1\", a=\"2\"));"
+        "writeOutput(\"|\" & g());"
+        "</cfscript>",
+        variables
+    );
+    EXPECT_EQ(out.equals("A,zzz=DA|A=ok|A,y=2|A=DA"), true);
+}
+
+TEST_F(UdfTest, NamedArgumentsNoParamsFunction) {
+    // A function that declares NO parameters accepts named arguments straight
+    // into its `arguments` scope under their original casing (verified on CF
+    // 2025: `f(a=1, b=2)` returns `a,b`). This is MangoBlog's
+    // paragraphFormatter BasePlugin.initSettings pattern.
+    string out = runJitTemplate(
+        "<cfscript>function f() { return structKeyList(arguments); }"
+        "writeOutput(f(a=1, b=2));"
+        "writeOutput(\"|\" & f(x=1));"
+        "</cfscript>",
+        variables
+    );
+    EXPECT_EQ(out.equals("a,b|x"), true);
 }
 
 TEST_F(UdfTest, NamedArgumentLiterallyNamedVar) {

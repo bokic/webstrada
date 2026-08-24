@@ -592,7 +592,23 @@ std::map<string, string> parse_attributes(const string &tagText)
         if (ai >= tagText.length() || (tagText.at(ai) != '"' && tagText.at(ai) != '\'')) continue;
         int q = tagText.at(ai); ai++;
         size_t vs = ai;
-        while (ai < tagText.length() && tagText.at(ai) != q) ai++;
+        while (ai < tagText.length()) {
+            char c = tagText.at(ai);
+            if (c == q) break;
+            // A '#' opens a #...# interpolation group that is opaque to the
+            // attribute value's quote character: `expression="#getSetting("confirmationMethod")#"`
+            // (nested quotes inside #...# do not terminate the value — the
+            // textparser grammar tokenizes the whole thing as one DoubleString,
+            // and this scanner must mirror it). `##` is an escaped literal hash.
+            if (c == '#') {
+                ai++;
+                if (ai < tagText.length() && tagText.at(ai) == '#') { ai++; continue; }
+                while (ai < tagText.length() && tagText.at(ai) != '#') ai++;
+                if (ai < tagText.length()) ai++; // consume the closing '#'
+                continue;
+            }
+            ai++;
+        }
         attrs[kn] = tagText.mid(vs, ai - vs);
         if (ai < tagText.length()) ai++;
     }

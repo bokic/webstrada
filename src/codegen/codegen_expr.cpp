@@ -229,7 +229,17 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             node->right = std::move(operandStack.back());
             operandStack.pop_back();
         } else { // binary
-            if (operandStack.size() < 2) throw webstrada::exception("Binary operator missing operand");
+            if (operandStack.size() < 2)
+            {
+                std::string ctx;
+                for (const auto &t : tokens)
+                {
+                    if (!ctx.empty()) ctx += ' ';
+                    ctx += std::string(cfm_text + t.position, std::min(t.len, (size_t)40));
+                }
+                if (ctx.size() > 200) ctx = ctx.substr(0, 200) + "...";
+                throw webstrada::exception(("Binary operator missing operand in expression: " + ctx).c_str());
+            }
             node->right = std::move(operandStack.back());
             operandStack.pop_back();
             node->left = std::move(operandStack.back());
@@ -387,7 +397,16 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                        s == "IS" || s == "EQUAL" || s == "CONTAINS" || s == "DOES NOT CONTAIN" || s == "IS NOT";
             };
 
-            if (isOperatorWord(uname)) {
+            // An operator keyword used as a struct property (`cacheresult.contains`,
+            // `s.eq`) is not an operator: when the previous token is the '.'
+            // ObjectMember (unmerged member access, e.g. tag-attribute
+            // expressions) the word is a member name, never the CFML
+            // CONTAINS/EQ/... operator (same rule the operator-token branch
+            // applies to member names).
+            bool operatorWordAsMember = isOperatorWord(uname) &&
+                i > 0 && tokens[i - 1].token_id == TextParser_cfml_ObjectMember;
+
+            if (isOperatorWord(uname) && !operatorWordAsMember) {
                 bool isUnary = nextCanBeUnary;
                 int prec = getOpPrecedence(uname, isUnary);
 
@@ -510,15 +529,20 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             };
 
             // An operator keyword used as a member method (`arr.contains(2)`)
-            // is not an operator: mergeObjectMembers has left the base as a
-            // Variable ending with '.', or a '.' operator is pending on the
-            // stack (inside a function's argument list). Either way the word
-            // is a member-method name, not the CFML CONTAINS/EQ/... operator.
+            // is not an operator: the previous token is the '.' ObjectMember,
+            // or mergeObjectMembers has left the base as a Variable ending
+            // with '.'. Either way the word is a member-method name, not the
+            // CFML CONTAINS/EQ/... operator.
+            // NOTE: a '.' merely *pending on the operator stack* is NOT member
+            // context — it stays there until a lower-precedence operator
+            // flushes it, so `s.a AND (...)` (AND arriving as a Function token
+            // because a '(' follows) must stay a boolean operator, never
+            // `a.AND(...)` which would also orphan the dot's left operand.
             bool operatorAsMember = isOperatorWord(uname) &&
-                ((!operandStack.empty() && operandStack.back()->type == ExprAST::Variable &&
+                ((i > 0 && tokens[i - 1].token_id == TextParser_cfml_ObjectMember) ||
+                 (!operandStack.empty() && operandStack.back()->type == ExprAST::Variable &&
                   !operandStack.back()->string_val.empty() &&
-                  operandStack.back()->string_val.back() == '.') ||
-                 (!opStack.empty() && opStack.back().first == "." && !opStack.back().second));
+                  operandStack.back()->string_val.back() == '.'));
 
             if (isOperatorWord(uname) && !operatorAsMember) {
                 bool isUnary = nextCanBeUnary;
@@ -779,23 +803,31 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             std::string op(cfm_text + tok.position, tok.len);
             while(!op.empty() && isspace(op.front())) op.erase(op.begin());
             while(!op.empty() && isspace(op.back())) op.pop_back();
+            std::string rawOp = op;
             for (auto &c : op) c = toupper(c);
 
             // An operator keyword used as a member method (`arr.contains(2)`)
-            // arrives as an Operator token, but after a '.' it is a
-            // member-method name, not the CFML CONTAINS/EQ/... operator.
-            // Treat it as a function call targeting the member.
+            // or a member property (`cacheresult.contains`, `q.eq`) arrives as
+            // an operator token (CompareOperator etc.), but directly after an
+            // incomplete member access — the previous token is the '.', or the
+            // top operand is a merged Variable ending with '.' — it is a
+            // member name, never the CFML CONTAINS/EQ/... operator: a binary
+            // operator can never be the right-hand side of a pending dot.
+            // NOTE: a '.' merely *pending on the operator stack* is not enough
+            // context here; it stays there until a lower-precedence operator
+            // flushes it, so `s.a AND (...)` must not look like member access.
             {
                 bool opWord = op == "NOT" || op == "AND" || op == "OR" || op == "XOR" ||
                               op == "EQV" || op == "IMP" || op == "MOD" ||
                               op == "EQ" || op == "NEQ" || op == "LT" || op == "LTE" || op == "LE" ||
                               op == "GT" || op == "GTE" || op == "GE" || op == "IS" || op == "EQUAL" ||
                               op == "CONTAINS" || op == "DOES NOT CONTAIN" || op == "IS NOT";
-                bool memberContext = (!operandStack.empty() && operandStack.back()->type == ExprAST::Variable &&
-                                      !operandStack.back()->string_val.empty() &&
-                                      operandStack.back()->string_val.back() == '.') ||
-                                     (!opStack.empty() && opStack.back().first == "." && !opStack.back().second);
-                if (opWord && memberContext && i + 1 < tokens.size() &&
+                bool afterMemberDot =
+                    (i > 0 && tokens[i - 1].token_id == TextParser_cfml_ObjectMember) ||
+                    (!operandStack.empty() && operandStack.back()->type == ExprAST::Variable &&
+                     !operandStack.back()->string_val.empty() &&
+                     operandStack.back()->string_val.back() == '.');
+                if (opWord && afterMemberDot && i + 1 < tokens.size() &&
                     tokens[i + 1].token_id == TextParser_cfml_Parenthesis) {
                     auto node = std::make_unique<ExprAST>();
                     node->type = ExprAST::FuncCall;
@@ -825,6 +857,33 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                         continue;
                     }
                     operandStack.push_back(std::move(node));
+                    nextCanBeUnary = false;
+                    continue;
+                }
+                // No parentheses: an operator keyword directly after a dot is
+                // a bare property name (`cacheresult.contains`, `q.eq`). The
+                // original casing is kept — CF struct keys preserve how they
+                // were first written.
+                if (opWord && afterMemberDot) {
+                    if (!operandStack.empty() && operandStack.back()->type == ExprAST::Variable &&
+                        !operandStack.back()->string_val.empty() &&
+                        operandStack.back()->string_val.back() == '.') {
+                        // Merged base (`mergeObjectMembers` produced e.g. "s ."):
+                        // fold the property into the base ("s . mod").
+                        std::string &base = operandStack.back()->string_val;
+                        while (!base.empty() && isspace((unsigned char)base.back())) base.pop_back();
+                        base.pop_back(); // trailing '.'
+                        while (!base.empty() && isspace((unsigned char)base.back())) base.pop_back();
+                        base += "." + rawOp;
+                    } else {
+                        // Unmerged sequence (previous token is the '.'): push a
+                        // plain variable operand and leave the pending '.' on
+                        // the operator stack for the normal flush.
+                        auto vnode = std::make_unique<ExprAST>();
+                        vnode->type = ExprAST::Variable;
+                        vnode->string_val = rawOp;
+                        operandStack.push_back(std::move(vnode));
+                    }
                     nextCanBeUnary = false;
                     continue;
                 }
@@ -1359,6 +1418,47 @@ llvm::Value *CompileExprAST(
 
         auto *lhs = CompileExprAST(module, builder, function, node->left, cgi, server, cookie, application, session, url, form, variables, cfm_text);
 
+        // CF short-circuits AND/OR: the right operand is evaluated only when
+        // needed (verified against CF 2025: `true OR undefinedvar` -> true,
+        // `lastIndex EQ 0 OR arr[lastIndex]...` with lastIndex=0 never touches
+        // arr[0]). Eagerly evaluating both operands threw on the skipped side
+        // (was MangoBlog's Queue.cfc:30 "element at position 0 ... cannot be
+        // found"). Use LLVM control flow like the ternary so the rhs is
+        // compiled but only *executed* on the needed branch. The result
+        // semantics match cfvariant_and/cfvariant_or: the first operand when
+        // it decides the result, otherwise the second (verified against CF).
+        if (op == "AND" || op == "&&" || op == "OR" || op == "||") {
+            bool isAnd = (op == "AND" || op == "&&");
+            auto *isTruthyFunc = module->getFunction("cfvariant_is_truthy");
+            if (!isTruthyFunc) isTruthyFunc = llvm::Function::Create(llvm::FunctionType::get(builder.getInt32Ty(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_is_truthy", module);
+            llvm::Value *lhsTruthy = emitCall(builder, isTruthyFunc, {lhs});
+            llvm::Value *isTrue = builder.CreateICmpNE(lhsTruthy, builder.getInt32(0));
+
+            llvm::Function *fn = builder.GetInsertBlock()->getParent();
+            auto &llvmCtx = module->getContext();
+            auto *rhsBB = llvm::BasicBlock::Create(llvmCtx, isAnd ? "and.rhs" : "or.rhs", fn);
+            auto *shortBB = llvm::BasicBlock::Create(llvmCtx, isAnd ? "and.short" : "or.short", fn);
+            auto *mergeBB = llvm::BasicBlock::Create(llvmCtx, isAnd ? "and.merge" : "or.merge", fn);
+            // AND: rhs only when lhs truthy; OR: rhs only when lhs falsy.
+            if (isAnd) builder.CreateCondBr(isTrue, rhsBB, shortBB);
+            else       builder.CreateCondBr(isTrue, shortBB, rhsBB);
+
+            builder.SetInsertPoint(rhsBB);
+            llvm::Value *rhsVal = CompileExprAST(module, builder, function, node->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            llvm::BasicBlock *rhsCont = builder.GetInsertBlock();
+            builder.CreateBr(mergeBB);
+
+            builder.SetInsertPoint(shortBB);
+            llvm::BasicBlock *shortCont = builder.GetInsertBlock();
+            builder.CreateBr(mergeBB);
+
+            builder.SetInsertPoint(mergeBB);
+            auto *phi = builder.CreatePHI(builder.getPtrTy(), 2);
+            if (isAnd) { phi->addIncoming(rhsVal, rhsCont); phi->addIncoming(lhs, shortCont); }
+            else       { phi->addIncoming(lhs, shortCont);  phi->addIncoming(rhsVal, rhsCont); }
+            return phi;
+        }
+
         if (op == ".") {
             // A dotted member name on the right ("k2.k3") comes from
             // mergeObjectMembers gluing a chain whose head was an index access
@@ -1414,14 +1514,6 @@ llvm::Value *CompileExprAST(
         } else if (op == "&") {
             auto *f = module->getFunction("cfvariant_concat");
             if (!f) f = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_concat", module);
-            return emitCall(builder, f, {lhs, rhs});
-        } else if (op == "AND" || op == "&&") {
-            auto *f = module->getFunction("cfvariant_and");
-            if (!f) f = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_and", module);
-            return emitCall(builder, f, {lhs, rhs});
-        } else if (op == "OR" || op == "||") {
-            auto *f = module->getFunction("cfvariant_or");
-            if (!f) f = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_or", module);
             return emitCall(builder, f, {lhs, rhs});
         } else if (op == "XOR") {
             auto *f = module->getFunction("cfvariant_xor");

@@ -833,11 +833,15 @@ void emit_try_catch_codegen(
     llvm::Value *trySavepoint = builder.CreateCall(fCleanupSave, {});
 
     // ---- Try body (calls become invokes unwinding to the landing pad) ----
-    EhContext eh{lpBB};
-    EhContext *savedEh = g_ehContext;
-    g_ehContext = &eh;
-    compileTryBody();
-    g_ehContext = savedEh;
+    // The guard restores g_ehContext even when a compile-time error aborts the
+    // body mid-way (unimplemented tag, rejected expression, ...); a leaked
+    // pointer here made the NEXT component compile read a garbage landing pad
+    // and segfault in IR construction.
+    {
+        EhContext eh{lpBB};
+        ScopedCodegenState<EhContext*> ehGuard(g_ehContext, &eh);
+        compileTryBody();
+    }
     if (builder.GetInsertBlock() && !builder.GetInsertBlock()->getTerminator()) {
         builder.CreateBr(successBB);
     }
@@ -903,10 +907,10 @@ void emit_try_catch_codegen(
                                             "", 0, module, true),
                                         cap});
         }
-        llvm::Value *savedCatchExn = g_currentCatchExn;
-        g_currentCatchExn = cap;
-        compileCatchBody(c, cap);
-        g_currentCatchExn = savedCatchExn;
+        {
+            ScopedCodegenState<llvm::Value*> catchExnGuard(g_currentCatchExn, cap);
+            compileCatchBody(c, cap);
+        }
         if (builder.GetInsertBlock() && !builder.GetInsertBlock()->getTerminator()) {
             if (finallySuccessBB) {
                 builder.CreateBr(finallySuccessBB);
@@ -1576,8 +1580,7 @@ void compile_script_expression(
     const char *cfm_text,
     size_t cfm_text_size,
     std::vector<LoopInfo> &loopStack) {
-    llvm::Value *savedOut = g_currentOut;
-    g_currentOut = out;
+    ScopedCodegenState<llvm::Value*> currentOutGuard(g_currentOut, out);
 
     size_t i = 0;
     while (i < tokens.size()) {
@@ -1594,8 +1597,6 @@ void compile_script_expression(
                                      out, cgi, server, cookie, application, session, url, form, variables,
                                      cfm_text, cfm_text_size, loopStack);
     }
-
-    g_currentOut = savedOut;
 }
 
 } // namespace webstrada

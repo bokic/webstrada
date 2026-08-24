@@ -1766,6 +1766,188 @@ static cfvariant sharpParseUnary(string &out, const string &s, size_t &pos, int 
     return sharpParsePrimary(out, s, pos, cgi, server, cookie, application, session, url, form, variables);
 }
 
+// Advances `pos` past a full expression operand (the same token extent that
+// sharpParseExpr would consume at the given minimum precedence) WITHOUT
+// evaluating anything. Used for AND/OR short-circuit: when the left operand
+// decides the result (false AND ..., true OR ...) the right operand must be
+// skipped, not evaluated — CF never touches it (verified: `true OR
+// undefinedvar` -> true, `lastIndex EQ 0 OR arr[lastIndex]...` with
+// lastIndex=0 never reads arr[0], was Queue.cfc:30). Mirror the grammar:
+// primary (parens/brackets/strings/numbers/identifiers + chains), unary
+// NOT/!/+/- and the binary/ternary loop.
+static void sharpSkipExpr(const string &s, size_t &pos, int minPrec)
+{
+    auto skipWhitespace = [&]() {
+        while (pos < (size_t)s.length() && (s.at(pos) == ' ' || s.at(pos) == '\t')) pos++;
+    };
+    auto skipPrimary = [&]() {
+        if (pos >= (size_t)s.length()) throw webstrada::exception("Unexpected end of expression");
+        char c = s.at(pos);
+        if (c == '(' || c == '[' || c == '{') {
+            int close = findMatchingClose(s, pos);
+            if (close == -1) throw webstrada::exception("Unterminated '" + string(1, c) + "' in expression");
+            pos = close + 1;
+            // A literal may carry a trailing member/index chain
+            // (`[1,2,3][5]`, `{a:1}.b`, `(x).y`): consume it like
+            // appendLiteralChain does so the skipped extent matches what the
+            // evaluator would have consumed.
+            for (;;) {
+                if (pos >= (size_t)s.length()) break;
+                char cc = s.at(pos);
+                if (cc == '[') {
+                    int cl = findMatchingClose(s, pos);
+                    if (cl == -1) break;
+                    pos = cl + 1;
+                } else if (cc == '.') {
+                    pos++;
+                    while (pos < (size_t)s.length()) {
+                        char mc = s.at(pos);
+                        if (isalnum(static_cast<unsigned char>(mc)) || mc == '_') pos++;
+                        else break;
+                    }
+                    if (pos < (size_t)s.length() && s.at(pos) == '(') {
+                        int cl = findMatchingClose(s, pos);
+                        if (cl == -1) break;
+                        pos = cl + 1;
+                    }
+                } else {
+                    break;
+                }
+            }
+            return;
+        }
+        if (c == '"' || c == '\'') {
+            char q = c;
+            pos++;
+            while (pos < (size_t)s.length()) {
+                char cc = s.at(pos);
+                if (cc == q) {
+                    if (pos + 1 < (size_t)s.length() && s.at(pos + 1) == q) { pos += 2; continue; }
+                    pos++;
+                    break;
+                }
+                pos++;
+            }
+            return;
+        }
+        if (isdigit(static_cast<unsigned char>(c)) ||
+            (c == '.' && pos + 1 < (size_t)s.length() && isdigit(static_cast<unsigned char>(s.at(pos + 1))))) {
+            while (pos < (size_t)s.length()) {
+                char cc = s.at(pos);
+                if (isdigit(static_cast<unsigned char>(cc)) || cc == '.') { pos++; continue; }
+                if (cc == 'e' || cc == 'E') {
+                    size_t save = pos;
+                    pos++;
+                    if (pos < (size_t)s.length() && (s.at(pos) == '+' || s.at(pos) == '-')) pos++;
+                    if (pos < (size_t)s.length() && isdigit(static_cast<unsigned char>(s.at(pos)))) {
+                        while (pos < (size_t)s.length() && isdigit(static_cast<unsigned char>(s.at(pos)))) pos++;
+                    } else {
+                        pos = save;
+                    }
+                    continue;
+                }
+                break;
+            }
+            return;
+        }
+        if (isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            while (pos < (size_t)s.length()) {
+                char cc = s.at(pos);
+                if (isalnum(static_cast<unsigned char>(cc)) || cc == '_') pos++;
+                else break;
+            }
+            for (;;) {
+                if (pos >= (size_t)s.length()) break;
+                char cc = s.at(pos);
+                if (cc == '(' || cc == '[') {
+                    int close = findMatchingClose(s, pos);
+                    if (close == -1) throw webstrada::exception("Unterminated '" + string(1, cc) + "' in expression");
+                    pos = close + 1;
+                } else if (cc == '.') {
+                    pos++;
+                    while (pos < (size_t)s.length()) {
+                        char mc = s.at(pos);
+                        if (isalnum(static_cast<unsigned char>(mc)) || mc == '_') pos++;
+                        else break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            return;
+        }
+        pos++;
+    };
+
+    // Unary prefix.
+    skipWhitespace();
+    {
+        size_t save = pos;
+        string op;
+        if (matchSharpUnaryOp(s, pos, op)) {
+            int prec = sharpUnaryOpPrec(op);
+            sharpSkipExpr(s, pos, prec);
+        } else {
+            pos = save;
+            skipPrimary();
+        }
+    }
+
+    for (;;) {
+        size_t save = pos;
+        skipWhitespace();
+        string op;
+        if (!matchSharpBinaryOp(s, pos, op)) {
+            if (pos < (size_t)s.length() && (s.at(pos) == '<' || s.at(pos) == '>')) {
+                throw webstrada::exception("Illegal symbolic comparison operator inside #...# (use the word forms GT, LT, GTE or LTE)");
+            }
+            pos = save;
+            return;
+        }
+        int prec = sharpBinOpPrec(op);
+        if (prec < minPrec) {
+            pos = save;
+            return;
+        }
+        if (op.equals("?")) {
+            size_t thenPos = pos;
+            size_t scan = thenPos;
+            int depth = 0;
+            size_t colonPos = (size_t)-1;
+            for (;;) {
+                while (scan < (size_t)s.length() && (s.at(scan) == ' ' || s.at(scan) == '\t')) scan++;
+                if (scan >= (size_t)s.length()) break;
+                char cc = s.at(scan);
+                if (cc == '(') { depth++; scan++; continue; }
+                if (cc == ')') {
+                    if (depth == 0) break;
+                    depth--; scan++; continue;
+                }
+                if (cc == '?' && depth == 0) { depth++; scan++; continue; }
+                if (cc == ':' && depth == 0) { colonPos = scan; break; }
+                if (cc == '"' || cc == '\'') {
+                    char q = cc;
+                    scan++;
+                    while (scan < (size_t)s.length() && s.at(scan) != q) scan++;
+                    scan++;
+                    continue;
+                }
+                scan++;
+            }
+            if (colonPos == (size_t)-1) {
+                throw webstrada::exception("Invalid ternary expression: missing ':'");
+            }
+            size_t p = thenPos;
+            sharpSkipExpr(s, p, 0);
+            p = colonPos + 1;
+            sharpSkipExpr(s, p, 0);
+            pos = p;
+            continue;
+        }
+        sharpSkipExpr(s, pos, prec + 1);
+    }
+}
+
 static cfvariant sharpParseExpr(string &out, const string &s, size_t &pos, int minPrec,
     void *cgi, void *server, void *cookie, void *application,
     void *session, void *url, void *form, void *variables)
@@ -1832,6 +2014,26 @@ static cfvariant sharpParseExpr(string &out, const string &s, size_t &pos, int m
             lhs = *cf_ternary_select(&cond, &thenVal, &elseVal);
             // The else consumed the rest; continue the outer loop (nothing left
             // or a higher-precedence operator follows at top level).
+            continue;
+        }
+        if (op.equals("AND") || op.equals("&&") || op.equals("OR") || op.equals("||")) {
+            // CF short-circuits AND/OR: the right operand is evaluated only
+            // when needed (verified: `true OR undefinedvar` -> true, `lastIndex
+            // EQ 0 OR arr[lastIndex]...` with lastIndex=0 never touches arr[0]).
+            // When the left side decides the result, skip the rhs tokens
+            // without evaluating them; otherwise evaluate normally.
+            bool isAnd = op.equals("AND") || op.equals("&&");
+            int lhsTruthy = cfml::isTruthy(lhs);
+            bool needRhs = isAnd ? (lhsTruthy != 0) : (lhsTruthy == 0);
+            if (needRhs) {
+                cfvariant rhs = sharpParseExpr(out, s, pos, prec + 1, cgi, server, cookie, application, session, url, form, variables);
+                lhs = applySharpBinaryOp(out, op, lhs, rhs, cgi, server, cookie, application, session, url, form, variables);
+            } else {
+                // Short-circuit: the left operand decides the result. AND with a
+                // falsy lhs returns lhs (cfvariant_and), OR with a truthy lhs
+                // returns lhs (cfvariant_or). Skip the rhs tokens un-evaluated.
+                sharpSkipExpr(s, pos, prec + 1);
+            }
             continue;
         }
         cfvariant rhs = sharpParseExpr(out, s, pos, prec + 1, cgi, server, cookie, application, session, url, form, variables);
@@ -1971,12 +2173,40 @@ cfvariant evaluateExpr(string &out, const string &expr,
             } else {
                 base = evaluateExpr(out, baseStr, cgi, server, cookie, application, session, url, form, variables);
             }
-            std::vector<cfvariant> args;
+            // Named arguments on a member call (base.method(name=value)) build
+            // the marker struct passed as args[0]; the runtime member dispatch
+            // reorders against the method's parameter names.
+            bool anyNamed = false;
             for (const auto &a : call.args) {
-                args.push_back(evaluateExpr(out, a, cgi, server, cookie, application, session, url, form, variables));
+                string nm, vl;
+                if (splitNamedArg(a, nm, vl)) { anyNamed = true; break; }
             }
+            std::vector<cfvariant> args;
             std::vector<const cfvariant*> argPtrs;
-            for (const auto &a : args) argPtrs.push_back(&a);
+            if (anyNamed) {
+                auto *namedStruct = new cfvariant(cfvariant::Struct);
+                cf_register_temp(namedStruct);
+                for (const auto &a : call.args) {
+                    string nm, vl;
+                    if (splitNamedArg(a, nm, vl)) {
+                        cfvariant val = evaluateExpr(out, vl, cgi, server, cookie, application, session, url, form, variables);
+                        // Keep the original casing (see the UDF path above).
+                        namedStruct->structSet(nm, val);
+                    } else {
+                        cfvariant ev = evaluateExpr(out, a, cgi, server, cookie, application, session, url, form, variables);
+                        args.push_back(ev);
+                    }
+                }
+                auto *marker = cfml::cf_named_args_marker(namedStruct);
+                cf_register_temp(marker);
+                argPtrs.push_back(marker);
+                for (const auto &a : args) argPtrs.push_back(&a);
+            } else {
+                for (const auto &a : call.args) {
+                    args.push_back(evaluateExpr(out, a, cgi, server, cookie, application, session, url, form, variables));
+                }
+                for (const auto &a : args) argPtrs.push_back(&a);
+            }
             if (slot) {
                 return invokeMemberMethod(*slot, methodName, argPtrs.data(), static_cast<int>(argPtrs.size()),
                     out, cgi, server, cookie, application, session, url, form, variables);
@@ -2005,9 +2235,11 @@ cfvariant evaluateExpr(string &out, const string &expr,
                     string nm, vl;
                     if (splitNamedArg(a, nm, vl)) {
                         cfvariant val = evaluateExpr(out, vl, cgi, server, cookie, application, session, url, form, variables);
-                        string key = nm;
-                        key.toUpper();
-                        namedStruct->structSet(key, val);
+                        // Keep the original casing: cf_named_args_reorder matches
+                        // declared params case-insensitively, and extra named args
+                        // that match no parameter surface in the arguments scope
+                        // under the casing they were written with (CF behavior).
+                        namedStruct->structSet(nm, val);
                     } else {
                         cfvariant ev = evaluateExpr(out, a, cgi, server, cookie, application, session, url, form, variables);
                         auto *tmp = new cfvariant(ev);

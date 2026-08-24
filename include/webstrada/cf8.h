@@ -1366,6 +1366,15 @@ cfvariant *cf_udf_invoke(cfvariant *udfVal, const cfvariant **args, int argc,
 // followed by the positional arguments, so the runtime can bind by name.
 #define CFML_NAMED_ARGS_KEY "\x01" "CFML_NAMED_ARGS"
 
+// The reserved key marking named arguments that do not match any declared
+// parameter. ColdFusion silently accepts extra named arguments and exposes
+// them in the function's `arguments` scope (verified on CF 2025:
+// `g(x=1, y=2)` where g declares x returns arguments keys `X,y`, and
+// `f(a=1, b=2)` where f declares nothing returns `a,b`). The reorder pass
+// collects them under this key so cf_udf_build_arguments can merge them into
+// the arguments struct under their original casing.
+#define CFML_EXTRA_NAMED_ARGS_KEY "\x01" "CFML_EXTRA_NAMED_ARGS"
+
 // Reorders a call's arguments against a function's declared parameter names.// When args[0] is the named-arguments marker (see CFML_NAMED_ARGS_KEY), the
 // named pairs are placed into their matching parameter slots and the remaining
 // positional args fill the unfilled slots in order; otherwise the array is

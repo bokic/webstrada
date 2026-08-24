@@ -505,15 +505,13 @@ llvm::Function *compileUdfFunction(
     // Save the caller's insert point: compiling a UDF body moves the builder
     // into the new function, and the caller must continue where it left off.
     auto savedIP = builder.saveIP();
-    FunctionReturnCtx *savedReturnCtx = g_returnCtx;
 
     llvm::Function *fn = getUdfSignatureFn(module, builder, llvmName, isComponentMethod);
     auto *entry = llvm::BasicBlock::Create(context, "udf.entry", fn);
     builder.SetInsertPoint(entry);
 
-    auto *savedCleanupBB = g_currentFuncCleanupBB;
     auto *funcCleanupBB = llvm::BasicBlock::Create(context, "udf.cleanup", fn);
-    g_currentFuncCleanupBB = funcCleanupBB;
+    ScopedCodegenState<llvm::BasicBlock*> cleanupBBGuard(g_currentFuncCleanupBB, funcCleanupBB);
 
     auto *fCleanupSave = getOrCreateHelper(module, builder, "cfvariant_cleanup_save", builder.getInt64Ty(), {});
     llvm::Value *frameSavepoint = builder.CreateCall(fCleanupSave, {});
@@ -748,7 +746,7 @@ llvm::Function *compileUdfFunction(
     rctx.exitBB = exitBB;
     rctx.returnType = def.returnType;
     rctx.funcName = def.name;
-    g_returnCtx = &rctx;
+    ScopedCodegenState<FunctionReturnCtx*> returnCtxGuard(g_returnCtx, &rctx);
 
     std::vector<LoopInfo> loopStack;
     if (def.isTagForm) {
@@ -784,28 +782,26 @@ llvm::Function *compileUdfFunction(
         size_t bodyPos = def.bodyStart;
         size_t bidx = 0;
         llvm::Value *bodyVariables = isComponentMethod ? variablesScope : localScope;
-        bool savedInFunc = g_compileInFunctionBody;
-        g_compileInFunctionBody = true;
-        compile_token_list(def.bodyTokens, bidx, bodyPos, context, module, builder, fn,
-                           bodyOut, wsBody, cgi, server, cookie, application, session, url, form, bodyVariables,
-                           cfm_text, def.bodyEnd, loopStack);
-        g_compileInFunctionBody = savedInFunc;
+        {
+            ScopedCodegenState<bool> inFuncGuard(g_compileInFunctionBody, true);
+            compile_token_list(def.bodyTokens, bidx, bodyPos, context, module, builder, fn,
+                               bodyOut, wsBody, cgi, server, cookie, application, session, url, form, bodyVariables,
+                               cfm_text, def.bodyEnd, loopStack);
+        }
         if (bodyPos < def.bodyEnd) {
             wsBody.feed(module, builder, bodyOut, cfm_text + bodyPos, def.bodyEnd - bodyPos, WsRight::Tag);
         }
         wsBody.finish(module, builder, bodyOut, WsRight::Tag);
     } else {
-        bool savedInFunc = g_compileInFunctionBody;
-        g_compileInFunctionBody = true;
-        compile_script_expression(def.bodyTokens, context, module, builder, fn, out, cgi, server, cookie, application, session, url, form,
-                                  isComponentMethod ? variablesScope : localScope,
-                                  cfm_text, cfm_text_size, loopStack);
-        g_compileInFunctionBody = savedInFunc;
+        {
+            ScopedCodegenState<bool> inFuncGuard(g_compileInFunctionBody, true);
+            compile_script_expression(def.bodyTokens, context, module, builder, fn, out, cgi, server, cookie, application, session, url, form,
+                                      isComponentMethod ? variablesScope : localScope,
+                                      cfm_text, cfm_text_size, loopStack);
+        }
     }
 
-    g_returnCtx = savedReturnCtx;
     builder.CreateBr(exitBB);
-
     // Normal exit path: restore all temps except the return value
     builder.SetInsertPoint(exitBB);
     if (def.isTagForm && !def.output) {
@@ -841,8 +837,6 @@ llvm::Function *compileUdfFunction(
     builder.CreateCall(fRestore, {frameSavepoint});
     builder.CreateResume(lp);
 
-    g_currentFuncCleanupBB = savedCleanupBB;
-
     builder.restoreIP(savedIP);
     return fn;
 }
@@ -877,8 +871,7 @@ void compile_token_list(
             llvm::Function::InternalLinkage, "cfloop_set_long", module);
     }
 
-    llvm::Value *savedOut = g_currentOut;
-    g_currentOut = out;
+    ScopedCodegenState<llvm::Value*> currentOutGuard(g_currentOut, out);
 
     // Keep the top call-stack frame's line in sync as we execute: emit a
     // cf_stack_set_line before each executable construct (line numbers within a
@@ -1058,9 +1051,15 @@ void compile_token_list(
                         if (scopePtr) {
                             dumpArgs.push_back(scopePtr);
                         } else {
-                            auto keyGlobal = builder.CreateGlobalString(llvm::StringRef(av.constData(), av.length()), "", 0, module, true);
-                            llvm::Value *varPtr = nullptr;
-                            llvm_CfGetVar(module, builder, variables, keyGlobal, varPtr);
+                            // General expression: compile it like any CFML
+                            // expression so member chains (arguments.obj,
+                            // s.key, arr[1].k) and calls resolve correctly.
+                            // Previously only a single VARIABLES key worked
+                            // (cfgetvar(variables, "arguments.obj") could
+                            // never find dotted names).
+                            llvm::Value *varPtr = CompileStringExpression(module, builder, mainfunc,
+                                cgi, server, cookie, application, session, url, form, variables,
+                                av, cfm_text);
                             dumpArgs.push_back(varPtr);
                         }
                     } else {
@@ -4358,8 +4357,7 @@ void compile_token_list(
             // Inside <cfoutput> the text writes bypass the cfoutputonly gate:
             // <cfsetting enablecfoutputonly> only suppresses content outside
             // cfoutput tags.
-            bool savedInCfoutput = g_insideCfoutput;
-            g_insideCfoutput = true;
+            ScopedCodegenState<bool> insideCfoutputGuard(g_insideCfoutput, true);
 
             if (outQueryExpr.isEmpty()) {
                 WhitespaceState wsOutput(ws.enabled, ws.flag);
@@ -4516,7 +4514,6 @@ void compile_token_list(
                 emitCall(builder, fSetRow, {collVal, origRow});
                 emitCall(builder, fScopePop, {});
             }
-            g_insideCfoutput = savedInCfoutput;
             break;
         }
 
@@ -5137,8 +5134,6 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
 
         index++;
     }
-
-    g_currentOut = savedOut;
 }
 
 } // namespace webstrada

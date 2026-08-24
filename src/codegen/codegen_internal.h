@@ -128,6 +128,28 @@ extern thread_local bool g_compileInFunctionBody; // true while compiling a UDF/
 // <cfsetting enablecfoutputonly> suppresses them like CF; <cfoutput> content
 // must never be gated.
 extern thread_local bool g_insideCfoutput;
+
+// Exception-safe save/restore of a thread_local codegen state slot. A
+// compile-time abort (unimplemented tag, parse error, an expression that the
+// compiler rejects, ...) must never leave one of these globals pointing at dead
+// state: the compile function unwinds without running the manual restore and
+// the NEXT component compile would read a dangling pointer. This was BUGS.md
+// "codegen state leak on aborted compile": a throw inside a <cftry> body (the
+// unimplemented <cfschedule> tag) skipped the g_ehContext restore, so the
+// following component compile read a garbage landingPadBB and segfaulted in
+// LLVM IR construction (Use::set). The guard's destructor restores the slot on
+// every exit path, normal or exceptional.
+template <typename T>
+class ScopedCodegenState {
+public:
+    explicit ScopedCodegenState(T &slot, T value) : m_slot(slot), m_saved(slot) { slot = value; }
+    ~ScopedCodegenState() { m_slot = m_saved; }
+    ScopedCodegenState(const ScopedCodegenState &) = delete;
+    ScopedCodegenState &operator=(const ScopedCodegenState &) = delete;
+private:
+    T &m_slot;
+    T m_saved;
+};
 // The textparser handle of the template currently being compiled (set in
 // compile_parsed / compileComponent). Its line map feeds
 // textparser_get_line_number_at_position, which lineOfOffset uses instead of
