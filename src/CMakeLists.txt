@@ -626,7 +626,7 @@ file(MAKE_DIRECTORY ${DEFINITIONS_OUTPUT_DIR})
 foreach(def_file cfml_definition.json)
     add_custom_command(
         OUTPUT ${DEFINITIONS_OUTPUT_DIR}/${def_file}.h
-        COMMAND /usr/bin/textparser_json2h.py ${DEFINITIONS_OUTPUT_DIR}/${def_file}
+        COMMAND /usr/bin/textparser_json2h.py --no-native-regex ${DEFINITIONS_OUTPUT_DIR}/${def_file}
         DEPENDS ${DEFINITIONS_OUTPUT_DIR}/${def_file}
         COMMENT "Generating ${def_file}.h"
     )

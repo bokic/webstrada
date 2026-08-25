@@ -12,7 +12,7 @@
 #
 # Environment:
 #   IMAGE=name:tag             image name/tag to produce (default webstrada:latest)
-#   TEXTPARSER_VERSION=x.y.z   textparser tag to build (default 1.0.10)
+#   TEXTPARSER_VERSION=x.y.z   textparser tag to build (default 1.0.11)
 #
 # Examples:
 #   ./build_docker.sh
@@ -23,7 +23,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 IMAGE="${IMAGE:-webstrada:latest}"
-TEXTPARSER_VERSION="${TEXTPARSER_VERSION:-1.0.10}"
+TEXTPARSER_VERSION="${TEXTPARSER_VERSION:-1.0.11}"
 
 EXTRA_ARGS=()
 if [ "${1:-}" = "--no-cache" ]; then

@@ -530,7 +530,7 @@ TextParserTokenItem convertToken(const textparser_token_item *src)
     TextParserTokenItem ret;
 
     ret.token_id = src->token_id;
-    ret.position = src->position;
+    ret.position = textparser_get_token_position(src);
     ret.len = src->len;
     if (src->error)
         ret.error = src->error;
@@ -564,7 +564,7 @@ static TextParserTokenItemKeyValue convertTokenKeyValue(const char *text, const 
     TextParserTokenItemKeyValue ret;
 
     ret.token_id = src->token_id;
-    ret.position = src->position;
+    ret.position = textparser_get_token_position(src);
     ret.len = src->len;
     if (src->error)
         ret.error = src->error;
@@ -578,8 +578,8 @@ static TextParserTokenItemKeyValue convertTokenKeyValue(const char *text, const 
             auto assigment = key->next;
             auto value = assigment->next;
 
-            std::string keyStr = std::string(text + key->position, key->len);
-            std::string assigmentStr = std::string(text + assigment->position, assigment->len);
+            std::string keyStr = std::string(text + textparser_get_token_position(key), key->len);
+            std::string assigmentStr = std::string(text + textparser_get_token_position(assigment), assigment->len);
 
             if (assigmentStr == "=")
                 ret.params.insert({keyStr, convertToken(value)});

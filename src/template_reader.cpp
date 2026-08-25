@@ -269,9 +269,10 @@ std::optional<std::string> extractPageEncoding(const std::string &tagText)
 // Slices a token's raw text out of the source, clamped to the buffer bounds.
 std::string sliceToken(const textparser_token_item *t, const std::string &text)
 {
-    if (t->position >= text.size()) return "";
-    size_t len = std::min<size_t>(t->len, text.size() - t->position);
-    return text.substr(t->position, len);
+    size_t pos = textparser_get_token_position(t);
+    if (pos >= text.size()) return "";
+    size_t len = std::min<size_t>(t->len, text.size() - pos);
+    return text.substr(pos, len);
 }
 
 // Recursively walks the textparser token tree, collecting the pageEncoding
@@ -295,7 +296,7 @@ void scanDirectiveTokens(const textparser_token_item *item, const std::string &t
                 std::optional<std::string> pe = extractPageEncoding(tagText);
                 if (pe.has_value()) {
                     out.emplace_back(*pe,
-                        textparser_get_line_number_at_position(handle, t->position) + 1);
+                        textparser_get_line_number_at_position(handle, textparser_get_token_position(t)) + 1);
                 }
             }
         } else if (t->token_id == TextParser_cfml_Variable) {
@@ -310,7 +311,7 @@ void scanDirectiveTokens(const textparser_token_item *item, const std::string &t
                         (lit.front() == '"' || lit.front() == '\'') &&
                         lit.back() == lit.front()) {
                         out.emplace_back(lit.substr(1, lit.size() - 2),
-                            textparser_get_line_number_at_position(handle, t->position) + 1);
+                            textparser_get_line_number_at_position(handle, textparser_get_token_position(t)) + 1);
                     }
                 }
             }
