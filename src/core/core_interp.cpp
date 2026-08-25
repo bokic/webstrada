@@ -657,6 +657,14 @@ webstrada::cfvariant *cfml::lookupVarWritable(const char *name,
         return nullptr;
     };
 
+    // A compiled include has a separate template entry function and therefore
+    // cannot rely on the caller's UDF stack frame.  Its caller-local scope is
+    // carried explicitly by IncludeRuntime; keep it below any active UDF local
+    // scope and above the ordinary variables scope.
+    if (auto *rt = cfml::include_context(); rt && rt->includeLocalScope) {
+        if (auto *r = tryScope(rt->includeLocalScope)) return r;
+    }
+
     if (!g_udfCtx.empty()) {
         // The active UDF local scope has precedence even when its temporary
         // struct is marked disabled during component dispatch; query columns

@@ -1,5 +1,10 @@
 # Unimplemented CFML Functions
 
+Compatibility note (2026-08-26): the per-worker compilation cache checks source
+modification times for all `.cfm` templates and `.cfc` components, including
+`Application.cfm`/`Application.cfc`; changed components are recompiled before
+the next load.
+
 Total: 161 functions (24.17% of 666) that are still unimplemented and throw the `Function X is not implemented` stub error. This covers everything marked `❌ No` in PROGRESS.md (CFML Functions table).
 
 ## Unimplemented
@@ -27,6 +32,10 @@ Notes:
 * InvokeCFClientFunction is **not a ColdFusion 2025 function** — CF reports `Variable INVOKECFCLIENTFUNCTION is undefined.`, which the engine reproduces (see fn_ajax.cpp).
 * The **cflogin model** functions (GetAuthUser, GetUserRoles, IsUserLoggedIn, IsUserInRole, IsUserInAnyRole) were implemented on 2026-08-11 with the `<cflogin>`/`<cfloginuser>`/`<cflogout>` tags (see PROGRESS.md).
 Implementation note: direct custom-tag syntax (`<cf_name>`) is a compiler/tag feature and adds no CFML function.
+
+Compatibility note (2026-08-26): `<cfinclude>` now explicitly propagates the
+caller-local scope across compiled template boundaries; no CFML function is
+added by this runtime fix.
 
 Compatibility note (2026-08-25): nested CFC member chains are supported by the
 JIT; this fix does not add or remove a standalone CFML function.

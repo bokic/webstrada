@@ -675,6 +675,13 @@ struct IncludeRuntime {
     // have an end tag if used inside an included template.").
     int includeDepth = 0;
 
+    // Caller-local scope for the template currently executing through
+    // <cfinclude>.  This is separate from `variables`: inside a component
+    // method, `variables` remains the component instance scope while an
+    // included template must still resolve unqualified names from the caller's
+    // local scope.
+    webstrada::cfvariant *includeLocalScope = nullptr;
+
     // Loads (compiling if needed) the ColdFusion component at an absolute
     // `path`, returning a retained ComponentInfo (or nullptr when the file
     // does not exist). Null when component loading is unavailable; the runtime
@@ -697,7 +704,8 @@ IncludeRuntime *include_context();
 // Throws when the target template cannot be resolved.
 void cf_include(string *out, void *cgi, void *server, void *cookie, void *application,
                 void *session, void *url, void *form, void *variables,
-                const cfvariant *templatePath, const cfvariant *runonce);
+                const cfvariant *localScope, const cfvariant *templatePath,
+                const cfvariant *runonce);
 
 // ---- <cferror> runtime ----
 

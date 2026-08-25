@@ -54,6 +54,7 @@ thread_local bool g_compileInFunctionBody = false;
 thread_local textparser_t g_textparser = nullptr;
 thread_local std::map<std::pair<llvm::Function*, std::string>, llvm::Value*> g_varFastSlots;
 thread_local std::map<std::string, std::string> g_importPrefixes;
+thread_local llvm::Value *g_currentIncludeLocalScope = nullptr;
 int g_closureCounter = 0;
 FunctionReturnCtx *g_returnCtx = nullptr;
 
@@ -785,6 +786,7 @@ llvm::Function *compileUdfFunction(
         llvm::Value *bodyVariables = isComponentMethod ? variablesScope : localScope;
         {
             ScopedCodegenState<bool> inFuncGuard(g_compileInFunctionBody, true);
+            ScopedCodegenState<llvm::Value*> includeLocalGuard(g_currentIncludeLocalScope, localScope);
             compile_token_list(def.bodyTokens, bidx, bodyPos, context, module, builder, fn,
                                bodyOut, wsBody, cgi, server, cookie, application, session, url, form, bodyVariables,
                                cfm_text, def.bodyEnd, loopStack);
@@ -796,6 +798,7 @@ llvm::Function *compileUdfFunction(
     } else {
         {
             ScopedCodegenState<bool> inFuncGuard(g_compileInFunctionBody, true);
+            ScopedCodegenState<llvm::Value*> includeLocalGuard(g_currentIncludeLocalScope, localScope);
             compile_script_expression(def.bodyTokens, context, module, builder, fn, out, cgi, server, cookie, application, session, url, form,
                                       isComponentMethod ? variablesScope : localScope,
                                       cfm_text, cfm_text_size, loopStack);
@@ -3511,9 +3514,11 @@ void compile_token_list(
                 auto *fInclude = getOrCreateHelper(module, builder, "cf_include", builder.getVoidTy(),
                     {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
                      builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
-                     builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
+                     builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
                 emitCall(builder, fInclude, {out, cgi, server, cookie, application, session,
-                                             url, form, variables, templateVal,
+                                             url, form, variables,
+                                             g_currentIncludeLocalScope ? g_currentIncludeLocalScope : nullPtr,
+                                             templateVal,
                                              runonceVal ? runonceVal : nullPtr});
             } else if (tagNameLow.startWith("<cferror")) {
                 // `<cferror>` registers an error handler for the current

@@ -34,6 +34,7 @@
 #include <functional>
 #include <cctype>
 #include <ctime>
+#include <sys/stat.h>
 
 
 namespace webstrada {
@@ -4004,6 +4005,77 @@ TEST_F(ComponentTest, CreateObjectAndInit) {
     EXPECT_EQ(out.equals("Alice|human|YES|YES"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, CfincludeInsideComponentMethodSeesMethodLocal) {
+    // An included template executes in the caller's scope.  In particular, a
+    // component method's var-declared local must remain visible through the
+    // include (the Application.cfc login path relies on this).
+    string out = runCfc({
+        {"blog.cfc",
+         "<cfcomponent><cffunction name=\"getBasePath\"><cfreturn \"BLOG_PATH\"></cffunction>"
+         "<cffunction name=\"getSkin\"><cfreturn \"BLOG_SKIN\"></cffunction></cfcomponent>"},
+        {"scope.cfc",
+         "<cfcomponent>"
+         "<cffunction name=\"render\" output=\"true\">"
+         "<cfset var blog = CreateObject(\"component\", \"blog\")>"
+         "<cfinclude template=\"included.cfm\">"
+         "</cffunction>"
+         "</cfcomponent>"},
+        {"included.cfm", "<cfoutput>[#blog.getBasePath()#/#blog.getSkin()#]</cfoutput>"},
+        {"main.cfm",
+         "<cfset c = CreateObject(\"component\", \"scope\")>"
+         "<cfoutput>#c.render()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[BLOG_PATH/BLOG_SKIN]"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, CfincludeAfterNestedComponentCallRetainsMethodLocal) {
+    string out = runCfc({
+        {"blog.cfc",
+         "<cfcomponent><cffunction name=\"getBasePath\"><cfreturn \"BLOG_PATH\"></cffunction>"
+         "<cffunction name=\"getSkin\"><cfreturn \"BLOG_SKIN\"></cffunction></cfcomponent>"},
+        {"manager.cfc",
+         "<cfcomponent><cffunction name=\"getBlog\"><cfreturn CreateObject(\"component\", \"blog\")></cffunction></cfcomponent>"},
+        {"scope.cfc",
+         "<cfcomponent>"
+         "<cffunction name=\"render\" output=\"true\">"
+         "<cfset var manager = CreateObject(\"component\", \"manager\")>"
+         "<cfset var blog = manager.getBlog()>"
+         "<cfinclude template=\"included.cfm\">"
+         "</cffunction>"
+         "</cfcomponent>"},
+        {"included.cfm", "<cfoutput>[#blog.getBasePath()#/#blog.getSkin()#]</cfoutput>"},
+        {"main.cfm",
+         "<cfset c = CreateObject(\"component\", \"scope\")>"
+         "<cfoutput>#c.render()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[BLOG_PATH/BLOG_SKIN]"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, CfincludeRetainsCallerLocalAfterNestedCallInsideInclude) {
+    string out = runCfc({
+        {"blog.cfc",
+         "<cfcomponent><cffunction name=\"getBasePath\"><cfreturn \"BLOG_PATH\"></cffunction>"
+         "<cffunction name=\"getSkin\"><cfreturn \"BLOG_SKIN\"></cffunction></cfcomponent>"},
+        {"admin.cfc",
+         "<cfcomponent><cffunction name=\"touch\"><cfreturn \"TOUCHED\"></cffunction></cfcomponent>"},
+        {"scope.cfc",
+         "<cfcomponent>"
+         "<cffunction name=\"render\" output=\"true\">"
+         "<cfset var blog = CreateObject(\"component\", \"blog\")>"
+         "<cfset var admin = CreateObject(\"component\", \"admin\")>"
+         "<cfset var localOnly = \"BEFORE\">"
+         "<cfinclude template=\"included.cfm\">"
+         "</cffunction>"
+         "</cfcomponent>"},
+        {"included.cfm",
+         "<cfset admin.touch()><cfset localOnly = \"AFTER\"><cfoutput>[#blog.getBasePath()#/#blog.getSkin()#/#localOnly#]</cfoutput>"},
+        {"main.cfm",
+         "<cfset c = CreateObject(\"component\", \"scope\")>"
+         "<cfoutput>#c.render()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[BLOG_PATH/BLOG_SKIN/AFTER]"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, NestedComponentMemberMethodDispatch) {
     // Each hop in a dotted component-valued base must be resolved before the
     // terminal member method is dispatched.
@@ -6610,6 +6682,13 @@ TEST_F(JitExpressionTest, EscapedQuotesInLiteral) {
 
     runJitTemplate("<cfset s = 'a, b ''quoted'' x'>", variables);
     EXPECT_EQ(variables["s"].toString().equals("a, b 'quoted' x"), true);
+}
+
+TEST_F(JitExpressionTest, GetDirectoryFromPathTreatsTrailingSeparatorAsDirectory) {
+    string out = runJitTemplate(
+        "<cfoutput>#GetDirectoryFromPath('/a/b/')#|#GetDirectoryFromPath('/a/b/file.cfm')#|#GetDirectoryFromPath('/')#</cfoutput>",
+        variables);
+    EXPECT_EQ(out.equals("/a/b/|/a/b/|/"), true) << out.constData();
 }
 
 TEST_F(JitExpressionTest, EscapedQuotesEdgeCases) {
@@ -9853,6 +9932,22 @@ static std::string makeAppCfmTree(const std::vector<std::pair<std::string, std::
     return root;
 }
 
+// Keep source-change tests deterministic without sleeping for a whole mtime
+// tick. TemplateCache uses the same second-resolution mtime comparison as the
+// request path, so advance the file's timestamp explicitly after rewriting it.
+static void rewriteTemplateAndAdvanceMtime(const std::string &path, const std::string &contents)
+{
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << contents;
+    out.close();
+
+    struct stat st{};
+    ASSERT_EQ(stat(path.c_str(), &st), 0);
+    struct timespec times[2] = {st.st_atim, st.st_mtim};
+    times[1].tv_sec += 1;
+    ASSERT_EQ(utimensat(AT_FDCWD, path.c_str(), times, 0), 0);
+}
+
 TEST_F(WorkerTest, ApplicationCfmFoundInSameDir) {
     std::string root = makeAppCfmTree({
         {"Application.cfm", "<cfset appVar = \"FROM_APP\">"},
@@ -9862,6 +9957,20 @@ TEST_F(WorkerTest, ApplicationCfmFoundInSameDir) {
     string page = (root + "/page.cfm").c_str();
     string out = runWorkerTemplate(w, page, root.c_str());
     EXPECT_EQ(out.equals("page|FROM_APP"), true);
+}
+
+TEST_F(WorkerTest, ApplicationCfmRecompilesAfterSourceChange) {
+    std::string root = makeAppCfmTree({
+        {"Application.cfm", "<cfset appVar = \"OLD\">"},
+        {"page.cfm", "<cfoutput>#appVar#</cfoutput>"},
+    });
+    worker w;
+    string page = (root + "/page.cfm").c_str();
+
+    EXPECT_EQ(runWorkerTemplate(w, page, root.c_str()).equals("OLD"), true);
+    rewriteTemplateAndAdvanceMtime(root + "/Application.cfm", "<cfset appVar = \"NEW\">");
+    w.out().clear();
+    EXPECT_EQ(runWorkerTemplate(w, page, root.c_str()).equals("NEW"), true);
 }
 
 TEST_F(WorkerTest, ApplicationCfmOutputIsPrepended) {
@@ -10065,6 +10174,30 @@ TEST_F(WorkerTest, ApplicationCfcLifecycleOrder) {
     EXPECT_EQ(pB < pP && pP < pA && pA < pE, true) << out.constData();
 }
 
+TEST_F(WorkerTest, ApplicationCfcRecompilesAfterSourceChange) {
+    std::string root = makeAppCfmTree({
+        {"Application.cfc",
+         "<cfcomponent>"
+         "<cffunction name=\"onRequestStart\">"
+         "<cfset request.marker = \"OLD\">"
+         "</cffunction>"
+         "</cfcomponent>"},
+        {"page.cfm", "<cfoutput>#request.marker#</cfoutput>"},
+    });
+    worker w;
+    string page = (root + "/page.cfm").c_str();
+
+    EXPECT_EQ(runWorkerRequestWithContext(w, page, root.c_str()).equals("OLD"), true);
+    rewriteTemplateAndAdvanceMtime(
+        root + "/Application.cfc",
+        "<cfcomponent>"
+        "<cffunction name=\"onRequestStart\">"
+        "<cfset request.marker = \"NEW\">"
+        "</cffunction>"
+        "</cfcomponent>");
+    EXPECT_EQ(runWorkerRequestWithContext(w, page, root.c_str()).equals("NEW"), true);
+}
+
 TEST_F(WorkerTest, ApplicationCfcOnRequestStartFalseStops) {
     std::string root = makeAppCfmTree({
         {"Application.cfc",
@@ -10208,6 +10341,28 @@ TEST_F(WorkerTest, CreateObjectThroughWorkerCache) {
     string page = (root + "/page.cfm").c_str();
     string out = runWorkerRequestWithContext(w, page, root.c_str());
     EXPECT_EQ(out.equals("42"), true) << out.constData();
+}
+
+TEST_F(WorkerTest, ComponentRecompilesAfterSourceChange) {
+    std::string root = makeAppCfmTree({
+        {"value.cfc",
+         "<cfcomponent>"
+         "<cffunction name=\"getValue\"><cfreturn \"OLD\"></cffunction>"
+         "</cfcomponent>"},
+        {"page.cfm",
+         "<cfset value = CreateObject(\"component\", \"value\")>"
+         "<cfoutput>#value.getValue()#</cfoutput>"},
+    });
+    worker w;
+    string page = (root + "/page.cfm").c_str();
+
+    EXPECT_EQ(runWorkerRequestWithContext(w, page, root.c_str()).equals("OLD"), true);
+    rewriteTemplateAndAdvanceMtime(
+        root + "/value.cfc",
+        "<cfcomponent>"
+        "<cffunction name=\"getValue\"><cfreturn \"NEW\"></cffunction>"
+        "</cfcomponent>");
+    EXPECT_EQ(runWorkerRequestWithContext(w, page, root.c_str()).equals("NEW"), true);
 }
 
 TEST_F(WorkerTest, ApplicationCfmNotFoundRunsPageAlone) {

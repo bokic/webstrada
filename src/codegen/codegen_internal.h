@@ -164,6 +164,10 @@ extern int g_closureCounter;
 // Used by the fast-path cfvariant_get_var_fast / cfvariant_bare_identifier_fast.
 extern thread_local std::map<std::pair<llvm::Function*, std::string>, llvm::Value*> g_varFastSlots;
 extern thread_local std::map<std::string, std::string> g_importPrefixes;
+// Function-local scope used by <cfinclude> code generated inside a UDF.  The
+// included template has its own compiled entry point, so this value is passed
+// explicitly across that boundary at runtime.
+extern thread_local llvm::Value *g_currentIncludeLocalScope;
 struct FunctionReturnCtx {
     llvm::Value *retSlot = nullptr;
     llvm::BasicBlock *exitBB = nullptr;

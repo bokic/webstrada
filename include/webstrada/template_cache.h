@@ -26,6 +26,7 @@ private:
     std::map<string, template_fn> m_templates;
     std::map<string, time_t> m_timestamps;
     std::map<string, ComponentInfo*> m_components;
+    std::map<string, time_t> m_componentTimestamps;
     llvm_codegen m_codegen;
 };
 
@@ -36,5 +37,4 @@ private:
 void compiled_cache_counts(int &templates, int &components);
 
 }
-
 

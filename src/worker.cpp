@@ -744,7 +744,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
 
     // (Re)instantiate the cached application object when the CFC changed.
     if (!m_appCfcPath.equals(app_cfc_path.constData()) || m_appCfc.m_type != cfvariant::Component ||
-        !m_appCfc.m_component) {
+        !m_appCfc.m_component || m_appCfc.m_component->info != info) {
         cfvariant *inst = cfml::cf_component_instantiate(info, &m_variables,
                                                          &m_out, &m_cgi, &m_server, &m_cookie,
                                                          &m_application, &m_session, &m_url, &m_form);

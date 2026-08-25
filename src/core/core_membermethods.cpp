@@ -609,6 +609,11 @@ cfvariant *cfml::cfvariant_assign(
         // `arguments` scope — even when a `local.arg1` was explicitly created
         // (CF: `local.arg1 = "L"; arg1 = "Y"` keeps local.arg1 == "L").
         scope = udfAssignScope(variables, name);
+    } else if (auto *rt = cfml::include_context(); rt && rt->includeLocalScope) {
+        // Unqualified writes in an included template target the caller's
+        // local scope when that caller is a function, while explicit
+        // `variables.foo` still uses the variables argument passed above.
+        scope = rt->includeLocalScope;
     }
 
     if (!scope || (scope->m_type != cfvariant::Struct && scope->m_type != cfvariant::Component)) {

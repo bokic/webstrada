@@ -130,6 +130,7 @@ namespace cfml {
 
 void cf_include(string *out, void *cgi, void *server, void *cookie, void *application,
                       void *session, void *url, void *form, void *variables,
+                      const cfvariant *localScope,
                       const cfvariant *templatePath, const cfvariant *runonce)
 {
     cfml::IncludeRuntime *rt = cfml::include_context();
@@ -173,7 +174,9 @@ void cf_include(string *out, void *cgi, void *server, void *cookie, void *applic
     rt->runOnceIncluded.push_back(resolved);
 
     std::string savedPath = rt->currentPath;
+    cfvariant *savedLocalScope = rt->includeLocalScope;
     rt->currentPath = resolved;
+    rt->includeLocalScope = const_cast<cfvariant*>(localScope);
     rt->includeDepth++;
     try {
         target(out, cgi, server, cookie, application, session, url, form, variables);
@@ -183,10 +186,12 @@ void cf_include(string *out, void *cgi, void *server, void *cookie, void *applic
         // <cfexit> in the include outputs BEFORE...AFTER).
     } catch (...) {
         rt->currentPath = savedPath;
+        rt->includeLocalScope = savedLocalScope;
         rt->includeDepth--;
         throw;
     }
     rt->currentPath = savedPath;
+    rt->includeLocalScope = savedLocalScope;
     rt->includeDepth--;
 }
 

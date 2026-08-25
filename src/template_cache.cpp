@@ -26,6 +26,7 @@ TemplateCache::~TemplateCache()
     // (m_codegen's engines) is not left dangling/leaked at cache destruction.
     for (auto &kv : m_components) component_info_release(kv.second);
     m_components.clear();
+    m_componentTimestamps.clear();
 }
 
 time_t TemplateCache::getFileModTime(const string &pathname)
@@ -68,16 +69,23 @@ template_fn TemplateCache::get(const string &pathname)
 
 ComponentInfo *TemplateCache::get_component(const string &pathname)
 {
-    if (getFileModTime(pathname) == 0) return nullptr;
+    time_t current_mod = getFileModTime(pathname);
+    if (current_mod == 0) return nullptr;
     auto it = m_components.find(pathname);
     if (it != m_components.end()) {
-        return component_info_retain(it->second);
+        auto timestamp = m_componentTimestamps.find(pathname);
+        if (timestamp != m_componentTimestamps.end() && timestamp->second == current_mod) {
+            return component_info_retain(it->second);
+        }
+
+        component_info_release(it->second);
+        m_components.erase(it);
+        m_componentTimestamps.erase(pathname);
+        g_compiledComponents--;
     }
     ComponentInfo *info = m_codegen.compileComponent(pathname);
-    auto cit = m_components.find(pathname);
-    bool isNewEntry = (cit == m_components.end());
-    if (cit != m_components.end()) component_info_release(cit->second);
     m_components[pathname] = info;
-    if (isNewEntry) g_compiledComponents++;
+    m_componentTimestamps[pathname] = current_mod;
+    g_compiledComponents++;
     return component_info_retain(info);
 }

@@ -228,12 +228,6 @@ Three remaining SQLite/engine issues block the rest of the blog:
   rather than any deterministic location. Fix when picked up: make ExpandPath
   (and default datasource-file resolution) use the executing template's
   directory / webroot like CF does.
-- **`GetDirectoryFromPath()` of a directory path returns the same directory
-  instead of its parent.** Adobe CF semantics: `GetDirectoryFromPath("/a/b/")`
-  → `/a/`. On WebStrada it returns `/a/b/` unchanged, so chained calls never
-  ascend (`d2 == d1`, verified with admin/setup/_pathtest.cfm). MangoBlog's
-  setup wizard workaround uses `ListDeleteAt` instead. Fix when picked up:
-  strip the last non-empty segment when the input ends with a separator.
 - **`<cffile action="write">` (and likely the other file actions) do not
   recognize absolute paths** — an absolute `file="/home/x/y"` is treated as
   CWD-relative and creates `/home/boris/projects/webstrada/home/boris/...`
