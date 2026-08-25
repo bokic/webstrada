@@ -199,17 +199,6 @@ Three remaining SQLite/engine issues block the rest of the blog:
   post_category.post_id = post.id INNER JOIN entry ON entry.id = post.id INNER
   JOIN author ON author.id = entry.author_id LEFT OUTER JOIN entry_custom_field
   ON entry.id = entry_custom_field.entry_id`.
-- **`getCountByDate` returns a query column through `returntype="numeric"`**
-  and fails "The value returned from the getCountByDate function is not of type
-  numeric." This is an engine-wide behavior (not SQLite-specific): a `q.col`
-  query-column reference is materialized as an Array-typed lazy cell
-  (`cfvariant.cpp` `m_queryColOwner`/`m_queryColIndex`, toString() reads the
-  underlying cell), so `IsNumeric(q.col)` is `NO` and typed function returns
-  reject it, even when the cell is an integer. Any CFML that passes a raw query
-  column into a numeric-typed `returntype`/`cfargument` hits this. Fix when
-  picked up: make `IsNumeric`/numeric coercion resolve query-column
-  references to their cell value, or materialize `q.col` to the cell's variant
-  type instead of a lazy Array ref.
 - **`<cflocation>` inside `OnApplicationStart()` does not abort the request.**
   MangoBlog's OnApplicationStart catches `MissingConfigFile` (no config.cfm) and
   does `<cflocation URL="admin/setup/setup.cfm">`; on WebStrada the redirect

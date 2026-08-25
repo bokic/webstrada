@@ -254,6 +254,12 @@ static const MemberMethodEntry kDateMemberMethods[] = {
     {"MONTHASSTRING", "MONTHASSTRING"},
     {"QUARTER", "QUARTER"},
     {"SECOND", "SECOND"},
+    {"SETDAY", "SETDAY"},
+    {"SETHOUR", "SETHOUR"},
+    {"SETMINUTE", "SETMINUTE"},
+    {"SETMONTH", "SETMONTH"},
+    {"SETSECOND", "SETSECOND"},
+    {"SETYEAR", "SETYEAR"},
     {"TIMEFORMAT", "TIMEFORMAT"},
     {"WEEK", "WEEK"},
     {"YEAR", "YEAR"},
@@ -396,6 +402,12 @@ cfvariant invokeMemberMethod(
         cfvariant *res = cfml::cfvariant_call_function(
             out, cgi, server, cookie, application, session, url, form, variables,
             fnUpper.constData(), callArgs.data(), static_cast<int>(callArgs.size()));
+        if (base.m_type == cfvariant::DateTime &&
+            (upper.equals("SETYEAR") || upper.equals("SETMONTH") || upper.equals("SETDAY") ||
+             upper.equals("SETHOUR") || upper.equals("SETMINUTE") || upper.equals("SETSECOND"))) {
+            base.m_double = res->m_double;
+            base.m_type = res->m_type;
+        }
         return *res;
     }
 

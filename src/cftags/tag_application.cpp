@@ -197,8 +197,17 @@ cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
         throw webstrada::exception("Application scope is not available in this context");
     }
 
-    application->set_type(cfvariant::NotSet);
-    application->set_type(cfvariant::Struct);
+    // Only reset and reload from the store when the scope is empty (first
+    // request after server start).  When the scope already has data it was
+    // populated by a previous onApplicationStart; reloading from the JSON
+    // store would destroy live Component instances (their method tables are
+    // not preserved through JSON round-trips).
+    bool scopeEmpty = (!application->m_struct || application->m_struct->empty());
+
+    if (scopeEmpty) {
+        application->set_type(cfvariant::NotSet);
+        application->set_type(cfvariant::Struct);
+    }
     application->m_disabled = false;
 
     string appName = name ? const_cast<cfvariant*>(name)->toString().trimmed() : string("");
@@ -209,14 +218,18 @@ cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
     sc.sessionTimeoutSeconds = cfAppTimeoutSeconds(sessionTimeout, webstrada::config::defaultSessionTimeoutSeconds);
     sc.sessionManagement = cfScopeBool(sessionManagement, false);
 
-    std::string json;
-    bool found = sc.store->loadApplication(storeKey.constData(), nowSeconds(), json);
-    if (found && scope_json_deserialize(json, *application)) {
-        // loaded
+    if (scopeEmpty) {
+        std::string json;
+        bool found = sc.store->loadApplication(storeKey.constData(), nowSeconds(), json);
+        if (found && scope_json_deserialize(json, *application)) {
+            // loaded
+        }
+        sc.appDirty = !found;
+    } else {
+        sc.appDirty = false;
     }
     application->m_disabled = false;
     sc.applicationEnabled = true;
-    sc.appDirty = !found;
 
     if (sc.sessionManagement) {
         if (session) {

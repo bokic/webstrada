@@ -56,6 +56,13 @@ cfvariant *cf_isnumeric(const cfvariant *val) {
     auto *ret = new cfvariant(cfvariant::Boolean);
     ret->m_bool = false;
     if (val) {
+        // A q.col query-column reference is stored as an Array wrapper;
+        // unwrap to the underlying cell before the type check.
+        cfvariant scalar;
+        if (val->m_type == cfvariant::Array && val->m_queryColOwner) {
+            scalar = queryColumnFirstCell(val);
+            val = &scalar;
+        }
         if (val->m_type == cfvariant::Number || val->m_type == cfvariant::Float ||
             val->m_type == cfvariant::Long) {
             ret->m_bool = true;

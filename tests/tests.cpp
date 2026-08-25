@@ -16744,6 +16744,27 @@ TEST_F(QueryNewTest, IsQuery) {
     EXPECT_EQ(out.equals("NO"), true);
 }
 
+TEST_F(QueryNewTest, QueryColumnReturntypeNumeric) {
+    // A q.col query-column reference must coerce to numeric when returned from
+    // a function with returntype="numeric" (regression: the column was typed as
+    // Array internally and coerceToNumber threw "not of type numeric").
+    string out = run(
+        "<cfset q = queryNew(\"id,total\",\"integer,integer\",[[1,42],[2,99]])>"
+        "<cffunction name=\"getCount\" returntype=\"numeric\" output=\"false\">"
+        "  <cfreturn q.total>"
+        "</cffunction>"
+        "<cfoutput>#getCount()#</cfoutput>");
+    EXPECT_EQ(out.equals("42"), true);
+}
+
+TEST_F(QueryNewTest, QueryColumnIsNumeric) {
+    // IsNumeric must resolve a query-column reference to the underlying cell.
+    string out = run(
+        "<cfset q = queryNew(\"val\",\"integer\",[[7]])>"
+        "<cfoutput>#IsNumeric(q.val)#</cfoutput>");
+    EXPECT_EQ(out.equals("YES"), true);
+}
+
 // ---------------------------------------------------------------------------
 // QueryAddColumn / QueryAddRow / QueryGetRow / QueryKeyExists / QuerySetCell /
 // ValueList tests.

@@ -111,7 +111,7 @@ static const char *const kBuiltinFunctionNames[] = {
     "REPEATSTRING", "REPLACE", "REPLACELIST", "REPLACENOCASE", "REREPLACE", "REREPLACENOCASE", "RESTDELETEAPPLICATION", "RESTINITAPPLICATION",
     "RESTSETRESPONSE", "REVERSE", "RIGHT", "RJUSTIFY", "ROUND", "RTRIM", "SECOND", "SENDGATEWAYMESSAGE",
     "SENDSAMLLOGOUTRESPONSE", "SERIALIZE", "SERIALIZEJSON", "SERIALIZEXML", "SESSIONGETMETADATA", "SESSIONINVALIDATE", "SESSIONROTATE", "SETDAY",
-    "SETENCODING", "SETHOUR", "SETLOCALE", "SETMONTH", "SETPROFILESTRING", "SETPROPERTYSTRING", "SETVARIABLE", "SETYEAR",
+    "SETENCODING", "SETHOUR", "SETLOCALE", "SETMINUTE", "SETMONTH", "SETPROFILESTRING", "SETPROPERTYSTRING", "SETSECOND", "SETVARIABLE", "SETYEAR",
     "SGN", "SIN", "SLEEP", "SPANEXCLUDING", "SPANINCLUDING", "SPREADSHEETADDAUTOFILTER", "SPREADSHEETADDCOLUMN", "SPREADSHEETADDFREEZEPANE",
     "SPREADSHEETADDIMAGE", "SPREADSHEETADDINFO", "SPREADSHEETADDPAGEBREAKS", "SPREADSHEETADDPRINTGRIDLINES", "SPREADSHEETADDROW", "SPREADSHEETADDROWS", "SPREADSHEETADDSPLITPANE", "SPREADSHEETCREATESHEET",
     "SPREADSHEETDELETECOLUMN", "SPREADSHEETDELETECOLUMNS", "SPREADSHEETDELETEROW", "SPREADSHEETDELETEROWS", "SPREADSHEETFORMATCELL", "SPREADSHEETFORMATCELLRANGE", "SPREADSHEETFORMATCOLUMN", "SPREADSHEETFORMATCOLUMNS",
@@ -331,6 +331,14 @@ static bool tryParseNumeric(const webstrada::string &s, double &out)
 // int32, else Float). Throws when not convertible.
 static cfvariant *coerceToNumber(const cfvariant *val, const char *argName, const char *funcName, const char *typeName, bool isReturn)
 {
+    // A q.col query-column reference is stored as an Array wrapper; unwrap to
+    // the underlying cell so numeric coercion sees the actual value.
+    cfvariant scalar;
+    if (val && val->m_type == cfvariant::Array && val->m_queryColOwner) {
+        scalar = queryColumnFirstCell(val);
+        val = &scalar;
+    }
+
     switch (val->m_type) {
         case cfvariant::Number:
         case cfvariant::Long:
