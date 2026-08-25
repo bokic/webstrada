@@ -18,6 +18,7 @@
 #include <cctype>
 #include <cstring>
 #include <ctime>
+#include <cerrno>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -35,7 +36,17 @@ cfvariant *cf_filewriteline(const cfvariant *fileObj, const cfvariant *content) 
 
     string cStr = const_cast<cfvariant*>(content)->toString();
     string data = cStr + "\n";
-    write(fd, data.constData(), data.length());
+    const char *ptr = data.constData();
+    size_t remaining = data.length();
+    while (remaining > 0) {
+        ssize_t written = write(fd, ptr, remaining);
+        if (written == -1) {
+            if (errno == EINTR) continue;
+            throw webstrada::exception("FileWriteLine: Failed to write to file");
+        }
+        ptr += written;
+        remaining -= written;
+    }
     return cfvariant_create_bool(true);
 }
 

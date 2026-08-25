@@ -240,7 +240,14 @@ void cf_execute_tag(string *out, const cfvariant *attrs,
         fcntl(statusPipe[1], F_SETFD, FD_CLOEXEC);
         if (::dup2(outPipe[1], STDOUT_FILENO) < 0 || ::dup2(errPipe[1], STDERR_FILENO) < 0) {
             const char *em = ::strerror(errno);
-            ::write(statusPipe[1], em, ::strlen(em) + 1);
+            const char *wptr = em;
+            size_t wrem = ::strlen(em) + 1;
+            while (wrem > 0) {
+                ssize_t wn = ::write(statusPipe[1], wptr, wrem);
+                if (wn == -1) break;
+                wptr += wn;
+                wrem -= wn;
+            }
             ::_exit(127);
         }
         ::close(outPipe[1]);
@@ -252,7 +259,14 @@ void cf_execute_tag(string *out, const cfvariant *attrs,
         savedErrno = errno;
         // Report the failure in Java's format: error=N, <message>.
         std::string msg = "error=" + std::to_string(savedErrno) + ", " + ::strerror(savedErrno);
-        ::write(statusPipe[1], msg.c_str(), msg.size() + 1);
+        const char *wptr = msg.c_str();
+        size_t wrem = msg.size() + 1;
+        while (wrem > 0) {
+            ssize_t wn = ::write(statusPipe[1], wptr, wrem);
+            if (wn == -1) break;
+            wptr += wn;
+            wrem -= wn;
+        }
         ::_exit(127);
     }
 

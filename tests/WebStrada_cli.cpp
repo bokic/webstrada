@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <iostream>
 #include <cstdlib>
+#include <cerrno>
 #include <string>
 #include <print>
 
@@ -78,7 +79,19 @@ int main(int argc, char** argv)
                 std::println(stderr, "Failed to create temp file for stdin");
                 return EXIT_FAILURE;
             }
-            write(fd, input_code.data(), input_code.size());
+            const char *ptr = input_code.data();
+            size_t remaining = input_code.size();
+            while (remaining > 0) {
+                ssize_t written = write(fd, ptr, remaining);
+                if (written == -1) {
+                    if (errno == EINTR) continue;
+                    std::println(stderr, "Failed to write to temp file");
+                    close(fd);
+                    return EXIT_FAILURE;
+                }
+                ptr += written;
+                remaining -= written;
+            }
             close(fd);
 
             std::filesystem::path tplPath = std::filesystem::absolute(tmpPath);

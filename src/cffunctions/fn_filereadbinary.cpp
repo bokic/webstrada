@@ -18,6 +18,7 @@
 #include <cctype>
 #include <cstring>
 #include <ctime>
+#include <cerrno>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -49,8 +50,21 @@ cfvariant *cf_filereadbinary(const cfvariant *path) {
 
     auto *ret = new cfvariant(cfvariant::Binary);
     ret->m_binary->resize(size);
-    if (size > 0)
-        read(fd, ret->m_binary->data(), size);
+    if (size > 0) {
+        auto *ptr = ret->m_binary->data();
+        size_t remaining = size;
+        while (remaining > 0) {
+            ssize_t n = read(fd, ptr, remaining);
+            if (n == -1) {
+                if (errno == EINTR) continue;
+                if (closeAfter) close(fd);
+                throw webstrada::exception("FileReadBinary: Failed to read from file");
+            }
+            if (n == 0) break;
+            ptr += n;
+            remaining -= n;
+        }
+    }
 
     if (closeAfter) close(fd);
     return ret;
