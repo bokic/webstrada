@@ -3875,6 +3875,10 @@ protected:
     // component loader wired up. Returns the output.
     string runCfc(const std::vector<std::pair<const char*, const char*>> &files,
                   const char *mainName) {
+        // Simulate a fresh request boundary: production clears the custom-tag /
+        // base-tag stacks per request (scope_begin), so a previous test's
+        // leftover <cfoutput> markers / custom-tag entries must not leak here.
+        cfml::custom_tag_stack_clear();
         char tmpl[] = "/tmp/webstrada_component_test_XXXXXX";
         char *dir = mkdtemp(tmpl);
         if (!dir) throw std::runtime_error("mkdtemp failed");
@@ -4957,6 +4961,65 @@ TEST_F(ComponentTest, CfassociateCollectsSubtagAttributes) {
         << out.constData();
 }
 
+TEST_F(ComponentTest, GetBaseTagDataResolvesTagVariablesAtTopLevel) {
+    // GetBaseTagData returns the base tag's PageScope: variables the base tag
+    // template set are addressable directly as data.<var> (data.currentPage /
+    // data.counter / data.to), alongside the THISTAG / ATTRIBUTES / CALLER /
+    // VARIABLES scope keys (Mango Blog's Page.cfm pattern). Was a bug: the
+    // struct only carried the four scope keys, so data.currentPage threw
+    // "Element CURRENTPAGE is undefined in DATA."
+    string out = runCfc({
+        {"pages.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "<cfset to = 3>"
+         "<cfset counter = 1>"
+         "<cfset currentPage = \"page-\" & counter>"
+         "[PAGES-START]"
+         "<cfelse>"
+         "<cfset counter = counter + 1>"
+         "<cfif counter LTE to>"
+         "<cfset currentPage = \"page-\" & counter><cfsetting enablecfoutputonly=\"false\"><cfexit method=\"loop\">"
+         "</cfif>[PAGES-END]"
+         "</cfif>"},
+        {"page.cfm",
+         "<cfif thisTag.executionmode eq \"start\">"
+         "<cfset data = GetBaseTagData(\"cf_pages\")/>"
+         "<cfoutput>[PAGE:#data.currentPage#:#data.counter#:#data.to#]</cfoutput>"
+         "</cfif>"},
+        {"main.cfm",
+         "<cfimport prefix=\"mytag\" taglib=\".\">"
+         "<mytag:pages><mytag:page /></mytag:pages>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[PAGES-START][PAGE:page-1:1:3][PAGE:page-2:2:3][PAGE:page-3:3:3][PAGES-END]"), true)
+        << out.constData();
+}
+
+TEST_F(ComponentTest, GetBaseTagDataScopesStillExposed) {
+    // The THISTAG / ATTRIBUTES / CALLER / VARIABLES scope keys of the
+    // GetBaseTagData struct remain addressable after the variables merge.
+    string out = runCfc({
+        {"pages.cfm",
+         "<cfparam name=\"attributes.title\" type=\"string\" default=\"AT\">"
+         "<cfif thisTag.executionMode eq \"start\">"
+         "<cfset currentPage = \"CP\">"
+         "[PS]"
+         "</cfif>"},
+        {"page.cfm",
+         "<cfif thisTag.executionmode eq \"start\">"
+         "<cfset data = GetBaseTagData(\"cf_pages\")/>"
+         "<cfoutput>[V:#data.currentPage#]</cfoutput>"
+         "<cfoutput>[VARIABLES:#data.VARIABLES.currentPage#]</cfoutput>"
+         "<cfoutput>[ATTRIBUTES:#data.ATTRIBUTES.title#]</cfoutput>"
+         "<cfoutput>[THISTAG:#data.THISTAG.executionMode#]</cfoutput>"
+         "</cfif>"},
+        {"main.cfm",
+         "<cfimport prefix=\"mytag\" taglib=\".\">"
+         "<mytag:pages title=\"T\"><mytag:page /></mytag:pages>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[PS][V:CP][VARIABLES:CP][ATTRIBUTES:T][THISTAG:start]"), true)
+        << out.constData();
+}
+
 TEST_F(ComponentTest, NestedCustomTagCallerScope) {
     // A custom tag that invokes another custom tag: the inner tag's `caller`
     // is the OUTER tag's private variables scope, not the main page's. The
@@ -4981,6 +5044,76 @@ TEST_F(ComponentTest, NestedCustomTagCallerScope) {
          "<cfoutput>[AFTER:#callervar#]</cfoutput>"},
     }, "main.cfm");
     EXPECT_EQ(out.equals("\n[OUT-START]\n[INNER:Inner:inner_val] [INNER:Inner:modified_by_inner] BODY\n[OUT-END]\n[AFTER:outer_val]"), true)
+        << out.constData();
+}
+
+TEST_F(ComponentTest, GetBaseTagListIncludesCfdoutputOnlyInsideCfdoutput) {
+    // CF's GetBaseTagList starts with "CFOUTPUT" only while a <cfoutput> block
+    // is executing; outside it the innermost base tag is the current custom
+    // tag. WebStrada previously prepended "CFOUTPUT" unconditionally, which
+    // broke Mango Blog's Posts.cfm context detection
+    // (`listdeleteat(getbasetaglist(),1)` then `listfindnocase(...,"cf_posts")`
+    // — with a spurious CFOUTPUT the wrong branch ran and "Variable POSTS is
+    // undefined" was thrown). Verified byte-for-byte vs CF 2025 in
+    // tests/cfm/getbasetaglist_*_test.cfm.
+    string out = runCfc({
+        {"selfcheck.cfm",
+         "<cfif thisTag.executionmode eq \"start\">"
+         "<cfset a = getbasetaglist() />"
+         "<cfoutput>[OUTSIDE:#a#][INSIDE:#getbasetaglist()#]</cfoutput>"
+         "</cfif>"},
+        {"main.cfm",
+         "<cfimport prefix=\"mytag\" taglib=\".\">"
+         "<mytag:selfcheck />"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[OUTSIDE:CF_SELFCHECK][INSIDE:CFOUTPUT,CF_SELFCHECK]"), true)
+        << out.constData();
+}
+
+TEST_F(ComponentTest, GetBaseTagListParentCfdoutputOrdering) {
+    // A custom tag invoked from inside a <cfoutput> block but calling
+    // GetBaseTagList outside its own <cfoutput>: CF lists the innermost entry
+    // first, so the list is "CF_<TAG>,CFOUTPUT" (the parent's CFOUTPUT is an
+    // ancestor of the current custom tag), not "CFOUTPUT,CF_<TAG>".
+    string out = runCfc({
+        {"child.cfm",
+         "<cfif thisTag.executionmode eq \"start\">"
+         "<cfset a = getbasetaglist() />"
+         "<cfoutput>[X:#a#]</cfoutput>"
+         "</cfif>"},
+        {"main.cfm",
+         "<cfimport prefix=\"mytag\" taglib=\".\">"
+         "<cfoutput>[WRAPPED:<mytag:child />]</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[WRAPPED:[X:CF_CHILD,CFOUTPUT]]"), true)
+        << out.constData();
+}
+
+TEST_F(ComponentTest, CustomTagPairPrefixNameBoundary) {
+    // A custom tag whose name is a prefix of a nested tag's name (e.g.
+    // "collide" vs "collideprop") must still be treated as a proper pair. The
+    // pair-scan used startWith("<prefix:name") which wrongly consumed
+    // <prefix:nameXXX ...> as a nested instance, so <mytag:collide> never
+    // matched its </mytag:collide> and ran start-only — the child's
+    // GetBaseTagData then threw "Tag cf_collide was not found in ancestor
+    // custom tags." (the Mango Blog Page/PageProperty failure). Verified
+    // byte-for-byte vs CF 2025 in tests/cfm/custom_tag_pair_prefix_collision_test.cfm.
+    string out = runCfc({
+        {"collide.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "<cfset currentItem = \"item-1\">"
+         "[COLLIDE-START]"
+         "<cfelse>[COLLIDE-END]</cfif>"},
+        {"collideprop.cfm",
+         "<cfif thisTag.executionmode eq \"start\">"
+         "<cfset data = GetBaseTagData(\"cf_collide\",1)/>"
+         "<cfoutput>[PROP:#data.currentItem#]</cfoutput>"
+         "</cfif>"},
+        {"main.cfm",
+         "<cfimport prefix=\"mytag\" taglib=\".\">"
+         "<mytag:collide><mytag:collideprop /></mytag:collide>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[COLLIDE-START][PROP:item-1][COLLIDE-END]"), true)
         << out.constData();
 }
 

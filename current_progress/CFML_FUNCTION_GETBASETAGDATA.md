@@ -5,23 +5,23 @@
 
 ## Current state
 
-- Runtime stub: `cfml::cf_getbasetagdata()` in `src/cf8.cpp:13475` throws `"Function GETBASETAGDATA is not implemented"`.
-- Compiler: `GETBASETAGDATA` is in the zero-arg not-implemented function list (`src/compiler.cpp:1736`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5357`.
+- Runtime: `cfml::cf_getbasetagdata()` in `src/core/core_misc.cpp` — implemented.
+- Compiler: `GETBASETAGDATA` compiled as a direct JIT call into `cf_getbasetagdata`.
+- Interpreter (`evalFunction`) dispatch entry present.
+- On 2026-08-25 the returned struct was fixed to mirror CF's `PageScope`: the base tag's variables are merged at the top level (so `data.<var>` resolves, e.g. `data.currentPage`), under the THISTAG / ATTRIBUTES / CALLER / VARIABLES scope keys. This fixed the Mango Blog "Element CURRENTPAGE is undefined in DATA." error. See PROGRESS.md.
 
-## Implemented: 0%
+## Implemented: 100%
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:13475` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1736`, symbol at `src/compiler.cpp:5357` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Implemented | `src/core/core_misc.cpp` `cf_getbasetagdata()` |
+| Compiler wiring | ✅ Direct JIT call | `src/codegen/llvm_compiler.cpp` |
+| Interpreter dispatch | ✅ Present | `src/core/core_interp.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*getbasetagdata*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:401` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Get*/Meta/System) | — |
+| Tests | ✅ `tests/cfm/custom_tag_getbasetagdata_test.cfm` (byte-verified vs CF 2025) + `ComponentTest.GetBaseTagDataResolvesTagVariablesAtTopLevel` + `ComponentTest.GetBaseTagDataScopesStillExposed` | — |
+| Tracker status | ✅ `PROGRESS.md` (✅ Yes) | — |
 | Docs/spec | ✅ Spec reference exists | `cfml_docs/CFML_FUNCTION_GETBASETAGDATA.md` |
 
 ## What GETBASETAGDATA does at the low C level

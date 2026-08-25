@@ -260,6 +260,8 @@ void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, 
                          bool isModule, const char *templateNameHint);
 void cf_custom_tag_end_mode(const string *generatedContent);
 void cf_custom_tag_finish();
+void cf_cfoutput_begin();
+void cf_cfoutput_end();
 bool cf_custom_tag_should_loop();
 bool cf_custom_tag_should_skip_body();
 void cf_custom_tag_mark_content_changed();

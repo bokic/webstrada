@@ -153,6 +153,9 @@ void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session)
     zip_ctx_clear();
     cfml::locale_reset();
     security_reset();
+    // A previous request that died mid-execution may have left unbalanced custom
+    // tag / <cfoutput> base-tag stack entries; never let them leak in.
+    cfml::custom_tag_stack_clear();
 }
 
 ScopeContext &scope_context()

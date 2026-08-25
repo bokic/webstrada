@@ -140,6 +140,8 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_begin", reinterpret_cast<void*>(cfml::cf_custom_tag_begin));
     llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_end_mode", reinterpret_cast<void*>(cfml::cf_custom_tag_end_mode));
     llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_finish", reinterpret_cast<void*>(cfml::cf_custom_tag_finish));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_cfoutput_begin", reinterpret_cast<void*>(cfml::cf_cfoutput_begin));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_cfoutput_end", reinterpret_cast<void*>(cfml::cf_cfoutput_end));
     llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_should_loop", reinterpret_cast<void*>(cfml::cf_custom_tag_should_loop));
     llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_should_skip_body", reinterpret_cast<void*>(cfml::cf_custom_tag_should_skip_body));
     llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_mark_content_changed", reinterpret_cast<void*>(cfml::cf_custom_tag_mark_content_changed));

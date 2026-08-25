@@ -1203,7 +1203,16 @@ cfvariant *cfml::cfvariant_call_function(
             return cf_udf_invoke(udfVal, args, arg_count, out, cgi, server, cookie, application, session, url, form, variables);
         }
         if (udfVal->m_type != cfvariant::Function) {
-            throw webstrada::exception("Entity has incorrect type for being called as a function.");
+            // CF: a built-in function wins over a non-function variable with
+            // the same name (variables.dateformat = "x"; dateformat() still
+            // calls the builtin — verified on CF 2025). Only a non-function
+            // variable whose name is NOT a builtin raises "Entity has incorrect
+            // type for being called as a function."
+            string up(name);
+            up.toUpper();
+            if (!isKnownFunctionName(up)) {
+                throw webstrada::exception("Entity has incorrect type for being called as a function.");
+            }
         }
         // A plain built-in method handle stored in a variable: fall through to
         // built-in dispatch below.

@@ -1,13 +1,13 @@
 # Unimplemented CFML Functions
 
-Total: 163 functions (24.47% of 666) that are still unimplemented and throw the `Function X is not implemented` stub error. This covers everything marked `❌ No` in PROGRESS.md (CFML Functions table).
+Total: 161 functions (24.17% of 666) that are still unimplemented and throw the `Function X is not implemented` stub error. This covers everything marked `❌ No` in PROGRESS.md (CFML Functions table).
 
 ## Unimplemented
 
 | Category | Count | % of total | Functions |
 |---|---|---|---|
-| **Auth/SAML/OAuth** | 18 | 10.70% | AuthenticatedContext, AuthenticatedUser, GenerateSAMLSPMetadata, GetSAMLAuthRequest, GetSAMLLogoutRequest, GetSafeHTML, InitSAMLAuthRequest, InitSAMLLogoutRequest, InvalidateOauthAccesstoken, IsAuthenticated, IsAuthorized, IsValidOauthAccesstoken, ProcessSAMLLogoutRequest, ProcessSAMLResponse, SendSAMLLogoutResponse, VerifyClient, isSafeHTML, isSamlLogoutResponse |
-| **Call/Tag stack** | 3 | 1.79% | GetBaseTagData, GetBaseTagList, GetFunctionCalledName |
+| **Auth/SAML/OAuth** | 18 | 11.18% | AuthenticatedContext, AuthenticatedUser, GenerateSAMLSPMetadata, GetSAMLAuthRequest, GetSAMLLogoutRequest, GetSafeHTML, InitSAMLAuthRequest, InitSAMLLogoutRequest, InvalidateOauthAccesstoken, IsAuthenticated, IsAuthorized, IsValidOauthAccesstoken, ProcessSAMLLogoutRequest, ProcessSAMLResponse, SendSAMLLogoutResponse, VerifyClient, isSafeHTML, isSamlLogoutResponse |
+| **Call/Tag stack** | 1 | 0.61% | GetFunctionCalledName |
 | **Get*/Meta/System** | 8 | 4.76% | GetGatewayHelper, GetK2ServerDocCount, GetK2ServerDocCountLimit, GetPageContext, GetPrinterInfo, GetPrinterList, GetVFSMetaData, SetEncoding (deferred) |
 | **Crypto/Token/Decision** | 6 | 3.57% | CreateEncryptedJWT, CreateSignedJWT (deferred: JKS keystore needed), IsK2ServerABroker, IsK2ServerDocCountExceeded, IsK2ServerOnline, IsProtected |
 | **Create/Misc** | 9 | 5.36% | InterruptThread, SendGatewayMessage, StoreAddACL, StoreGetACL, StoreGetMetadata, StoreSetACL, StoreSetMetadata, ThreadJoin, ThreadTerminate |

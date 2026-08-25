@@ -185,6 +185,10 @@ std::string serialize_xml_node(const webstrada::cfvariant &node);
 webstrada::string makeCfToken();
 void setSessionCookies(const webstrada::string &cfid, const webstrada::string &token);
 
+// Custom-tag / base-tag execution stacks (tag_custom.cpp): clears any entries a
+// previous request left behind (e.g. an abort mid-<cfoutput>).
+void custom_tag_stack_clear();
+
 void init_server_scope(webstrada::cfvariant &serverScope);
 
 } // namespace cfml

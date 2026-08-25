@@ -490,6 +490,20 @@ struct CustomTagInvokeCfg {
     bool isSelfClosing = false;
 };
 
+// True when the lowercased tag text `tn` starts with `pattern` AND the
+// character immediately after the pattern is a tag-name delimiter (end of
+// text, `>`, `/>`, or whitespace). Guards the paired-tag scan against prefix
+// collisions: `<mango:page>` and `<mango:page ...>` match "<mango:page", but
+// `<mango:pageproperty>` does not (it is a different tag).
+bool tagTextAtNameBoundary(const webstrada::string &tn, const char *pattern)
+{
+    size_t plen = strlen(pattern);
+    if (tn.length() < (int)plen || !tn.startWith(pattern)) return false;
+    if (tn.length() == (int)plen) return true;
+    char c = tn.constData()[plen];
+    return c == '>' || c == '/' || c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
 // Emits the IR for a custom-tag invocation: start template, optional body
 // capture and end template (with cfexit method="loop" support), and the final
 // output emission matching CF's ModuleTag.doAfterBody order. Shared by the
@@ -574,11 +588,11 @@ size_t compile_custom_tag_invoke_ir(
             if (tok.token_id == TextParser_cfml_StartTag) {
                 string tn(cfm_text + tok.position, tok.len);
                 tn.toLower();
-                if (tn.startWith(openPattern.c_str()) && !tn.endsWith("/>")) depth++;
+                if (tagTextAtNameBoundary(tn, openPattern.c_str()) && !tn.endsWith("/>")) depth++;
             } else if (tok.token_id == TextParser_cfml_EndTag) {
                 string tn(cfm_text + tok.position, tok.len);
                 tn.toLower();
-                if (tn.startWith(closePattern.c_str())) {
+                if (tagTextAtNameBoundary(tn, closePattern.c_str())) {
                     if (depth > 0) {
                         depth--;
                     } else {

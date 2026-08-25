@@ -1180,14 +1180,16 @@ cfvariant *cfml::cf_writelog(const cfvariant *text, const cfvariant *type, const
 
 namespace cfml {
 
-// CF's GetBaseTagList: the root page's "CFOUTPUT" tag, then the ancestor
-// custom tags from innermost to outermost, joined by commas.
+// CF's GetBaseTagList: the currently-executing base tags from innermost to
+// outermost, joined by commas. The innermost entry is "CFOUTPUT" while inside a
+// <cfoutput> block (a cf_cfoutput_begin/end marker on g_baseTagStack), followed
+// by the active custom tags' public names (CF_<NAME>, innermost first).
 cfvariant *cf_getbasetaglist()
 {
-    std::string tagList = "CFOUTPUT";
-    for (auto it = g_customTagStack.rbegin(); it != g_customTagStack.rend(); ++it) {
-        tagList += ",";
-        tagList += it->publicName.empty() ? it->tagName : it->publicName;
+    std::string tagList;
+    for (auto it = g_baseTagStack.rbegin(); it != g_baseTagStack.rend(); ++it) {
+        if (!tagList.empty()) tagList += ",";
+        tagList += *it;
     }
     auto *ret = new cfvariant(string(tagList.c_str()));
     cf_register_temp(ret);
@@ -1214,10 +1216,17 @@ cfvariant *cf_getbasetagdata(const cfvariant *tagname, const cfvariant *instance
                          : (strcasecmp(tmpl.c_str(), targetTag.c_str()) == 0)) {
             currentInstance++;
             if (currentInstance == targetInstance) {
-                // CF returns the base tag's PageScope: a struct whose keys are
-                // the template's scopes (THISTAG, ATTRIBUTES, CALLER,
-                // VARIABLES).
+                // CF returns the base tag's PageScope, which resolves names
+                // directly against the base tag's page context: every variable
+                // the tag template set is addressable as data.<var>, and the
+                // scopes are exposed as the THISTAG / ATTRIBUTES / CALLER /
+                // VARIABLES keys.
                 auto *ret = new cfvariant(cfvariant::Struct);
+                if (it->variables.m_type == cfvariant::Struct) {
+                    for (const auto &pair : *it->variables.m_struct) {
+                        ret->set(pair.first.constData()) = pair.second;
+                    }
+                }
                 ret->set("THISTAG") = it->thisTag;
                 ret->set("ATTRIBUTES") = it->attributes;
                 ret->set("CALLER") = it->callerVariables ? *it->callerVariables : cfvariant(cfvariant::Struct);

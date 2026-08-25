@@ -2281,7 +2281,12 @@ cfvariant evaluateExpr(string &out, const string &expr,
             return *res;
         }
         if (udfVal && udfVal->m_type != cfvariant::Function) {
-            throw webstrada::exception("Entity has incorrect type for being called as a function.");
+            // CF: a built-in function wins over a non-function variable with
+            // the same name; only a non-builtin name in a non-function variable
+            // raises "Entity has incorrect type for being called as a function."
+            if (!isKnownFunctionName(fname)) {
+                throw webstrada::exception("Entity has incorrect type for being called as a function.");
+            }
         }
 
         if (fname.equals("EVALUATE")) {

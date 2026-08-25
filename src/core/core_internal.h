@@ -45,11 +45,21 @@ struct CustomTagCallCtx {
 // stable across push_back.
 extern thread_local std::deque<CustomTagCallCtx> g_customTagStack;
 
+// CF's "base tag" execution stack (innermost first), mirroring GetBaseTagList's
+// model of the currently-executing tag contexts. A <cfoutput> block pushes
+// "CFOUTPUT" while it runs and a custom tag pushes its public name ("CF_<NAME>");
+// GetBaseTagList walks it from the innermost entry. This is kept as a separate
+// string stack (instead of marker entries inside g_customTagStack) so the custom
+// tag context consumers are never exposed to pseudo-entries.
+extern thread_local std::vector<std::string> g_baseTagStack;
+
 namespace cfml {
 void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, cfvariant *callerVariables,
                          bool isModule, const char *templateNameHint);
 void cf_custom_tag_end_mode(const string *generatedContent);
 void cf_custom_tag_finish();
+void cf_cfoutput_begin();
+void cf_cfoutput_end();
 bool cf_custom_tag_should_loop();
 bool cf_custom_tag_should_skip_body();
 void cf_custom_tag_mark_content_changed();

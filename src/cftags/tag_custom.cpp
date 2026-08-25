@@ -67,7 +67,17 @@ bool customTagFileExists(const char *path)
 
 } // namespace
 
+// CF's "base tag" execution stack (declared in core_internal.h).
+thread_local std::vector<std::string> g_baseTagStack;
+
 namespace cfml {
+
+// Per-request cleanup of the custom-tag / base-tag stacks (see scope_begin).
+void custom_tag_stack_clear()
+{
+    g_customTagStack.clear();
+    g_baseTagStack.clear();
+}
 
 void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, cfvariant *callerVariables,
                          bool isModule, const char *templateNameHint)
@@ -130,7 +140,25 @@ void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, 
     ctx.thisTag.set("hasendtag") = cfvariant(string(hasEndTag ? "YES" : "NO"));
     ctx.thisTag.set("GeneratedContent") = cfvariant(string(""));
 
+    const std::string baseTagPubName = ctx.publicName;
     g_customTagStack.push_back(std::move(ctx));
+
+    // Mirror the custom tag on the base-tag stack (GetBaseTagList model).
+    g_baseTagStack.push_back(baseTagPubName);
+}
+
+// CF's base-tag stack entry for a <cfoutput> block: while a <cfoutput> executes
+// it is the innermost base tag, so GetBaseTagList starts with "CFOUTPUT".
+void cf_cfoutput_begin()
+{
+    g_baseTagStack.push_back("CFOUTPUT");
+}
+
+void cf_cfoutput_end()
+{
+    if (!g_baseTagStack.empty() && g_baseTagStack.back() == "CFOUTPUT") {
+        g_baseTagStack.pop_back();
+    }
 }
 
 void cf_custom_tag_end_mode(const string *generatedContent)
@@ -151,6 +179,14 @@ void cf_custom_tag_finish()
 {
     if (!g_customTagStack.empty()) {
         g_customTagStack.pop_back();
+    }
+    // Mirror on the base-tag stack: pop any unbalanced <cfoutput> markers that
+    // an exception left behind, then the custom tag's own entry.
+    while (!g_baseTagStack.empty() && g_baseTagStack.back() == "CFOUTPUT") {
+        g_baseTagStack.pop_back();
+    }
+    if (!g_baseTagStack.empty()) {
+        g_baseTagStack.pop_back();
     }
 }
 

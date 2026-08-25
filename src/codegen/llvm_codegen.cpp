@@ -4442,6 +4442,13 @@ void compile_token_list(
             // cfoutput tags.
             ScopedCodegenState<bool> insideCfoutputGuard(g_insideCfoutput, true);
 
+            // While a <cfoutput> executes it is the innermost base tag, so
+            // GetBaseTagList starts with "CFOUTPUT" (CF pushes the pseudo-tag on
+            // its base-tag stack on enter and pops it on exit).
+            auto *fCfoutBegin = getOrCreateHelper(module, builder, "cf_cfoutput_begin", builder.getVoidTy(), {});
+            auto *fCfoutEnd = getOrCreateHelper(module, builder, "cf_cfoutput_end", builder.getVoidTy(), {});
+            emitCall(builder, fCfoutBegin, {});
+
             if (outQueryExpr.isEmpty()) {
                 WhitespaceState wsOutput(ws.enabled, ws.flag);
                 wsOutput.markTag(false, false); // left neighbour is the <cfoutput> start tag
@@ -4466,6 +4473,7 @@ void compile_token_list(
                     }
                     wsOutput.finish(module, builder, out, WsRight::Tag);
                 }
+                emitCall(builder, fCfoutEnd, {});
             } else {
                 // <cfoutput query="q" startrow=".." maxrows=".." group=".."
                 // groupcasesensitive=".."> iterates the query's rows (each
@@ -4596,6 +4604,7 @@ void compile_token_list(
                 auto origRow = builder.CreateLoad(builder.getInt64Ty(), lpSaveRowSlot);
                 emitCall(builder, fSetRow, {collVal, origRow});
                 emitCall(builder, fScopePop, {});
+                emitCall(builder, fCfoutEnd, {});
             }
             break;
         }
