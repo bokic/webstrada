@@ -382,13 +382,26 @@ parseTagAttrs(const std::vector<TextParserTokenItem> *attrParts, const char *cfm
         std::vector<TextParserTokenItem> valToks;
         size_t vi = ai + 1;
         while (vi < attrParts->size() && isOperatorToken((*attrParts)[vi].token_id)) vi++;
+        // A new attribute begins at a Variable that is separated from the
+        // previous value token by whitespace and does not continue an operator
+        // expression (a="x" & y, a=foo.bar, ...). This also stops a valueless
+        // trailing attribute (a="x" charset) from being swallowed as part of
+        // the preceding value (CF passes such an attribute the string "true").
+        bool lastWasOperator = vi > ai + 1; // an explicit '=' precedes the value
         while (vi < attrParts->size()) {
             const auto &vt = (*attrParts)[vi];
-            bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                               vi + 1 < attrParts->size() &&
-                               isOperatorToken((*attrParts)[vi + 1].token_id));
-            if (nextIsAttr) break;
-            if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
+            if (isOperatorToken(vt.token_id)) {
+                lastWasOperator = true;
+                vi++;
+                continue;
+            }
+            if (vt.token_id == TextParser_cfml_Variable &&
+                !lastWasOperator &&
+                vt.position > (*attrParts)[vi - 1].position + (*attrParts)[vi - 1].len) {
+                break;
+            }
+            valToks.push_back(vt);
+            lastWasOperator = false;
             vi++;
         }
         attrs.emplace_back(std::string(aname.constData(), aname.length()), std::move(valToks));

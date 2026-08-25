@@ -576,7 +576,10 @@ cfvariant *cfml::cfvariant_assign(
     // Walk any remaining dotted path (a.b.c = v). The first segment resolved to
     // `scope`; the rest are struct members that are auto-created when absent
     // (matching CF) and must be structs to continue (CF: "You have attempted to
-    // dereference a scalar variable ... as a structure with members.").
+    // dereference a scalar variable ... as a structure with members."). A
+    // Component intermediate is followed into its this scope (arguments.event.x
+    // = v writes the event object's this scope, verified against CF 2025: the
+    // Colorer plugin's `arguments.event.outputData = data`).
     cfvariant *target = scope;
     string rest = varName;
     while (true) {
@@ -588,9 +591,11 @@ cfvariant *cfml::cfvariant_assign(
                         target->m_type != cfvariant::Component)) {
             throw webstrada::exception("You have attempted to dereference a scalar variable as a structure with members.");
         }
+        // Component members live in the this scope with uppercased keys.
+        if (target->m_type == cfvariant::Component) key.toUpper();
         cfvariant &member = target->set(key);
         if (member.m_type != cfvariant::Struct && member.m_type != cfvariant::Xml &&
-            member.m_type != cfvariant::NotSet) {
+            member.m_type != cfvariant::Component && member.m_type != cfvariant::NotSet) {
             throw webstrada::exception("You have attempted to dereference a scalar variable as a structure with members.");
         }
         if (member.m_type == cfvariant::NotSet) {
@@ -600,6 +605,8 @@ cfvariant *cfml::cfvariant_assign(
     }
 
     // Preserve original key casing; lookups are case-insensitive via CiLess.
+    // A Component target writes the final member into its this scope (uppercased).
+    if (target->m_type == cfvariant::Component) rest.toUpper();
     cfvariant &slot = target->set(rest);
 
     if (value->m_type == cfvariant::File) {

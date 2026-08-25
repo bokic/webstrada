@@ -1254,6 +1254,30 @@ TEST_F(CfQueryTest, ControlFlowInBody) {
     expectOutput(cfml2, "[SELECT 1 AS one]");
 }
 
+TEST_F(CfQueryTest, BodyCapturedUnderEnableCfoutputOnly) {
+    // CF's QueryTag arms its body with cfoutput(true), so <cfsetting
+    // enablecfoutputonly> does NOT suppress the SQL text (it only gates page
+    // output). Verified against CF 2025 on the RDS host.
+    string cfml = "<cfsetting enablecfoutputonly=\"true\">\n";
+    cfml += "<cfquery name=\"q\" datasource=\"test\" result=\"r\">\nSELECT 1 AS one, <cfqueryparam value=\"default\" cfsqltype=\"CF_SQL_VARCHAR\"/> AS p\n</cfquery>\n";
+    cfml += "<cfsetting enablecfoutputonly=\"false\">\n";
+    cfml += "<cfoutput>[#r.SQL#]</cfoutput>";
+    expectOutput(cfml, "[SELECT 1 AS one, 'default' AS p]");
+
+    // Control flow and nested <cfoutput> in the body still capture under
+    // enablecfoutputonly; page text between tags stays suppressed.
+    string cfml2 = "<cfset useName = true>\n<cfsetting enablecfoutputonly=\"true\">\n";
+    cfml2 += "<cfquery name=\"q\" datasource=\"test\" result=\"r\">\nSELECT 1 AS id\n<cfif useName>, 2 AS name</cfif>\n<cfoutput>, 3 AS three</cfoutput>\n</cfquery>\n";
+    cfml2 += "<cfsetting enablecfoutputonly=\"false\">\n";
+    cfml2 += "<cfoutput>[#r.SQL#]</cfoutput>";
+    expectOutput(cfml2, "[SELECT 1 AS id\n, 2 AS name\n, 3 AS three]");
+
+    // The same query outside enablecfoutputonly is unaffected.
+    string cfml3 = "<cfquery name=\"q\" datasource=\"test\" result=\"r\">SELECT 4 AS four</cfquery>\n";
+    cfml3 += "<cfoutput>[#r.SQL#]</cfoutput>";
+    expectOutput(cfml3, "[SELECT 4 AS four]");
+}
+
 TEST_F(CfQueryTest, EmptyWhitespaceOnlyBodyThrows) {
     bool threw = false;
     try {
@@ -3974,6 +3998,63 @@ TEST_F(ComponentTest, NewAutoCallsInit) {
     EXPECT_EQ(out.equals("Zoe"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, AssignPropertyThroughArgumentsScopeOfComponent) {
+    // A component passed as a UDF/CFC-method argument can be written through
+    // the arguments scope: `arguments.event.outputData = v` must write the
+    // component's this scope (was BUGS.md "dereference a scalar variable as a
+    // structure": the assignment walker rejected a Component intermediate).
+    // Mirrors MangoBlog's Colorer plugin (Colorer.cfc:100).
+    string out = runCfc({
+        {"Event.cfc",
+         "<cfcomponent name=\"Event\">\n"
+         "  <cfset this.name = \"\" />\n"
+         "  <cfset this.outputdata = \"\" />\n"
+         "  <cffunction name=\"getOutputData\" access=\"public\" output=\"false\" returntype=\"any\">\n"
+         "    <cfreturn this.outputdata />\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"Proc.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"processEvent\" output=\"false\" returntype=\"any\">\n"
+         "    <cfargument name=\"event\" type=\"any\" required=\"true\" />\n"
+         "    <cfset var data = \"\" />\n"
+         "    <cfset var eventName = arguments.event.name />\n"
+         "    <cfif eventName EQ \"beforeHtmlHeadEnd\">\n"
+         "      <cfset data = arguments.event.outputData />\n"
+         "      <cfset data = data & '<link rel=\"stylesheet\" href=\"/x.css\" />' />\n"
+         "      <cfset arguments.event.outputData = data />\n"
+         "    </cfif>\n"
+         "    <cfreturn arguments.event />\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset event = new Event()>\n"
+         "<cfset event.name = \"beforeHtmlHeadEnd\" />\n"
+         "<cfset plugin = new Proc()>\n"
+         "<cfset result = plugin.processEvent(event) />\n"
+         "<cfoutput>#result.getOutputData()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("<link rel=\"stylesheet\" href=\"/x.css\" />"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, DeepAndMissingPropertyAssignOnComponent) {
+    // e.some.deep = v and e.newProp = v on a CFC write the this scope and
+    // auto-create the path (verified against CF 2025).
+    string out = runCfc({
+        {"Event.cfc",
+         "<cfcomponent name=\"Event\">\n"
+         "  <cfset this.name = \"\" />\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset e = new Event()>\n"
+         "<cfset e.some.deep = \"v\">\n"
+         "<cfset e.newProp = \"scalar\">\n"
+         "<cfset e.nested.inner = \"deepval\">\n"
+         "<cfoutput>#e.some.deep#|#e.newProp#|#e.nested.inner#|#StructKeyExists(e,\"SOME\")#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("v|scalar|deepval|YES"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, PrivateMethodNotCallableFromOutside) {
     string out = runCfc({
         {"person.cfc",
@@ -4803,6 +4884,65 @@ TEST_F(ComponentTest, NestedCustomTagCallerScope) {
          "<cfoutput>[AFTER:#callervar#]</cfoutput>"},
     }, "main.cfm");
     EXPECT_EQ(out.equals("\n[OUT-START]\n[INNER:Inner:inner_val] [INNER:Inner:modified_by_inner] BODY\n[OUT-END]\n[AFTER:outer_val]"), true)
+        << out.constData();
+}
+
+TEST_F(ComponentTest, CustomTagValuelessAttribute) {
+    // A valueless custom-tag attribute (<t:tag charset />, <cfmodule ... charset />)
+    // is passed as the string "true" (verified against CF 2025:
+    // len(attributes.charset) == 4), not as an empty string — an empty string
+    // would make a subsequent <cfif attributes.charset> throw "The value cannot
+    // be converted to a boolean." A trailing/middle valueless attribute must
+    // also not be swallowed into the preceding attribute's value.
+    string out = runCfc({
+        {"vl.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "<cfif structKeyExists(attributes, \"charset\")>"
+         "<cfoutput>[charset:#attributes.charset#][len:#len(attributes.charset)#]</cfoutput>"
+         "<cfif attributes.charset><cfoutput>[TRUTHY=YES]</cfoutput></cfif>"
+         "</cfif>"
+         "<cfif structKeyExists(attributes, \"a\")><cfoutput>[A:#attributes.a#]</cfoutput></cfif>"
+         "<cfif structKeyExists(attributes, \"b\")><cfoutput>[B:#attributes.b#]</cfoutput></cfif>"
+         "</cfif>\n"},
+        {"modvl.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "<cfif structKeyExists(attributes, \"charset\")>"
+         "<cfoutput>[MCHARSET:#attributes.charset#][MLEN:#len(attributes.charset)#]</cfoutput>"
+         "</cfif>"
+         "<cfif structKeyExists(attributes, \"a\")><cfoutput>[MA:#attributes.a#]</cfoutput></cfif>"
+         "</cfif>\n"},
+        {"main.cfm",
+         "<cfimport prefix=\"t\" taglib=\".\">\n"
+         "<t:vl charset />"
+         "<t:vl a b=\"x\" />"
+         "<t:vl title=\"foo\" />"
+         "<cfmodule template=\"modvl.cfm\" charset />"
+         "<cfmodule template=\"modvl.cfm\" a b=\"x\" />"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[charset:true][len:4][TRUTHY=YES] "
+                         "[A:true][B:x] "
+                         "[MCHARSET:true][MLEN:4] [MA:true] "), true)
+        << out.constData();
+}
+
+TEST_F(ComponentTest, CustomTagAttrValueBoundaries) {
+    // The valueless-attribute parser must stop an attribute value only at a
+    // real new attribute, so a following valued attribute is not swallowed
+    // into the preceding value: a=#foo.bar# b="x" keeps a=FOOBAR and b=x, while
+    // an unquoted numeric/boolean literal stays a bare literal.
+    string out = runCfc({
+        {"vl.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "<cfoutput>[A=#attributes.a#][B=#attributes.b#]</cfoutput>"
+         "</cfif>\n"},
+        {"main.cfm",
+         "<cfimport prefix=\"t\" taglib=\".\">\n"
+         "<cfset foo = structNew()><cfset foo.bar = \"FOOBAR\">\n"
+         "<t:vl a=#foo.bar# b=\"x\" />"
+         "<t:vl a=1 b=\"x\" />"
+         "<t:vl a=true b=\"x\" />"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[A=FOOBAR][B=x] [A=1][B=x] [A=true][B=x] "), true)
         << out.constData();
 }
 

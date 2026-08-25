@@ -279,3 +279,17 @@ emitted its body whitespace (`[`<newline>`WS-VOID-BODY`<newline>`]`) and let a
 function's direct whitespace AND `cfinclude` output are both discarded. Net effect
 for engine parity: default `output` must be treated as `true` for every function,
 and `output="false"` must suppress `cfinclude` output too.
+
+## CF 2025 RDS host: all datasources lost in the 2026-08-23 reinstall
+
+The CF 2025 server at `192.168.100.10` was reinstalled/restarted on 2026-08-23 and
+its datasource configuration is empty (`/opt/coldfusion/cfusion/lib/neo-datasource.xml`
+is 245 bytes, no entries). Every `<cfquery>` against any datasource now fails with
+`Datasource <name> could not be found.` (`exception.log` has 1300+ such errors since
+2026-08-23 20:43, for `webstrada`, `mango`, `mysqltest`, `pgtest`, `mysql`). This blocks
+byte-verification of every `tests/cfm/*` file that touches a datasource (cfquery,
+cfqueryparam, cfstoredproc, cfdbinfo, ...); non-DB tests still verify. The engine's
+`tests/cfm/cfquery_cfoutputonly_test.cfm` is added and engine-verified, but its CF
+byte-verification is pending re-registration of the datasources (the SQLite `webstrada`
+datasource used by the cfquery suite; `mysqltest`/`pgtest`/`mango` for the server-backed
+tests).

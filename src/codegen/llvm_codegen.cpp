@@ -4287,33 +4287,18 @@ void compile_token_list(
                 llvm::Value *aPath = nullptr, *aTaglib = nullptr, *aPrefix = nullptr;
                 llvm::Value *aTemplate = nullptr, *aName = nullptr, *aArgColl = nullptr;
                 llvm::Value *aBasetag = nullptr, *aDatacollection = nullptr;
-                for (size_t ai = 0; ai < attrParts->size(); ) {
-                    const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
-                    string aname(cfm_text + at.position, at.len);
-                    string anameLow = aname;
-                    anameLow.toLower();
-                    std::vector<TextParserTokenItem> valToks;
-                    size_t vi = ai + 1;
-                    while (vi < attrParts->size()) {
-                        const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
-                        if (nextIsAttr) break;
-                        if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
-                        vi++;
-                    }
-                    llvm::Value *val = valToks.empty() ? nullptr : compileAttrValue(valToks);
-                    if (anameLow.equals("path")) aPath = val;
-                    else if (anameLow.equals("taglib")) aTaglib = val;
-                    else if (anameLow.equals("prefix")) aPrefix = val;
-                    else if (anameLow.equals("template")) aTemplate = val;
-                    else if (anameLow.equals("name")) aName = val;
-                    else if (anameLow.equals("attributecollection")) aArgColl = val;
-                    else if (anameLow.equals("basetag")) aBasetag = val;
-                    else if (anameLow.equals("datacollection")) aDatacollection = val;
-                    ai = vi;
+                auto tagAttrs = parseTagAttrs(attrParts, cfm_text);
+                for (const auto &a : tagAttrs) {
+                    std::string anameLow = lowercase(a.first);
+                    llvm::Value *val = a.second.empty() ? nullptr : compileAttrValue(a.second);
+                    if (anameLow == "path") aPath = val;
+                    else if (anameLow == "taglib") aTaglib = val;
+                    else if (anameLow == "prefix") aPrefix = val;
+                    else if (anameLow == "template") aTemplate = val;
+                    else if (anameLow == "name") aName = val;
+                    else if (anameLow == "attributecollection") aArgColl = val;
+                    else if (anameLow == "basetag") aBasetag = val;
+                    else if (anameLow == "datacollection") aDatacollection = val;
                 }
                 auto *nullPtr = llvm::ConstantPointerNull::get(builder.getPtrTy());
                 if (tagNameLow.startWith("<cfimport")) {
@@ -5168,6 +5153,15 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
             // e.g. `SELECT   3` keeps its three spaces, `SELECT  #x#  AS four`
             // becomes `SELECT  4  AS four`).
             llvm::Value *capture = emitCall(builder, fQueryBegin, {});
+
+            // CF's QueryTag arms its body with `cfoutput(true)` (decompiled
+            // QueryTag.doInitBody), so the SQL text is captured verbatim
+            // regardless of <cfsetting enablecfoutputonly>: that setting only
+            // gates page output, not the query capture buffer. Compile the body
+            // as if inside <cfoutput> so text/whitespace writes use the direct
+            // writers instead of the cfoutputonly-gated ones.
+            ScopedCodegenState<bool> insideCfoutputGuard(g_insideCfoutput, true);
+
             size_t bodyStart = qpStart.position + qpStart.len;
             size_t bodyEnd = qpEnd.position;
 

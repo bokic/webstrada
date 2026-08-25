@@ -753,8 +753,10 @@ size_t compile_custom_tag_statement(
 
     llvm::Value *attrsVal = emitCall(builder, fCreateStruct, {});
     for (const auto &a : tagAttrs) {
+        // A valueless attribute (a="x" charset) is passed to the tag as the
+        // string "true" (verified against CF 2025: len(attributes.charset)==4).
         llvm::Value *val = compileValue(a.second);
-        if (!val) val = emitCall(builder, fCreateString, {builder.CreateGlobalString("", "", 0, module, true)});
+        if (!val) val = emitCall(builder, fCreateString, {builder.CreateGlobalString("true", "", 0, module, true)});
         std::string upperKey = a.first;
         for (auto &c : upperKey) c = toupper(c);
         llvm::Value *keyVal = emitCall(builder, fCreateString,
@@ -841,8 +843,10 @@ size_t compile_cfmodule_statement(
     for (const auto &a : tagAttrs) {
         std::string low = lowercase(a.first);
         if (low == "template" || low == "name" || low == "attributecollection") continue;
+        // A valueless attribute is passed to the module as the string "true"
+        // (verified against CF 2025: len(attributes.charset)==4).
         llvm::Value *val = compileValue(a.second);
-        if (!val) val = emitCall(builder, fCreateString, {builder.CreateGlobalString("", "", 0, module, true)});
+        if (!val) val = emitCall(builder, fCreateString, {builder.CreateGlobalString("true", "", 0, module, true)});
         std::string upperKey = a.first;
         for (auto &c : upperKey) c = toupper(c);
         llvm::Value *keyVal = emitCall(builder, fCreateString,

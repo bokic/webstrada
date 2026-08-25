@@ -301,3 +301,19 @@ name="mytag:mod">` fails with "Cannot find CFML template for custom tag
 mytag:mod."). This engine has no custom-tag library tree, so `name` is
 resolved as `name.cfm` relative to the invoking template directory. The
 `template` attribute (the common form) matches CF exactly.
+
+## Unquoted bare attribute values are evaluated as expressions; CF treats them as literal strings
+
+In a custom-tag / `<cfmodule>` invocation, an unquoted non-boolean/numeric
+value like `<t:tag a=foo.bar b="x" />` is passed by CF 2025 as the **literal
+string** `"foo.bar"` (verified on the RDS host: `attributes.a == "foo.bar"`,
+not the value of a `foo.bar` variable; likewise `a=foo` → `"foo"`). Numeric and
+boolean unquoted values (`a=1`, `a=true`) pass through as literals on both
+engines, and quoted/`#...#` values (`a="x"`, `a=#foo.bar#`) match exactly. This
+engine instead evaluates a bare `Variable`/dotted path as an expression, so
+`a=foo.bar` where `foo.bar` is defined yields the variable's value (e.g.
+`"FOOBAR"`) — a divergence from CF. Valueless attributes (`a b="x"`) and the
+attribute-boundary parsing around them are correct (see the valueless-attribute
+notes in PROGRESS.md). Noted while fixing the valueless-attribute handling;
+left as a separate fix (tests/cfm/custom_tag_attr_value_parse_test.cfm covers
+only the agreeing cases: hash/`#...#`, quoted, numeric and boolean values).
