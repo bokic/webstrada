@@ -3949,6 +3949,25 @@ TEST_F(ComponentTest, ExitInConstructionBodyStopsConstructionOnly) {
     EXPECT_EQ(out.equals("CONSTRUCT_START|BEFORE_EXIT"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, StructDeleteAcceptsComponentThisScope) {
+    // Adobe CF treats a component's `this` scope as a struct-compatible map.
+    // This is used by MangoBlog's Application.cfc to remove onError during
+    // admin requests.
+    string out = runCfc({
+        {"deleter.cfc",
+         "component {\n"
+         "  this.toRemove = 1;\n"
+         "  function remove() {\n"
+         "    return StructDelete(this, \"toRemove\", true) & \"|\" & StructKeyExists(this, \"toRemove\");\n"
+         "  }\n"
+         "}"},
+        {"main.cfm",
+         "<cfset c = CreateObject(\"component\", \"deleter\")>"
+         "<cfoutput>#c.remove()#|#StructKeyExists(c, \"toRemove\")#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("YES|NO|NO"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, ScriptExitInConstructionBodyStopsConstructionOnly) {
     // `exit;` in the construction body behaves the same as the tag form.
     string out = runCfc({
@@ -3983,6 +4002,58 @@ TEST_F(ComponentTest, CreateObjectAndInit) {
          "<cfoutput>#p.getName()#|#p.getSpecies()#|#IsObject(p)#|#IsStruct(p)#</cfoutput>"},
     }, "main.cfm");
     EXPECT_EQ(out.equals("Alice|human|YES|YES"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, NestedComponentMemberMethodDispatch) {
+    // Each hop in a dotted component-valued base must be resolved before the
+    // terminal member method is dispatched.
+    string out = runCfc({
+        {"preferences.cfc",
+         "component {\n"
+         "  function init() { return this; }\n"
+         "  function get(path, key, default=\"\") { return path & \":\" & key & \":\" & default; }\n"
+         "}"},
+        {"child.cfc",
+         "component {\n"
+         "  this.preferences = CreateObject(\"component\", \"preferences\").init();\n"
+         "  function init() { return this; }\n"
+         "}"},
+        {"owner.cfc",
+         "component {\n"
+         "  this.child = CreateObject(\"component\", \"child\").init();\n"
+         "  function init() { return this; }\n"
+         "}"},
+        {"main.cfm",
+         "<cfset owner = CreateObject(\"component\", \"owner\").init()>"
+         "<cfoutput>#owner.child.preferences.get(\"admin\", \"menuItems\", \"all\")#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("admin:menuItems:all"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, InterpreterNestedComponentMemberMethodAfterReturnedUser) {
+    // The cfoutput interpreter must walk a dotted base returned from another
+    // component before dispatching the final member method.
+    string out = runCfc({
+        {"preferences.cfc",
+         "component {\n"
+         "  function init() { return this; }\n"
+         "  function get(path, key, default=\"\") { return path & \":\" & key & \":\" & default; }\n"
+         "}"},
+        {"role.cfc",
+         "component {\n"
+         "  function init() { this.preferences = CreateObject(\"component\", \"preferences\").init(); return this; }\n"
+         "}"},
+        {"service.cfc",
+         "component {\n"
+         "  function init() { this.currentRole = CreateObject(\"component\", \"role\").init(); return this; }\n"
+         "  function getCurrentUser() { return this; }\n"
+         "}"},
+        {"main.cfm",
+         "<cfset service = CreateObject(\"component\", \"service\").init()>"
+         "<cfset currentAuthor = service.getCurrentUser()>"
+         "<cfoutput>#currentAuthor.currentRole.preferences.get(\"admin\", \"menuItems\", \"all\")#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("admin:menuItems:all"), true) << out.constData();
 }
 
 TEST_F(ComponentTest, BareDateMutatorNameResolvesComponentMethod) {
@@ -6948,6 +7019,17 @@ TEST_F(JitExpressionTest, LoopPlainTextBodyIsEmitted) {
     EXPECT_EQ(runJitTemplate("P<cfloop from=\"1\" to=\"2\" index=\"i\">X\nY</cfloop>Q", variables).equals("PX\nYX\nYQ"), true);
     // A whitespace-only body is managed like any between-tags region.
     EXPECT_EQ(runJitTemplate("P<cfloop from=\"1\" to=\"2\" index=\"i\">\n</cfloop>Q", variables).equals("PQ"), true);
+}
+
+TEST_F(JitExpressionTest, EmptyXmlChildrenNumericLoopSkipsBody) {
+    // This is the smallest reproduction of MangoBlog's getSkin() loop: an
+    // empty XML child array produces a numeric range from 1 to 0, which must
+    // not execute the body.
+    EXPECT_EQ(runJitTemplate(
+        "<cfset d = xmlParse('<skin><pageTemplates></pageTemplates></skin>')>"
+        "<cfset n = 0>"
+        "<cfloop from=\"1\" to=\"#arrayLen(d.skin.pageTemplates.xmlChildren)#\" index=\"i\">"
+        "<cfset n = n + 1></cfloop><cfoutput>#n#</cfoutput>", variables).equals("0"), true);
 }
 
 TEST_F(JitExpressionTest, LoopSharpContext) {
@@ -20416,6 +20498,19 @@ TEST_F(JitExpressionTest, VarFastPathQueryScopeShadows) {
         "<cfloop query=\"q\"><cfoutput>#name#;</cfoutput></cfloop>"
         "<cfoutput>#name#</cfoutput>",
         variables).equals("col1;col2;pagevar"), true);
+}
+
+TEST_F(JitExpressionTest, QueryColumnDoesNotShadowUdfLocalLoopIndex) {
+    // Query columns are implicit scope entries. They must not replace a local
+    // UDF variable with the same name: Queue.cfc uses local `i` while the
+    // surrounding MangoBlog query can also expose a column named `i`.
+    EXPECT_EQ(runJitTemplate(
+        "<cfset q = QueryNew(\"i\", \"integer\", [[0]])>"
+        "<cffunction name=\"read\" access=\"public\" returntype=\"string\">"
+        "<cfset var i = 0><cfset var values = [\"ok\"]><cfset var out = \"\">"
+        "<cfloop query=\"q\"><cfloop from=\"1\" to=\"1\" index=\"i\"><cfset out = values[i]></cfloop></cfloop>"
+        "<cfreturn out></cffunction>"
+        "<cfoutput>#read()#</cfoutput>", variables).equals("ok"), true);
 }
 
 TEST_F(JitExpressionTest, VarFastPathUdfLocalShadows) {

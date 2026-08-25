@@ -5,6 +5,31 @@ Functions reference: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusio
 
 ## CFML Tags
 
+Session CFC graphs are retained in a worker-local live-session cache before JSON
+persistence, preserving MangoBlog's `session.user` Author→Role→Preferences graph
+across requests in the default single-worker development server. An older session
+already flattened to JSON must be replaced with a fresh session.
+
+Custom-tag templates now keep their private variables scope active while executing,
+even when invoked from inside a component method; nested `GetBaseTagData()` calls
+therefore retain values such as MangoBlog's `Pages.cfm` `currentPage`, `counter`,
+and `to` variables.
+
+Query columns used as implicit variables now resolve after the active UDF's local
+variables and arguments. This matches Adobe ColdFusion when a query column (for
+example `i`) has the same name as a component method's local loop index. Verified
+by `tests/cfm/query_local_index_collision_test.cfm` and the corresponding JIT
+regression test.
+
+Component method calls now preserve an independent local-scope context through
+nested member dispatch. Numeric `<cfloop>` indexes are rebound at the loop-body
+entry, after the callee context is active, preventing Queue-style code from
+reading the caller's `i` value. Custom-tag private variables are also lower
+precedence than an active nested CFC/UDF local or arguments scope; this fixes
+MangoBlog's `Queue.getElements()` when called from a tag template. Verified with
+the Queue/nested-holder fixtures under `tests/cfm/`; the HTTP MangoBlog request
+now passes the Queue stage and reaches its login/database setup.
+
 | Tag | Implemented | Notes |
 |-----|------------|-------|
 | cfabort | ✅ Yes | Compiler + runtime | `<cfabort>` stops template processing with an uncatchable `abort_exception` (never matched by any `catch`, even `catch(any)`); the daemon swallows it and halts the page. **An abort inside a `<cftry>`/script `try` now stays uncatchable** (was BUGS.md "abort inside cftry is re-raised as a catchable Request"): `cf_eh_capture` marks the captured exception `m_isAbort`, and the landing pad's unmatched path re-raises an `abort_exception` via `cf_eh_throw` instead of a catchable `Request`-typed `webstrada::exception` — so `<cfabort>`/`<cflocation>` inside a try abort the request (with the `finally` running first), no catch clause intercepts them, and nested tries don't either. **A bare `abort;` in cfscript** is now a script keyword that calls `cfabort` (previously it resolved as an undefined variable and was catchable); `abort` as a plain variable name (`abort = "hello"`) still works, matching CF. Verified byte-for-byte against CF 2025 in tests/cfm/abort_inside_try_test.cfm + `JitExpressionTest.AbortInsideCftry*`/`ScriptAbortIsUncatchable` unit tests. |
@@ -1150,7 +1175,7 @@ webroot DOCUMENT_ROOT/admin SPA/admin API/admin+webroot traversal/POST).
 | StructClear | boolean | `struct: struct` | ✅ Yes | Clears struct in-place |
 | StructCopy | struct | `structure: struct` | ✅ Yes | Returns an independent deep copy of the struct. Verified byte-for-byte against CF 2021 in tests/cfm/higher_order_functions_struct_test.cfm + `HigherOrderFunctionsTest.StructAppendAndCopy`. |
 | StructCount | numeric | `struct: struct` | ✅ Yes | |
-| StructDelete | boolean | `struct: struct`, `key: string`, `indicateExisting: boolean = false` | ✅ Yes | |
+| StructDelete | boolean | `struct: struct`, `key: string`, `indicateExisting: boolean = false` | ✅ Yes | Also accepts component `this` scopes as struct-compatible values, matching Adobe CF; verified in `tests/cfm/component_structdelete_test.cfm` and `ComponentTest.StructDeleteAcceptsComponentThisScope`. |
 | StructEach | void | `struct: struct`, `callback: function [, parallel: boolean] [, maxThreads: numeric]` | ✅ Yes | Invokes `callback(key, value, struct)` for each entry in insertion order; returns null. Verified byte-for-byte against CF 2021 in tests/cfm/higher_order_functions_struct_test.cfm + `HigherOrderFunctionsTest.StructEachFilterMapReduce`. |
 | StructFilter | struct | `struct: struct`, `callback: function [, parallel: boolean] [, maxThreads: numeric]` | ✅ Yes | Returns a new struct with the entries for which the callback returns true (callback args `key, value, struct`). Verified byte-for-byte against CF 2021 in tests/cfm/higher_order_functions_struct_test.cfm. |
 | StructFind | any | `struct: struct`, `key: string` | ✅ Yes | |

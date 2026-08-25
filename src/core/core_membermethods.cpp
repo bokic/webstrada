@@ -23,6 +23,8 @@
 #include <openssl/hmac.h>
 #include <openssl/provider.h>
 
+#include <cstdlib>
+#include <cstdio>
 #include <thread>
 #include <chrono>
 #include <cstring>
@@ -308,6 +310,12 @@ static const char *variantTypeName(cfvariant::cfvariantType type)
 // the cfoutput interpreter (applyMemberChain) and the interpreter's function
 // call path. `base` is the receiver (mutating methods write in place); `args`
 // holds the already-evaluated call arguments (without the receiver).
+static bool memberMethodDiagnosticsEnabled()
+{
+    const char *value = std::getenv("WEBSTRADA_DEBUG_MEMBER_METHODS");
+    return value && value[0] && value[0] != '0';
+}
+
 cfvariant invokeMemberMethod(
     cfvariant &base, const string &methodName,
     const cfvariant **args, int arg_count,
@@ -317,18 +325,38 @@ cfvariant invokeMemberMethod(
     string upper = methodName;
     upper.toUpper();
 
+    if (memberMethodDiagnosticsEnabled()) {
+        std::fprintf(stderr,
+                     "[WebStrada][MemberDebug] method=%s baseType=%d component=%p superTarget=%p struct=%p\n",
+                     methodName.constData() ? methodName.constData() : "",
+                     static_cast<int>(base.m_type),
+                     static_cast<void *>(base.m_component),
+                     static_cast<void *>(base.m_superTargetInfo),
+                     static_cast<void *>(base.m_struct));
+        if (base.m_type == cfvariant::Component && base.m_component && base.m_component->info) {
+            const ComponentInfo *info = base.m_component->info;
+            std::fprintf(stderr,
+                         "[WebStrada][MemberDebug] component name=%s path=%s cfc=%s methods=%zu\n",
+                         info->name.c_str(), info->path.c_str(), info->cfcPath.c_str(), info->methods.size());
+            for (const ComponentInfo *cur = info; cur; cur = cur->parent) {
+                std::fprintf(stderr, "[WebStrada][MemberDebug] methodTable=%s:", cur->name.c_str());
+                for (const auto &method : cur->methods) std::fprintf(stderr, " %s(%s)", method.name.c_str(), method.access.c_str());
+                std::fprintf(stderr, "\n");
+            }
+        } else if (base.m_type == cfvariant::Struct && base.m_struct) {
+            std::fprintf(stderr, "[WebStrada][MemberDebug] structKeys:");
+            for (const auto &entry : *base.m_struct) {
+                std::fprintf(stderr, " %s(type=%d)", entry.first.constData() ? entry.first.constData() : "",
+                             static_cast<int>(entry.second.m_type));
+            }
+            std::fprintf(stderr, "\n");
+        }
+    }
+
     // 0. Component method dispatch: obj.method(args). A this-scope Function
     //    value (a UDF stored in the this scope) wins; otherwise the method is
     //    looked up in the component's method table with CF access control.
     if (base.m_type == cfvariant::Component) {
-        if (base.m_struct) {
-            auto it = base.m_struct->find(upper);
-            if (it != base.m_struct->end() && it->second.m_type == cfvariant::Function) {
-                cfvariant *res = cfml::cf_udf_invoke(&it->second, args, arg_count,
-                                                     out, cgi, server, cookie, application, session, url, form, variables);
-                return *res;
-            }
-        }
         cfvariant *res = cfml::cf_component_invoke(&base, methodName.constData(), args, arg_count,
                                                    out, cgi, server, cookie, application, session, url, form);
         return *res;
@@ -571,6 +599,8 @@ cfvariant *cfml::cfvariant_assign(
                 varName = scopeNameOrig + "." + varName;
             }
         }
+    } else if (g_customTagExecutionVariables) {
+        scope = g_customTagExecutionVariables;
     } else if (!g_udfCtx.empty()) {
         // Inside a UDF, an unqualified assignment targets the captured parent
         // scope unless the name is a local (var / nested function /
@@ -1900,7 +1930,7 @@ static cfvariant *cf_call_builtin_dispatch(
     }
     if (fname.equals("STRUCTDELETE")) {
         if (arg_count < 2 || arg_count > 3) throw webstrada::exception("StructDelete requires 2 or 3 arguments");
-        if (mut_arg0->m_type != cfvariant::Struct) throw webstrada::exception("StructDelete: First argument must be a struct");
+        if (mut_arg0->m_type != cfvariant::Struct && mut_arg0->m_type != cfvariant::Component) throw webstrada::exception("StructDelete: First argument must be a struct");
         string key = const_cast<cfvariant*>(args[1])->toString(); key.toUpper();
         bool indicateExisting = false;
         if (arg_count == 3) {
@@ -2640,6 +2670,3 @@ long long cfml::cfvariant_to_long(const cfvariant *v) {
         default: return 0;
     }
 }
-
-
-

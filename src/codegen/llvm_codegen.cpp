@@ -4948,6 +4948,20 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
 
             builder.SetInsertPoint(lpBodyBB);
 
+            // Numeric loops must bind the index after the runtime function
+            // context is active.  The initial assignment is emitted while the
+            // function entry block is being assembled and can otherwise land
+            // in the caller's UDF context for component methods.  Binding at
+            // the body entry also refreshes the value on every iteration.
+            if (loopKind == LOOP_NUMERIC) {
+                auto curNumericIdx = builder.CreateLoad(builder.getInt64Ty(), lpIndexVar);
+                auto numericName = builder.CreateGlobalString(
+                    llvm::StringRef(lpIndexName.constData(), lpIndexName.length()), "", 0, module, true);
+                llvm::Value *numericArgs[] = {cgi, server, cookie, application, session, url, form,
+                                               variables, numericName, curNumericIdx};
+                emitCall(builder, lpSetFunc, numericArgs);
+            }
+
             // Set the loop variable before each iteration for the iteration
             // kinds (list/array/collection). The index is assigned like an
             // unqualified <cfset>: inside a function a `var`-declared loop

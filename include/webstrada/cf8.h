@@ -1378,6 +1378,8 @@ cfvariant *cfvariant_create_udf(const char *name, void *fn, bool isClosure, cfva
 void cf_udf_begin(cfvariant *localScope, cfvariant *parentScope);
 void cf_udf_mark_local(const char *name);
 void cf_udf_end();
+// Clear partially-unwound UDF contexts at a request boundary.
+void cf_udf_context_clear();
 
 // Invokes a Function value with the given args (temp-returned). Throws when the
 // value is not a callable function.
@@ -2224,4 +2226,3 @@ cfvariant *cf_xmltransform(const cfvariant *arg0, const cfvariant *arg1, const c
 cfvariant *cf_xmlvalidate(const cfvariant *arg0, const cfvariant *arg1 = nullptr);
 
 } // namespace cfml
-

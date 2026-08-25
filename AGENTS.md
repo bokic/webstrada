@@ -42,3 +42,5 @@ If RDS connection returns with an error, stop thinking and tell me to restart Co
 
 Unit tests:
 * When working on a new cftag or cffunction always add cfm file to tests/cfm dir with as much possible variants of the feature and always test it's output with verify_with_coldfusion.py script. Don't mark task as complete until all tests passed.
+
+* Do not modify bundled application fixtures such as MangoBlog to hide or work around an engine failure. When a bundled application exposes a failure, extract the smallest reproducing CFML/CFC case into the test suite, run it on WebStrada, and verify the same case against Adobe ColdFusion before changing engine behavior. Keep application fixtures unchanged unless the task explicitly targets that fixture.

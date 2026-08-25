@@ -1331,7 +1331,11 @@ llvm::Value *CompileExprAST(
         // scope search (generation-guarded against StructDelete/StructClear).
         // Dotted/member names and built-in scope names are excluded.
         const std::string &nm = node->string_val;
-        bool simplePageVar = !g_compileInFunctionBody && !nm.empty();
+        // A function/component body must resolve names through its active local
+        // and parent scopes. Compile-time variable slots are only safe for
+        // top-level template variables and can retain a loop index from a
+        // different nested component invocation.
+        bool simplePageVar = false;
         if (simplePageVar) {
             for (char c : nm) {
                 if (c == '.' || c == '[' || c == '(') { simplePageVar = false; break; }
@@ -1822,7 +1826,31 @@ llvm::Value *CompileExprAST(
         // (UDF/closure) in a struct/xml member first, then the built-in
         // member-method table, so both `s.hello()` (stored UDF) and
         // `s.k[2].toUpperCase()` (built-in string method) work.
-        auto *base = CompileExprAST(module, builder, function, node->left, cgi, server, cookie, application, session, url, form, variables, cfm_text);
+        llvm::Value *base = nullptr;
+        // mergeObjectMembers may represent an unbroken dotted member-call
+        // base as one Variable token (for example,
+        // `owner.child.preferences.get(...)` has the base
+        // `owner.child.preferences`). Walk that base explicitly so a
+        // component-valued property remains a Component for method dispatch.
+        // Ordinary dotted reads stay on their existing lowering path because
+        // their undefined-member diagnostics differ from member-call lookup.
+        if (node->left && node->left->type == ExprAST::Variable &&
+            node->left->string_val.find('.') != std::string::npos) {
+            std::vector<std::string> parts = splitMemberPath(node->left->string_val);
+            auto root = std::make_unique<ExprAST>();
+            root->type = ExprAST::Variable;
+            root->string_val = parts.front();
+            root->isChainBase = true;
+            base = CompileExprAST(module, builder, function, root,
+                                  cgi, server, cookie, application, session,
+                                  url, form, variables, cfm_text);
+            std::vector<std::string> tail(parts.begin() + 1, parts.end());
+            base = emitMemberWalk(module, builder, base, tail);
+        } else {
+            base = CompileExprAST(module, builder, function, node->left,
+                                  cgi, server, cookie, application, session,
+                                  url, form, variables, cfm_text);
+        }
         const auto *callNode = node->right.get();
         if (!callNode || callNode->type != ExprAST::FuncCall) {
             throw webstrada::exception("Invalid member function call");

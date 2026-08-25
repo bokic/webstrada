@@ -4,6 +4,7 @@
 #include <webstrada/string.h>
 #include <libxml/tree.h>
 #include <deque>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -14,6 +15,10 @@ struct UdfCallCtx {
     webstrada::cfvariant *localScope;
     webstrada::cfvariant *parentScope;
     std::set<webstrada::string> localNames;
+    // Numeric <cfloop> indices are active local bindings. Keep the live value
+    // here as well as in the local struct so lookup cannot observe a stale
+    // copied struct cell while a loop is executing.
+    std::map<webstrada::string, webstrada::cfvariant> loopIndices;
     // Component-method context: when this call runs inside a component method
     // (or the component's construction body), `thisScope` is the component's
     // `this` scope and `component` the ComponentInstance. Used so unqualified
@@ -52,6 +57,10 @@ extern thread_local std::deque<CustomTagCallCtx> g_customTagStack;
 // string stack (instead of marker entries inside g_customTagStack) so the custom
 // tag context consumers are never exposed to pseudo-entries.
 extern thread_local std::vector<std::string> g_baseTagStack;
+// The variables scope of the custom-tag template currently executing. Custom
+// tags may run inside a component method, but their unqualified names must
+// resolve to the custom tag's private variables before the surrounding UDF.
+extern thread_local webstrada::cfvariant *g_customTagExecutionVariables;
 
 namespace cfml {
 void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, cfvariant *callerVariables,

@@ -15,7 +15,11 @@ namespace cfml {
 
 cfvariant *cf_structdelete(cfvariant *str, const cfvariant *key, const cfvariant *indicateExisting) {
     if (!str || !key) throw webstrada::exception("StructDelete: Missing argument(s)");
-    if (str->m_type != cfvariant::Struct) {
+    // Adobe CF exposes a component's `this` scope as a struct-compatible
+    // value.  Application.cfc commonly uses StructDelete(this, "onError")
+    // to remove a lifecycle handler, so components must follow the same
+    // container path as ordinary structs here.
+    if (str->m_type != cfvariant::Struct && str->m_type != cfvariant::Component) {
         throw webstrada::exception("StructDelete: First argument must be a structure");
     }
     string k = const_cast<cfvariant*>(key)->toString();

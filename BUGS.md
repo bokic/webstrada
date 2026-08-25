@@ -5,6 +5,14 @@ For issues that live on the ColdFusion side (server/installation problems found 
 testing against the RDS host) see `BUGS_CF.md`; for cosmetic output artifacts see
 `BUGS_COSMETIC.md`.
 
+## Session CFC graphs after worker restart
+
+The SQLite session format is JSON, so it cannot restore compiled CFC method tables.
+The development server retains live session graphs in a worker-local cache, which
+preserves CFC values across normal requests. After a process restart, or when using
+multiple prefork workers, an old session may need to be replaced with a fresh login;
+generic typed CFC serialization remains future work.
+
 ## `ImageGetBufferedImage` returns the image instead of a `java.awt.image.BufferedImage`
 
 Adobe CF returns the underlying `java.awt.image.BufferedImage` (a live Java object) from `ImageGetBufferedImage()`. This engine has no Java object interop, so it returns the image itself — the closest stand-in for the image's backing store — and `IsImage(ImageGetBufferedImage(img))` is therefore `YES` (CF: `NO`, since a BufferedImage is not a ColdFusion image object; CF's `IsObject` is `YES`, this engine's is `NO`). `ImageGetWidth(ImageGetBufferedImage(img))` works on both. Kept as a documented divergence (see `src/cfimage_meta.cpp`).
@@ -90,7 +98,10 @@ component method whose parameter collided with the query's `name` column.
 `ComponentTest`'s `SetUp` clears the stack so a leaked scope cannot leak across
 tests. Fixing it properly would pop every active query scope on the loop's
 exception path (the loop body would need a native EH landing pad), which is
-left as future work.
+left as future work. Separately, normal implicit query-column lookup now obeys
+CF's precedence over the enclosing `variables` scope but after the active UDF's
+local variables and arguments; this prevents a column named `i` from replacing a
+component method's local loop index.
 
 ## Web/HTTP/Output tag limitations (cfprocessingdirective, cfsavecontent, cfcookie)
 

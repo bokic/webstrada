@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -69,6 +70,7 @@ bool customTagFileExists(const char *path)
 
 // CF's "base tag" execution stack (declared in core_internal.h).
 thread_local std::vector<std::string> g_baseTagStack;
+thread_local cfvariant *g_customTagExecutionVariables = nullptr;
 
 namespace cfml {
 
@@ -313,6 +315,11 @@ void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, vo
     rt->includeDepth++;
 
     CustomTagCallCtx &ctx = g_customTagStack.back();
+    struct ExecutionScopeGuard {
+        cfvariant *previous;
+        ~ExecutionScopeGuard() { g_customTagExecutionVariables = previous; }
+    } executionScope{g_customTagExecutionVariables};
+    g_customTagExecutionVariables = &ctx.variables;
 
     if (!isEndMode) {
         // Start template output goes straight to the caller's output buffer.

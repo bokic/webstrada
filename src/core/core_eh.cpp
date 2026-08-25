@@ -963,4 +963,3 @@ cfvariant *cfml::cfvariant_bare_identifier_fast(
     maybeMemoizeVarSlot(slot, v, variables, name);
     return v;
 }
-

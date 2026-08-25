@@ -18,6 +18,8 @@ Total: 161 functions (24.17% of 666) that are still unimplemented and throw the 
 | **REST** | 3 | 1.79% | RestDeleteApplication, RestInitApplication, RestSetResponse |
 
 Notes:
+* `StructDelete` is implemented, including deletion from a component's
+  struct-compatible `this` scope; it is not part of this unimplemented list.
 * The implemented date mutators (`SetYear`, `SetMonth`, `SetDay`, `SetHour`,
   `SetMinute`, and `SetSecond`) retain their two-argument built-in behavior at
   page level, while bare calls with the same names inside component methods
@@ -25,3 +27,20 @@ Notes:
 * InvokeCFClientFunction is **not a ColdFusion 2025 function** — CF reports `Variable INVOKECFCLIENTFUNCTION is undefined.`, which the engine reproduces (see fn_ajax.cpp).
 * The **cflogin model** functions (GetAuthUser, GetUserRoles, IsUserLoggedIn, IsUserInRole, IsUserInAnyRole) were implemented on 2026-08-11 with the `<cflogin>`/`<cfloginuser>`/`<cflogout>` tags (see PROGRESS.md).
 Implementation note: direct custom-tag syntax (`<cf_name>`) is a compiler/tag feature and adds no CFML function.
+
+Compatibility note (2026-08-25): nested CFC member chains are supported by the
+JIT; this fix does not add or remove a standalone CFML function.
+
+Compatibility note (2026-08-25): implicit query-column lookup now occurs after
+the active UDF's local variables and arguments, so a query column cannot shadow a
+local component-method loop index; this fix does not add or remove a standalone
+CFML function.
+
+Compatibility note (2026-08-25): nested component method calls preserve their
+callee-local scope through numeric loop execution; Queue-style loop indexes no
+longer fall back to the caller's local or query scope. This fix does not add or
+remove a standalone CFML function.
+
+Compatibility note (2026-08-25): a nested CFC/UDF invoked from a custom tag now
+resolves its local and arguments scopes before the custom tag's private variables,
+matching Adobe ColdFusion and fixing Queue-style loop indexes in nested tag calls.

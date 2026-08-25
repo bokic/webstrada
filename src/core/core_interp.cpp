@@ -657,15 +657,45 @@ webstrada::cfvariant *cfml::lookupVarWritable(const char *name,
         return nullptr;
     };
 
-    // Inside a <cfloop query> the pushed query scope is searched BEFORE the
-    // variables scope: an unqualified name that matches a query column (or a
-    // pseudo-property) resolves to the current row's value, verified against
-    // CF 2025 (a column named `name` beats a variables-scope `name`). The
-    // innermost loop wins; a non-matching name falls through.
-    if (auto *r = query_scope_resolve_member(parts)) return r;
-
     if (!g_udfCtx.empty()) {
-        if (auto *r = tryScope(g_udfCtx.back().localScope)) return r;
+        // The active UDF local scope has precedence even when its temporary
+        // struct is marked disabled during component dispatch; query columns
+        // must never replace a live local loop index.
+        auto *local = g_udfCtx.back().localScope;
+        webstrada::string localName = parts[0];
+        localName.toUpper();
+        auto loopIt = g_udfCtx.back().loopIndices.find(localName);
+        if (loopIt == g_udfCtx.back().loopIndices.end()) {
+            // The runtime string comparator is intentionally case-insensitive
+            // for CF scopes, but a few containers can retain the original key
+            // spelling.  Preserve CF lookup semantics by checking the active
+            // loop bindings case-insensitively as a fallback.
+            for (auto it = g_udfCtx.back().loopIndices.begin();
+                 it != g_udfCtx.back().loopIndices.end(); ++it) {
+                if (it->first.compareCaseInsensitive(parts[0]) == 0) {
+                    loopIt = it;
+                    break;
+                }
+            }
+        }
+        if (loopIt != g_udfCtx.back().loopIndices.end()) {
+            return &loopIt->second;
+        }
+        if (local && local->m_type == webstrada::cfvariant::Struct && local->m_structData) {
+            // StructData is the owning storage. Use its map directly instead
+            // of the cached m_struct alias: local scopes can be copied while
+            // component methods are materialized, leaving that alias stale.
+            auto &localMap = local->m_structData->map;
+            auto it = localMap.find(parts[0]);
+            if (it != localMap.end()) {
+                return descendDottedPath(&it->second, parts, 1);
+            }
+
+            if (g_udfCtx.back().localNames.find(localName) != g_udfCtx.back().localNames.end()) {
+                auto inserted = localMap.emplace(parts[0], webstrada::cfvariant());
+                return descendDottedPath(&inserted.first->second, parts, 1);
+            }
+        }
         // CF: arguments are not keys of the `local` scope; an unqualified name
         // that is a parameter resolves through the `arguments` scope (which the
         // local scope references as "ARGUMENTS"). A missing parameter is a Null
@@ -680,6 +710,19 @@ webstrada::cfvariant *cfml::lookupVarWritable(const char *name,
             }
         }
     }
+    // A component/UDF invoked from a custom tag still owns the normal local
+    // scope precedence.  The custom tag's private variables apply only while
+    // resolving the custom-tag template itself; they must not shadow a callee
+    // local such as Queue.getElements()'s loop index.
+    if (g_customTagExecutionVariables) {
+        if (auto *r = tryScope(g_customTagExecutionVariables)) return r;
+    }
+    // Query columns are implicit variables. They must not shadow the current
+    // function's local variables or arguments: MangoBlog has a query column
+    // named `i`, while Queue.cfc uses a local loop index with that name.
+    // After the active UDF scopes, query columns precede the enclosing
+    // variables scope and the innermost query scope wins.
+    if (auto *r = query_scope_resolve_member(parts)) return r;
     if (auto *r = tryScope(static_cast<webstrada::cfvariant*>(variables))) return r;
     if (!g_customTagStack.empty()) {
         if (auto *r = tryScope(&g_customTagStack.back().attributes)) return r;
@@ -875,14 +918,25 @@ static cfvariant *resolveWritableSlot(const string &baseExpr, string &out,
         }
     }
 
-    cfvariant *cur = lookupVarWritable(dotted.constData(), cgi, server, cookie, application, session, url, form, variables);
+    // Resolve the root first. A dotted base can cross component-valued
+    // properties (for example currentAuthor.currentRole.preferences); looking
+    // up the complete dotted spelling in the root scope loses the live CFC
+    // slot and prevents the terminal member call from dispatching correctly.
+    int firstDot = dotted.indexOf('.');
+    string rootName = firstDot < 0 ? dotted : dotted.left(firstDot);
+    cfvariant *cur = lookupVarWritable(rootName.constData(), cgi, server, cookie, application, session, url, form, variables);
     if (!cur) return nullptr;
+    // Component instances are reference objects. Let the caller evaluate a
+    // dotted component base by value; this preserves the instance identity
+    // while avoiding treating the component's shared this-scope map as an
+    // ordinary writable struct slot.
+    if (cur->m_type == cfvariant::Component) return nullptr;
 
     // Walk any trailing '[expr]' / '.key' segments, mirroring applyMemberChain's
     // navigation but keeping live pointers so a later member method writes
     // through. A query-column reference is deliberately not followed: its cells
     // must be read through the owning query, not through the materialized copy.
-    size_t pos = static_cast<size_t>(dotted.length());
+    size_t pos = static_cast<size_t>(rootName.length());
     while (pos < (size_t)e.length()) {
         char c = e.at(pos);
         if (c == '.') {
@@ -895,7 +949,8 @@ static cfvariant *resolveWritableSlot(const string &baseExpr, string &out,
             }
             string key = e.mid(static_cast<int>(idStart), static_cast<int>(pos - idStart));
             if (key.isEmpty() || !cur ||
-                (cur->m_type != cfvariant::Struct && cur->m_type != cfvariant::Xml)) {
+                (cur->m_type != cfvariant::Struct && cur->m_type != cfvariant::Xml &&
+                 cur->m_type != cfvariant::Component)) {
                 return nullptr;
             }
             key.toUpper();
@@ -2140,7 +2195,21 @@ cfvariant evaluateExpr(string &out, const string &expr,
                     msg.append(".");
                     throw webstrada::exception(msg);
                 }
-                base = evaluateExpr(out, baseExpr, cgi, server, cookie, application, session, url, form, variables);
+                int baseDot = baseExpr.indexOf('.');
+                if (baseDot > 0) {
+                    string rootName = baseExpr.left(baseDot).trimmed();
+                    cfvariant *rootSlot = lookupVarWritable(rootName.constData(), cgi, server, cookie, application, session, url, form, variables);
+                    if (rootSlot) {
+                        string baseChain = baseExpr.mid(baseDot, baseExpr.length() - baseDot).trimmed();
+                        base = applyMemberChain(*rootSlot, nullptr, baseChain, out,
+                                                cgi, server, cookie, application,
+                                                session, url, form, variables);
+                    } else {
+                        base = evaluateExpr(out, baseExpr, cgi, server, cookie, application, session, url, form, variables);
+                    }
+                } else {
+                    base = evaluateExpr(out, baseExpr, cgi, server, cookie, application, session, url, form, variables);
+                }
             }
             return applyMemberChain(base, slot, chain, out, cgi, server, cookie, application, session, url, form, variables);
         }
@@ -6311,15 +6380,35 @@ static const webstrada::cfvariant *lookupVar(const char *name,
     // first, then the (component) variables scope, then the enclosing UDF
     // parent scopes, then the component's this scope, then the implicit scopes.
     if (!g_udfCtx.empty()) {
-        if (auto *r = findIn(g_udfCtx.back().localScope)) return r;
+        auto localName = key;
+        auto loopIt = g_udfCtx.back().loopIndices.find(localName);
+        if (loopIt != g_udfCtx.back().loopIndices.end()) {
+            return &loopIt->second;
+        }
+        auto *local = g_udfCtx.back().localScope;
+        if (local && local->m_type == cfvariant::Struct && local->m_structData) {
+            auto &localMap = local->m_structData->map;
+            auto it = localMap.find(key);
+            if (it != localMap.end()) return &it->second;
+        }
         // A missing parameter is a Null slot in `arguments` and reads as
         // undefined (CF: "Variable A is undefined.").
-        if (cfvariant *args = udfArgumentsScope(g_udfCtx.back().localScope)) {
+        if (cfvariant *args = udfArgumentsScope(local)) {
             if (auto *r = findIn(args)) {
                 if (r->m_type != cfvariant::Null) return r;
             }
         }
     }
+    // A nested component/UDF keeps its local and arguments scopes ahead of
+    // the surrounding custom tag's private variables.
+    if (g_customTagExecutionVariables) {
+        if (auto *r = findIn(g_customTagExecutionVariables)) return r;
+    }
+    // Adobe CF places implicit query columns after the active function local
+    // and arguments scopes, but before the enclosing variables scope.
+    std::vector<webstrada::string> queryParts;
+    queryParts.push_back(key);
+    if (auto *r = query_scope_resolve_member(queryParts)) return r;
     if (auto *r = findIn(variables)) return r;
     for (auto it = g_udfCtx.rbegin(); it != g_udfCtx.rend(); ++it) {
         if (auto *r = findIn(it->parentScope)) return r;
@@ -6688,7 +6777,14 @@ void cfml::cfloop_set_int(webstrada::cfvariant *scope, const char *key, int val)
 {
     webstrada::string k(key);
     k.toUpper();
-    webstrada::cfvariant &slot = scope->set(k);
+    if (!g_udfCtx.empty()) {
+        g_udfCtx.back().loopIndices[k] = webstrada::cfvariant(val);
+    }
+    webstrada::cfvariant &slot = (scope->m_structData &&
+                                  (scope->m_type == webstrada::cfvariant::Struct ||
+                                   scope->m_type == webstrada::cfvariant::Component))
+        ? scope->m_structData->map[k]
+        : scope->set(k);
     slot.set_type(webstrada::cfvariant::Number);
     slot.m_int = val;
 }
@@ -6705,12 +6801,20 @@ void cfml::cfloop_set_long(
     // `variables` is the instance scope, NOT the local scope — writing the
     // index there leaves the local `var node` untouched and the loop body
     // reads an empty value, a WebStrada divergence from CF).
-    webstrada::cfvariant *scope = udfAssignScope(variables, key);
+    // A numeric loop index is a function-local binding while a UDF is active.
+    // This also covers component methods whose tag-form `var` declarations are
+    // not present in the generated local-name table (the index must not fall
+    // through to an implicit query column or the component variables scope).
+    webstrada::cfvariant *scope = g_udfCtx.empty()
+        ? variables : g_udfCtx.back().localScope;
     if (!scope || (scope->m_type != webstrada::cfvariant::Struct && scope->m_type != webstrada::cfvariant::Component)) {
         throw webstrada::exception("Cannot assign variable: target scope is not a valid structure.");
     }
     webstrada::string k(key);
     k.toUpper();
+    if (!g_udfCtx.empty()) {
+        g_udfCtx.back().loopIndices[k] = webstrada::cfvariant(static_cast<int>(val));
+    }
     webstrada::cfvariant &slot = scope->set(k);
     if (val >= INT32_MIN && val <= INT32_MAX) {
         slot.set_type(webstrada::cfvariant::Number);
@@ -6817,4 +6921,3 @@ int cfml::cf_exit_classify(const cfvariant *method)
     if (low.equals("loop")) return 1;
     return 2;
 }
-

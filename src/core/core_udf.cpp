@@ -281,6 +281,12 @@ void cfml::cf_udf_end()
     if (!g_udfCtx.empty()) g_udfCtx.pop_back();
 }
 
+void cfml::cf_udf_context_clear()
+{
+    // Request-local function state must not survive an exception boundary.
+    g_udfCtx.clear();
+}
+
 cfvariant *cfml::cfvariant_create_udf(const char *name, void *fn, bool isClosure, cfvariant *capturedScope, const void *metaBlob)
 {
     auto *info = new UDFInfo();
@@ -782,6 +788,3 @@ std::vector<webstrada::string> cfml::argumentsVisibleKeys(const cfvariant *argum
     }
     return keys;
 }
-
-
-

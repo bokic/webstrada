@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <unistd.h>
@@ -75,6 +77,20 @@ static string cookieScopeValue(const cfvariant *cookie, const char *name)
 } // namespace
 
 namespace cfml {
+
+// Session JSON persistence cannot retain compiled CFC method tables. Keep the
+// live value graph in the worker as the authoritative value while that worker
+// remains alive; JSON remains the restart/fallback representation for scalar
+// and ordinary collection session data. This is important for applications
+// such as MangoBlog, which stores an Author CFC (containing Role and
+// Preferences CFCs) in session.user.
+static std::mutex g_liveSessionMutex;
+static std::map<std::string, cfvariant> g_liveSessions;
+
+static std::string liveSessionKey(const std::string &appName, const std::string &sessionId)
+{
+    return appName + "\n" + sessionId;
+}
 
 string makeCfToken()
 {
@@ -142,6 +158,7 @@ void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session)
     sc.session = session;
     g_searchImplicitScopes = true;
     g_requestScope = cfvariant(cfvariant::Struct);
+    cf_udf_context_clear();
     cf_cfoutputonly_set(false);
     silent_buf_clear();
     query_scope_clear();
@@ -180,10 +197,15 @@ void scope_end()
         int64_t expiresAt = (sc.sessionTimeoutSeconds > 0)
             ? now + static_cast<int64_t>(sc.sessionTimeoutSeconds) : 0;
         sc.store->storeSession(sc.appName, sc.sessionId, scope_json_serialize(*sc.session), expiresAt, now, sc.sessionStartTime);
+        {
+            std::lock_guard<std::mutex> lock(g_liveSessionMutex);
+            g_liveSessions[liveSessionKey(sc.appName, sc.sessionId)] = *sc.session;
+        }
     }
 
     sc = cfml::ScopeContext{};
     g_requestScope = cfvariant(cfvariant::Struct);
+    cf_udf_context_clear();
 }
 
 cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
@@ -260,7 +282,16 @@ cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
             sc.sessionNewlyCreated = true;
             sc.sessionStartTime = nowSeconds();
         } else if (session) {
-            scope_json_deserialize(sjson, *session);
+            bool restoredLive = false;
+            {
+                std::lock_guard<std::mutex> lock(g_liveSessionMutex);
+                auto it = g_liveSessions.find(liveSessionKey(storeKey.constData(), sessionId.constData()));
+                if (it != g_liveSessions.end()) {
+                    *session = it->second;
+                    restoredLive = true;
+                }
+            }
+            if (!restoredLive) scope_json_deserialize(sjson, *session);
             session->m_disabled = false;
             sc.sessionStartTime = startTime;
         }

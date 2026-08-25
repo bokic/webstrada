@@ -14,7 +14,7 @@ structDelete(structure, key [, indicateNotExisting])
 ## Arguments
 
 ### Argument: `structure`
-- **Type**: `string`
+- **Type**: `struct`
 - **Required**: Required
 - **Default Value**: *None*
 - **Description**: Structure or a variable that contains one. Contains element
@@ -34,11 +34,10 @@ structDelete(structure, key [, indicateNotExisting])
 
 ## Limitations and Other Info
 
-- **Type Requirement**: The first argument must be a valid structure/associative array.
+- **Type Requirement**: The first argument must be a valid structure/associative array. A component's `this` scope is also accepted because Adobe ColdFusion exposes it as a struct-compatible map.
 - **Related Functions**: `structclear`
 - **Coldfusion Support**: Minimum version: `4`.
 - **Lucee Support**:
 - **Railo Support**:
 - **Openbd Support**:
 - **Boxlang Support**: Minimum version: `1.0.0`.
-
