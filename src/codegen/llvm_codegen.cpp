@@ -2448,6 +2448,9 @@ void compile_token_list(
                 static const std::unordered_set<std::string> traceValidAttrs = {
                     "text", "type", "category", "inline", "abort", "var"};
                 std::vector<std::string> unknownAttrs;
+                llvm::Value *traceText = nullptr, *traceType = nullptr,
+                           *traceCategory = nullptr, *traceInline = nullptr,
+                           *traceAbort = nullptr, *traceVar = nullptr;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
                     if (!isAttrNameToken(*attrParts, ai, cfm_text)) { ai++; continue; }
@@ -2485,7 +2488,13 @@ void compile_token_list(
                             return CompileExprAST(module, builder, mainfunc, ast, cgi, server, cookie,
                                                   application, session, url, form, variables, cfm_text);
                         };
-                        compileTraceValue(valToks);
+                        llvm::Value *value = compileTraceValue(valToks);
+                        if (anameLow.equals("text")) traceText = value;
+                        else if (anameLow.equals("type")) traceType = value;
+                        else if (anameLow.equals("category")) traceCategory = value;
+                        else if (anameLow.equals("inline")) traceInline = value;
+                        else if (anameLow.equals("abort")) traceAbort = value;
+                        else if (anameLow.equals("var")) traceVar = value;
                     }
                     ai = vi;
                 }
@@ -2501,6 +2510,18 @@ void compile_token_list(
                     }
                     throw webstrada::exception(("Attribute validation error for tag CFTRACE. It does not allow the attribute(s) " + list + ". The valid attribute(s) are ABORT,CATEGORY,INLINE,TEXT,TYPE,VAR.").c_str());
                 }
+
+                auto *fTrace = getOrCreateHelper(module, builder, "cf_trace_tag", builder.getPtrTy(),
+                    {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+                     builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
+                llvm::Value *traceNull = llvm::ConstantPointerNull::get(builder.getPtrTy());
+                emitCall(builder, fTrace, {
+                    traceText ? traceText : traceNull,
+                    traceType ? traceType : traceNull,
+                    traceCategory ? traceCategory : traceNull,
+                    traceInline ? traceInline : traceNull,
+                    traceAbort ? traceAbort : traceNull,
+                    traceVar ? traceVar : traceNull});
 
                 // Scan for the matching `</cftrace>`; the body is evaluated.
                 // An unterminated <cftrace> is self-closing in CF (verified).

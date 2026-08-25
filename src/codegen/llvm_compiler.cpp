@@ -844,6 +844,7 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cf_writedump", reinterpret_cast<void*>(cfml::cf_writedump));
     llvm::sys::DynamicLibrary::AddSymbol("cf_emit_writedump", reinterpret_cast<void*>(cfml::cf_emit_writedump));
     llvm::sys::DynamicLibrary::AddSymbol("cf_writelog", reinterpret_cast<void*>(cfml::cf_writelog));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_trace_tag", reinterpret_cast<void*>(cfml::cf_trace_tag));
     llvm::sys::DynamicLibrary::AddSymbol("cf_wsgetallchannels", reinterpret_cast<void*>(cfml::cf_wsgetallchannels));
     llvm::sys::DynamicLibrary::AddSymbol("cf_wsgetsubscribers", reinterpret_cast<void*>(cfml::cf_wsgetsubscribers));
     llvm::sys::DynamicLibrary::AddSymbol("cf_wspublish", reinterpret_cast<void*>(cfml::cf_wspublish));

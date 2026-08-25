@@ -40,6 +40,60 @@ namespace cfml {
 using webstrada::cfvariant;
 using webstrada::string;
 
+static const cfvariant *traceField(const cfvariant *named, const char *wanted)
+{
+    if (!named || named->m_type != cfvariant::Struct || !named->m_struct) return nullptr;
+    for (const auto &kv : *named->m_struct) {
+        const char *key = kv.first.constData();
+        if (!key) continue;
+        size_t i = 0;
+        while (key[i] && wanted[i] &&
+               std::tolower(static_cast<unsigned char>(key[i])) ==
+               std::tolower(static_cast<unsigned char>(wanted[i]))) i++;
+        if (!key[i] && !wanted[i]) return &kv.second;
+    }
+    return nullptr;
+}
+
+static std::string traceValue(const cfvariant *value)
+{
+    if (!value) return "";
+    if (value->m_type == cfvariant::Array || value->m_type == cfvariant::Struct ||
+        value->m_type == cfvariant::Query || value->m_type == cfvariant::Xml) {
+        cfvariant *json = cf_serializejson(value, nullptr, nullptr, nullptr);
+        std::string result = safe_to_std_string(*json);
+        delete json;
+        return result;
+    }
+    return safe_to_std_string(*value);
+}
+
+static cfvariant *writeTrace(const cfvariant *text, const cfvariant *type,
+                             const cfvariant *category, const cfvariant *var)
+{
+    std::string message;
+    if (category) message += "category=" + traceValue(category) + "; ";
+    if (text) message += "text=" + traceValue(text);
+    if (var) {
+        if (!message.empty()) message += "; ";
+        message += "var=" + traceValue(var);
+    }
+    if (message.empty()) message = "trace";
+
+    cfvariant messageValue(message.c_str());
+    cfvariant fileValue("cftrace");
+    return cf_writelog(&messageValue, type, nullptr, &fileValue, nullptr);
+}
+
+cfvariant *cf_trace_tag(const cfvariant *text, const cfvariant *type,
+                        const cfvariant *category, const cfvariant *,
+                        const cfvariant *, const cfvariant *var)
+{
+    // File logging is useful even when the debugging section is disabled. The
+    // inline/debug-section and abort behavior remains gated by debugEnabled.
+    return writeTrace(text, type, category, var);
+}
+
 static bool isTraceAttr(const std::string &name)
 {
     static const char *valid[] = {"var", "text", "type", "category", "inline", "abort"};
@@ -91,12 +145,11 @@ cfvariant *cf_trace(const cfvariant *namedArgs)
         }
     }
 
-    // With debugging disabled the <cftrace> tag executes nothing, so trace()
-    // is a no-op returning an empty string value. (When debugging is enabled CF
-    // records the trace and, for abort="true", aborts the request — that path
-    // is not reproduced because this engine has no debug section.)
-    auto *ret = new cfvariant("");
-    return ret;
+    const cfvariant *text = traceField(named, "text");
+    const cfvariant *type = traceField(named, "type");
+    const cfvariant *category = traceField(named, "category");
+    const cfvariant *var = traceField(named, "var");
+    return writeTrace(text, type, category, var);
 }
 
 } // namespace cfml

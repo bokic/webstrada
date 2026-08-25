@@ -4028,6 +4028,21 @@ TEST_F(ComponentTest, CfincludeInsideComponentMethodSeesMethodLocal) {
     EXPECT_EQ(out.equals("[BLOG_PATH/BLOG_SKIN]"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, CfincludeComponentCallUsesCalleeArguments) {
+    // The include's local scope must not shadow the active component method's
+    // `arguments` scope when the included template calls another component.
+    string out = runCfc({
+        {"probe.cfc",
+         "<cfcomponent><cffunction name=\"read\" output=\"false\"><cfargument name=\"value\" required=\"true\"><cfreturn arguments.value></cffunction></cfcomponent>"},
+        {"scope.cfc",
+         "<cfcomponent><cffunction name=\"render\" output=\"true\"><cfset var probe = CreateObject(\"component\", \"probe\")><cfinclude template=\"included.cfm\"></cffunction></cfcomponent>"},
+        {"included.cfm", "<cfoutput>#probe.read(\"FROM_INCLUDE\")#</cfoutput>"},
+        {"main.cfm",
+         "<cfset c = CreateObject(\"component\", \"scope\")><cfoutput>#c.render()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("FROM_INCLUDE"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, CfincludeAfterNestedComponentCallRetainsMethodLocal) {
     string out = runCfc({
         {"blog.cfc",
@@ -5123,6 +5138,30 @@ TEST_F(ComponentTest, DirectCfUnderscoreInvokesCustomTag) {
          "<cf_layout title=\"X\">BODY</cf_layout><cfoutput>|AFTER</cfoutput>"},
     }, "main.cfm");
     EXPECT_EQ(out.equals("[START:X]BODY[END:BODY]|AFTER"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, ComponentUdfLocalsWinOverCustomTagVariables) {
+    // A component method called from a custom tag must keep its own `var`
+    // locals. Previously cfvariant_assign selected the custom tag's private
+    // variables scope before the active UDF scope, leaving `result` null and
+    // breaking MangoBlog's Cache.checkAndRetrieve() struct return.
+    string out = runCfc({
+        {"probe.cfc",
+         "<cfcomponent>"
+         "<cffunction name=\"check\" returntype=\"struct\" output=\"false\">"
+         "<cfargument name=\"key\" type=\"string\" required=\"true\">"
+         "<cfset var result = structnew()>"
+         "<cfset result.value = arguments.key>"
+         "<cfreturn result>"
+         "</cffunction></cfcomponent>"},
+        {"tag.cfm",
+         "<cfif thisTag.executionMode EQ \"start\">"
+         "<cfset result = createObject(\"component\", \"probe\").check(\"ok\")>"
+         "<cfoutput>#result.value#</cfoutput>"
+         "</cfif>"},
+        {"main.cfm", "<cfmodule template=\"tag.cfm\">"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("ok"), true) << out.constData();
 }
 
 TEST_F(ComponentTest, CfassociateCollectsSubtagAttributes) {
@@ -14771,6 +14810,7 @@ TEST_F(JitExpressionTest, CftimerCompileErrors) {
 }
 
 TEST_F(JitExpressionTest, CftraceTagIsNoOpBodyEvaluated) {
+    LogDirScope logdir;
     // Debugging disabled → <cftrace> renders nothing, abort doesn't fire, the
     // body is still evaluated (all verified on CF 2025).
     EXPECT_EQ(runJitTemplate("A<cftrace text=\"hello\">B<cftrace>C<cftrace abort=\"true\">D", variables).equals("ABCD"), true);
@@ -14800,6 +14840,7 @@ TEST_F(JitExpressionTest, CftimerBodyEvaluatesCfml) {
 }
 
 TEST_F(JitExpressionTest, CftraceTagBodySideEffectsRun) {
+    LogDirScope logdir;
     // The cftrace body is evaluated (side effects happen), like CF.
     string out = runJitTemplate(
         "<cftrace text=\"x\"><cfset zz2=5></cftrace><cfoutput>[#zz2#]</cfoutput>", variables);
@@ -14807,6 +14848,7 @@ TEST_F(JitExpressionTest, CftraceTagBodySideEffectsRun) {
 }
 
 TEST_F(JitExpressionTest, TraceFunctionNamedArgValidation) {
+    LogDirScope logdir;
     // CF rejects an unknown trace() attribute at compile time
     // ("Attribute validation error for TRACE tag in cfscript."); this engine
     // surfaces the same message at runtime (documented divergence).
@@ -14816,6 +14858,27 @@ TEST_F(JitExpressionTest, TraceFunctionNamedArgValidation) {
     EXPECT_EQ(out.equals("Attribute validation error for TRACE tag in cfscript.|It does not allow the attribute(s) BOGUS. The valid attribute(s) are ABORT,CATEGORY,INLINE,TEXT,TYPE,VAR."), true);
     // Valid names are still a no-op.
     EXPECT_EQ(runJitTemplate("<cfscript>trace();trace(text=\"x\", inline=true);trace(abort=true);</cfscript><cfoutput>Z</cfoutput>", variables).equals("Z"), true);
+    EXPECT_EQ(logdir.readFile("cftrace.log").find("text=x") != std::string::npos, true);
+}
+
+TEST_F(JitExpressionTest, CftraceWritesTraceLog) {
+    LogDirScope logdir;
+    {
+        cfml::VariantCleanupGuard guard;
+        string out = runJitTemplate(
+            "<cfset traceValue=42><cfset traceStruct={name=\"x\", count=2}>"
+            "A<cftrace text=\"hello\" type=\"warning\" category=\"orders\" var=\"#traceValue#\">B</cftrace>C"
+            "<cftrace text=\"complex\" var=\"#traceStruct#\"/>"
+            "<cfscript>trace(text=\"script\", type=\"error\", category=\"scripts\");</cfscript>D",
+            variables);
+        EXPECT_EQ(out.equals("ABCD"), true);
+    }
+    std::string content = logdir.readFile("cftrace.log");
+    EXPECT_EQ(content.find("\"Warning\"") != std::string::npos, true);
+    EXPECT_EQ(content.find("category=orders; text=hello; var=42") != std::string::npos, true);
+    EXPECT_EQ(content.find("text=complex; var={\"\"COUNT\"\":2,\"\"NAME\"\":\"\"x\"\"}") != std::string::npos, true);
+    EXPECT_EQ(content.find("\"Error\"") != std::string::npos, true);
+    EXPECT_EQ(content.find("category=scripts; text=script") != std::string::npos, true);
 }
 
 TEST_F(JitExpressionTest, WriteLogNamedAndPositionalArgs) {

@@ -2198,6 +2198,9 @@ cfvariant *cf_tobinary(const cfvariant *input);
 cfvariant *cf_toscript(const cfvariant *cfvar, const cfvariant *javascriptvar, const cfvariant *outputformat, const cfvariant *asformat);
 cfvariant *cf_tostring(const cfvariant *value, const cfvariant *encoding);
 cfvariant *cf_trace(const cfvariant *namedArgs);
+cfvariant *cf_trace_tag(const cfvariant *text, const cfvariant *type,
+                        const cfvariant *category, const cfvariant *inlineValue,
+                        const cfvariant *abortValue, const cfvariant *var);
 cfvariant *cf_transactioncommit();
 cfvariant *cf_transactionrollback(const cfvariant *savepoint);
 cfvariant *cf_transactionsetsavepoint(const cfvariant *savepoint);

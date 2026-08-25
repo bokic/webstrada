@@ -599,8 +599,6 @@ cfvariant *cfml::cfvariant_assign(
                 varName = scopeNameOrig + "." + varName;
             }
         }
-    } else if (g_customTagExecutionVariables) {
-        scope = g_customTagExecutionVariables;
     } else if (!g_udfCtx.empty()) {
         // Inside a UDF, an unqualified assignment targets the captured parent
         // scope unless the name is a local (var / nested function /
@@ -609,6 +607,11 @@ cfvariant *cfml::cfvariant_assign(
         // `arguments` scope — even when a `local.arg1` was explicitly created
         // (CF: `local.arg1 = "L"; arg1 = "Y"` keeps local.arg1 == "L").
         scope = udfAssignScope(variables, name);
+    } else if (g_customTagExecutionVariables) {
+        // A custom tag's private variables scope applies only to the custom-tag
+        // template itself. A component/UDF invoked by that tag owns its normal
+        // local/parent assignment precedence.
+        scope = g_customTagExecutionVariables;
     } else if (auto *rt = cfml::include_context(); rt && rt->includeLocalScope) {
         // Unqualified writes in an included template target the caller's
         // local scope when that caller is a function, while explicit
