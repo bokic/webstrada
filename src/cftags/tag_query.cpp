@@ -47,6 +47,97 @@ string *cf_query_begin()
     return silent_buf_push();
 }
 
+// Query of Queries (<cfquery dbtype="query">): the SQL runs against the query
+// objects named in its FROM/JOIN clauses (resolved from the CFML scopes), which
+// the db layer materializes on demand into an in-memory SQLite database.
+cfvariant *cf_run_query_of_queries(const std::string &sql, const cfvariant *attrs,
+                                   const std::string &qname, const std::string &resultName,
+                                   long long maxrows,
+                                   void *cgi, void *server, void *cookie, void *application,
+                                   void *session, void *url, void *form, void *variables)
+{
+    (void)attrs;
+    // Resolve a QoQ table name to a query object. The db layer calls this for
+    // each distinct missing table, so only the referenced queries are
+    // materialized. An undefined name or a non-query value throws CF's QoQ
+    // error (verified against CF 2025/2021 on the RDS host: type "Database",
+    // message "Error Executing Database Query.", detail "Query Of Queries
+    // runtime error.").
+    db::QoQResolver resolver = [&](const std::string &name) -> const cfvariant * {
+        auto *v = lookupVarWritable(name.c_str(), cgi, server, cookie, application,
+                                    session, url, form, variables);
+        if (!v || v->m_type != cfvariant::Query || !v->m_query) {
+            throw webstrada::exception("Database", "Error Executing Database Query.",
+                "Query Of Queries runtime error.");
+        }
+        return v;
+    };
+
+    if (webstrada::config::enableQueryLogging) {
+        printf("[cfquery] dbtype=query name=%s\n%s\n", qname.c_str(), sql.c_str());
+        fflush(stdout);
+    }
+
+    auto execStart = std::chrono::steady_clock::now();
+    db::DBResult result = db::runQueryOfQueries(sql, maxrows, resolver);
+    auto execEnd = std::chrono::steady_clock::now();
+    long long execTime = std::chrono::duration_cast<std::chrono::milliseconds>(execEnd - execStart).count();
+
+    if (webstrada::config::enableQueryLogging) {
+        printf("[cfquery]   -> %lld rows in %lldms\n",
+               static_cast<long long>(result.rowCount), execTime);
+        fflush(stdout);
+    }
+
+    cfvariant queryVal(cfvariant::Query);
+    QueryData *qd = queryVal.m_query;
+    for (auto &c : result.columns) {
+        QueryColumn col;
+        col.name = c.name.c_str();
+        col.type = c.type.c_str();
+        col.values = std::move(c.values);
+        qd->columns.push_back(std::move(col));
+    }
+    qd->m_rowCount = static_cast<int>(result.rowCount);
+
+    if (!qname.empty() && !qd->columns.empty()) {
+        cfvariant_assign(static_cast<const cfvariant*>(cgi), static_cast<const cfvariant*>(server),
+                         static_cast<const cfvariant*>(cookie), static_cast<const cfvariant*>(application),
+                         static_cast<const cfvariant*>(session), static_cast<const cfvariant*>(url),
+                         static_cast<const cfvariant*>(form), static_cast<cfvariant*>(variables),
+                         qname.c_str(), &queryVal);
+    }
+
+    if (!resultName.empty()) {
+        cfvariant resultStruct(cfvariant::Struct);
+        resultStruct.set("SQL") = cfvariant(sql.c_str());
+        resultStruct.set("RECORDCOUNT") = cfvariant(static_cast<int>(result.rowCount));
+        resultStruct.set("CACHED") = cfvariant("false");
+        if (!qd->columns.empty()) {
+            resultStruct.set("COLUMNLIST") = cfvariant(queryColumnList(&queryVal));
+        }
+        if (result.hasGeneratedKey) {
+            cfvariant gv(cfvariant::Long);
+            gv.m_long = result.generatedKey;
+            resultStruct.set("GENERATEDKEY") = gv;
+        }
+        resultStruct.set("EXECUTIONTIME") = [&] {
+            cfvariant v(cfvariant::Long);
+            v.m_long = execTime;
+            return v;
+        }();
+        cfvariant_assign(static_cast<const cfvariant*>(cgi), static_cast<const cfvariant*>(server),
+                         static_cast<const cfvariant*>(cookie), static_cast<const cfvariant*>(application),
+                         static_cast<const cfvariant*>(session), static_cast<const cfvariant*>(url),
+                         static_cast<const cfvariant*>(form), static_cast<cfvariant*>(variables),
+                         resultName.c_str(), &resultStruct);
+    }
+
+    auto *ret = new cfvariant(queryVal);
+    cf_register_temp(ret);
+    return ret;
+}
+
 // Shared SQL execution core used by <cfquery> (cf_query_end) and the
 // queryExecute() built-in. `sql` is the final SQL text (already evaluated /
 // parameter-substituted); `attrs` is the attribute/options struct. Returns the
@@ -83,8 +174,12 @@ cfvariant *cf_run_query(const std::string &sqlIn, const cfvariant *attrs,
     if (!dbtype.empty()) {
         std::string dt = dbtype;
         for (auto &c : dt) c = static_cast<char>(toupper(c));
-        if (dt == "QUERY" || dt == "HQL") {
-            throw webstrada::exception("cfquery", ("dbtype='" + dbtype + "' (Query of Queries / HQL) is not implemented yet.").c_str());
+        if (dt == "QUERY") {
+            return cf_run_query_of_queries(sql, attrs, qname, resultName, maxrows,
+                                           cgi, server, cookie, application, session, url, form, variables);
+        }
+        if (dt == "HQL") {
+            throw webstrada::exception("cfquery", ("dbtype='" + dbtype + "' (HQL) is not implemented yet.").c_str());
         }
         throw webstrada::exception("cfquery", ("The dbtype '" + dbtype + "' is not supported.").c_str());
     }

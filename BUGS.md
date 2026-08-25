@@ -317,3 +317,36 @@ attribute-boundary parsing around them are correct (see the valueless-attribute
 notes in PROGRESS.md). Noted while fixing the valueless-attribute handling;
 left as a separate fix (tests/cfm/custom_tag_attr_value_parse_test.cfm covers
 only the agreeing cases: hash/`#...#`, quoted, numeric and boolean values).
+
+## Query of Queries (`<cfquery dbtype="query">`) limitations
+
+QoQ is implemented on a private in-memory SQLite database (see the cfquery row
+in PROGRESS.md); the byte-verified surface (`tests/cfm/query_of_queries_test.cfm`,
+`qoq_component_test.cfm`, and the `CfQueryTest.QueryOfQueries*` unit tests) matches
+CF 2025 byte-for-byte. The following deliberate limitations/divergences remain:
+
+- **SELECT-only.** CF mutates the *source* query object for QoQ `INSERT`/
+  `UPDATE`/`DELETE`; this engine would only mutate throwaway copies, so those
+  statements throw a `Database` "Query of Queries currently supports SELECT
+  statements only (INSERT/UPDATE/DELETE are not implemented)." instead of
+  silently running wrong.
+- **`+` concatenation is reproduced from column affinities, so it is limited to
+  what the engine can type at rewrite time.** `string + string` (string literals
+  and/or TEXT-affinity columns) → `||`; `string + number` → CF's `Database`
+  error; `number + number` → numeric `+`. A `+` whose operand is not a
+  literal/column (a function call or subexpression, e.g. `COUNT(*) + 1` where the
+  column type is unknowable) is left to SQLite as numeric `+`, which matches CF
+  when the expression is numeric but diverges for a text-returning expression.
+- **Column names that are SQLite reserved words** (`when`, `order`, `group`, ...)
+  must be quoted (`"when"`) in the QoQ SQL; CF/HSQLDB accepts them unquoted.
+- **Date-only literal comparisons compare textually.** A QoQ date column is
+  stored as ISO text `YYYY-MM-DD HH:MM:SS`, so `WHERE d = '2024-01-01'`
+  (date-only literal) does not match a `2024-01-01 00:00:00` cell; range
+  comparisons with full `'YYYY-MM-DD HH:MM:SS'` literals (what `<cfqueryparam>`
+  emits) compare correctly, and `<cfqueryparam cfsqltype="cf_sql_date">` output
+  matches CF for full-timestamp values.
+- **HQL (`dbtype="hql"`) remains unimplemented** (throws "not implemented yet").
+- CF's QoQ rejects constructs this engine *accepts* (verified against CF 2025 on
+  the RDS host): table aliases (`FROM q u`), `JOIN` keywords, and subqueries all
+  throw `Database: Error Executing Database Query.` on CF but work here. Being a
+  superset is intended.

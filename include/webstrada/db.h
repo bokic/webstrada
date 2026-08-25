@@ -2,6 +2,7 @@
 
 #include "cfvariant.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -151,6 +152,22 @@ DatasourceConfig datasourceConfig(const std::string &dsn);
 // When no config entry exists, the datasource is treated as SQLite
 // (DNS_<name>.sqlite), preserving the pre-config behavior.
 DBConnection *openConnection(const std::string &dsn, long long timeoutMs);
+
+// Resolver used by runQueryOfQueries: given a table name as it appears in the
+// SQL (e.g. "posts" in "SELECT * FROM posts"), returns the source CFML query
+// object or throws. It is called lazily, once per distinct missing table, so
+// only the query objects actually referenced by the statement are materialized.
+typedef std::function<const cfvariant *(const std::string &name)> QoQResolver;
+
+// Executes a Query-of-Queries (QoQ) statement (<cfquery dbtype="query">). The
+// SQL runs against an in-memory SQLite database: each table name the statement
+// references is loaded, on demand via `resolver`, as a temporary table whose
+// columns and typed cells mirror the source query object. Only the first result
+// set is surfaced (like execute()); a first non-result statement reports its
+// affected-row count. Throws webstrada::exception("Database", "Error Executing
+// Database Query.", detail) on failure, including an unresolvable table name.
+DBResult runQueryOfQueries(const std::string &sql, long long maxrows,
+                           const QoQResolver &resolver);
 
 // Implemented by the SQLite / MySQL / PostgreSQL backends; registers the
 // built-in drivers. Called lazily by openConnection; exposed so the backends

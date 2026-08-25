@@ -1190,13 +1190,110 @@ TEST_F(CfQueryTest, SqlErrorThrowsDatabaseQueryError) {
     EXPECT_EQ(threw, true);
 }
 
-TEST_F(CfQueryTest, DbtypeQueryAndHqlUnimplemented) {
+TEST_F(CfQueryTest, DbtypeHqlUnimplemented) {
+    // QoQ (dbtype="query") is implemented; dbtype="hql" (Hibernate Query
+    // Language) still throws "not implemented yet".
     bool threw = false;
     try {
-        run("<cfquery name=\"q\" dbtype=\"query\">SELECT * FROM x</cfquery>");
+        run("<cfquery name=\"q\" dbtype=\"hql\">FROM q</cfquery>");
     } catch (const webstrada::exception &e) {
         threw = true;
         EXPECT_EQ(string(e.m_message).equals("cfquery"), true);
+    }
+    EXPECT_EQ(threw, true);
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesBasic) {
+    string cfml = "<cfset q1 = QueryNew('id,name', 'integer,varchar')>\n"
+                  "<cfset QueryAddRow(q1)><cfset QuerySetCell(q1, 'id', 1)><cfset QuerySetCell(q1, 'name', 'alice')>\n"
+                  "<cfset QueryAddRow(q1)><cfset QuerySetCell(q1, 'id', 2)><cfset QuerySetCell(q1, 'name', 'bob')>\n"
+                  "<cfset QueryAddRow(q1)><cfset QuerySetCell(q1, 'id', 3)><cfset QuerySetCell(q1, 'name', 'carol')>\n"
+                  "<cfquery name=\"q\" dbtype=\"query\">SELECT id, name FROM q1 WHERE id > 1 ORDER BY id</cfquery>\n"
+                  "<cfoutput>#q.recordcount#|#q.columnlist#|#q.name#</cfoutput>";
+    expectOutput(cfml, "2|ID,NAME|bob");
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesCaseInsensitiveTableRef) {
+    string cfml = "<cfset myQuery = QueryNew('id', 'integer')>\n"
+                  "<cfset QueryAddRow(myQuery)><cfset QuerySetCell(myQuery, 'id', 7)>\n"
+                  "<cfquery name=\"q\" dbtype=\"query\">SELECT ID FROM MYQUERY</cfquery>\n"
+                  "<cfoutput>#q.recordcount#:#q.ID#</cfoutput>";
+    expectOutput(cfml, "1:7");
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesJoinAndAggregate) {
+    string cfml = "<cfset cats = QueryNew('id,name,post_count', 'integer,varchar,integer')>\n"
+                  "<cfset QueryAddRow(cats)><cfset QuerySetCell(cats, 'id', 1)><cfset QuerySetCell(cats, 'name', 'a')><cfset QuerySetCell(cats, 'post_count', 2)>\n"
+                  "<cfset QueryAddRow(cats)><cfset QuerySetCell(cats, 'id', 2)><cfset QuerySetCell(cats, 'name', 'b')><cfset QuerySetCell(cats, 'post_count', 0)>\n"
+                  "<cfset posts = QueryNew('id,category_id', 'integer,integer')>\n"
+                  "<cfset QueryAddRow(posts)><cfset QuerySetCell(posts, 'id', 10)><cfset QuerySetCell(posts, 'category_id', 1)>\n"
+                  "<cfset QueryAddRow(posts)><cfset QuerySetCell(posts, 'id', 11)><cfset QuerySetCell(posts, 'category_id', 1)>\n"
+                  "<cfquery name=\"q\" dbtype=\"query\">SELECT cats.name, COUNT(*) AS n FROM cats, posts WHERE cats.id = posts.category_id GROUP BY cats.name</cfquery>\n"
+                  "<cfoutput>#q.recordcount#|#q.name#:#q.n#</cfoutput>";
+    expectOutput(cfml, "1|a:2");
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesStringConcatPlus) {
+    // CFQL's `+` concatenates strings (literals and TEXT columns) and rejects
+    // string + number; SQLite's `||` reproduces the concat, and the mixed case
+    // throws like CF. Numeric + stays numeric.
+    string cfml = "<cfset q1 = QueryNew('first,last,n', 'varchar,varchar,integer')>\n"
+                  "<cfset QueryAddRow(q1)><cfset QuerySetCell(q1, 'first', 'bob')><cfset QuerySetCell(q1, 'last', 'smith')><cfset QuerySetCell(q1, 'n', 3)>\n"
+                  "<cfquery name=\"q\" dbtype=\"query\">SELECT 'Mr. ' + first AS title, first + last AS full, n + 1 AS next FROM q1</cfquery>\n"
+                  "<cfoutput>#q.title#|#q.full#|#q.next#</cfoutput>";
+    expectOutput(cfml, "Mr. bob|bobsmith|4");
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesStringPlusNumberThrows) {
+    // CF throws a Database error for `+` between a string and a number
+    // (SQLite would silently coerce both to numbers).
+    bool threw = false;
+    try {
+        run("<cfset q1 = QueryNew('a,n', 'varchar,integer')>\n"
+            "<cfset QueryAddRow(q1)><cfset QuerySetCell(q1, 'a', 'foo')><cfset QuerySetCell(q1, 'n', 3)>\n"
+            "<cfquery name=\"q\" dbtype=\"query\">SELECT a + 1 AS c FROM q1</cfquery>");
+    } catch (const webstrada::exception &e) {
+        threw = true;
+        EXPECT_EQ(string(e.m_type).equals("Database"), true);
+        EXPECT_EQ(string(e.m_message).equals("Error Executing Database Query."), true);
+    }
+    EXPECT_EQ(threw, true);
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesMissingTableThrowsDatabaseError) {
+    bool threw = false;
+    try {
+        run("<cfquery name=\"q\" dbtype=\"query\">SELECT * FROM nosuchquery</cfquery>");
+    } catch (const webstrada::exception &e) {
+        threw = true;
+        EXPECT_EQ(string(e.m_type).equals("Database"), true);
+        EXPECT_EQ(string(e.m_message).equals("Error Executing Database Query."), true);
+        EXPECT_EQ(string(e.m_detail).equals("Query Of Queries runtime error."), true);
+    }
+    EXPECT_EQ(threw, true);
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesNonQueryTableThrowsDatabaseError) {
+    bool threw = false;
+    try {
+        run("<cfset x = 5><cfquery name=\"q\" dbtype=\"query\">SELECT * FROM x</cfquery>");
+    } catch (const webstrada::exception &e) {
+        threw = true;
+        EXPECT_EQ(string(e.m_type).equals("Database"), true);
+    }
+    EXPECT_EQ(threw, true);
+}
+
+TEST_F(CfQueryTest, QueryOfQueriesDmlNotImplemented) {
+    // CF mutates the source query object for INSERT/UPDATE/DELETE QoQ; this
+    // engine does not implement the write-back, so it throws instead of
+    // silently running against throwaway copies.
+    bool threw = false;
+    try {
+        run("<cfset q1 = QueryNew('id', 'integer')><cfquery name=\"q\" dbtype=\"query\">UPDATE q1 SET id = 5</cfquery>");
+    } catch (const webstrada::exception &e) {
+        threw = true;
+        EXPECT_EQ(string(e.m_type).equals("Database"), true);
     }
     EXPECT_EQ(threw, true);
 }

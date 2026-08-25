@@ -54,6 +54,7 @@ add_library(webstrada-core
     server_stats.cpp ../include/webstrada/server_stats.h
     db/db.cpp     ../include/webstrada/db.h
     db/db_sqlite.cpp
+    db/db_qoq.cpp
     core/core_interp.cpp
     core/core_udf.cpp
     core/core_component.cpp
