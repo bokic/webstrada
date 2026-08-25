@@ -1177,3 +1177,58 @@ cfvariant *cfml::cf_writelog(const cfvariant *text, const cfvariant *type, const
     cf_register_temp(ret);
     return ret;
 }
+
+namespace cfml {
+
+// CF's GetBaseTagList: the root page's "CFOUTPUT" tag, then the ancestor
+// custom tags from innermost to outermost, joined by commas.
+cfvariant *cf_getbasetaglist()
+{
+    std::string tagList = "CFOUTPUT";
+    for (auto it = g_customTagStack.rbegin(); it != g_customTagStack.rend(); ++it) {
+        tagList += ",";
+        tagList += it->publicName.empty() ? it->tagName : it->publicName;
+    }
+    auto *ret = new cfvariant(string(tagList.c_str()));
+    cf_register_temp(ret);
+    return ret;
+}
+
+cfvariant *cf_getbasetagdata(const cfvariant *tagname, const cfvariant *instancenumber)
+{
+    if (!tagname) throw webstrada::exception("GetBaseTagData", "The tagname argument is required.");
+    std::string targetTag = const_cast<cfvariant*>(tagname)->toString().constData();
+
+    int targetInstance = 1;
+    if (instancenumber && instancenumber->m_type != cfvariant::Null) {
+        targetInstance = cfvariant_to_int(instancenumber);
+        if (targetInstance <= 0) targetInstance = 1;
+    }
+
+    // Match against the tag's template name (CF's _templateName): "cf_<name>"
+    // for prefixed/imported tags, "CF_<name>" for <cfmodule> tags.
+    int currentInstance = 0;
+    for (auto it = g_customTagStack.rbegin(); it != g_customTagStack.rend(); ++it) {
+        const std::string &tmpl = it->templateName;
+        if (tmpl.empty() ? (it->tagName == targetTag)
+                         : (strcasecmp(tmpl.c_str(), targetTag.c_str()) == 0)) {
+            currentInstance++;
+            if (currentInstance == targetInstance) {
+                // CF returns the base tag's PageScope: a struct whose keys are
+                // the template's scopes (THISTAG, ATTRIBUTES, CALLER,
+                // VARIABLES).
+                auto *ret = new cfvariant(cfvariant::Struct);
+                ret->set("THISTAG") = it->thisTag;
+                ret->set("ATTRIBUTES") = it->attributes;
+                ret->set("CALLER") = it->callerVariables ? *it->callerVariables : cfvariant(cfvariant::Struct);
+                ret->set("VARIABLES") = it->variables;
+                cf_register_temp(ret);
+                return ret;
+            }
+        }
+    }
+
+    throw webstrada::exception("GetBaseTagData", ("Tag " + targetTag + " was not found in ancestor custom tags.").c_str());
+}
+
+} // namespace cfml

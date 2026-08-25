@@ -143,13 +143,6 @@ cfvariant *cfml::cf_generatesamlspmetadata() {
     throw webstrada::exception("Function GenerateSAMLSPMetadata is not implemented");
 }
 
-cfvariant *cfml::cf_getbasetagdata() {
-    throw webstrada::exception("Function GetBaseTagData is not implemented");
-}
-
-cfvariant *cfml::cf_getbasetaglist() {
-    throw webstrada::exception("Function GetBaseTagList is not implemented");
-}
 
 cfvariant *cfml::cf_getcomponentmetadata(const cfvariant *obj) {
     if (!obj) throw webstrada::exception("GetComponentMetaData requires 1 argument");

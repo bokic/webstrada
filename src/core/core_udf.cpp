@@ -199,6 +199,7 @@ cfvariant makeFunctionHandle(const string &name)
 // the captured parent scope and its unqualified writes go to the parent scope
 // unless the name is a local (param / var / nested function / arguments).
 thread_local std::vector<UdfCallCtx> g_udfCtx;
+thread_local std::deque<CustomTagCallCtx> g_customTagStack;
 
 // ColdFusion's `searchimplicitscopes` toggle: when false (the default) an
 // unqualified name is only searched in the variables scope (and function-local

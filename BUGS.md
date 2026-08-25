@@ -267,3 +267,37 @@ runtime expression evaluator's dot-segment scanner skip whitespace around `.`
 `src/codegen/codegen_expr.cpp` applies), or have codegen normalize spaced
 member names before embedding the expression text. Found while writing the
 unit test for the chained-member-access fix (2026-08-24).
+
+## `structKeyList(thisTag)` key order differs from CF
+
+ColdFusion's `ThistagScope` stores its keys with the exact casing `hasendtag`,
+`executionMode`, `GeneratedContent`, and `StructKeyList(thisTag)` returns them
+in that (hash-bucket) order. This engine stores the same three keys with the
+same casing but the struct's case-insensitive map orders them
+`executionMode,GeneratedContent,hasendtag`, so `structKeyList(thisTag)` —
+and any code that iterates the thisTag struct — reports a different order.
+The keys, values, read-only behavior (`executionMode`/`hasendtag` reject
+assignment), and `generatedContent` semantics are byte-verified against CF
+2025 (tests/cfm/custom_tag_forms_test.cfm + custom_tag_thistag_test.cfm);
+only the iteration order of the three keys diverges.
+
+## Missing imported-prefix tag is a runtime error; CF rejects it at parse time
+
+CF resolves `<mytag:nonexistent>` (an imported prefix with a missing tag
+template) at **parse time** with an uncatchable "Unknown tag: mytag:nonexistent."
+error. This engine resolves the tag at **runtime** and throws a catchable
+`Unknown tag: nonexistent.` (the taglib directory is stripped from the
+reported name because the prefix is not carried into the runtime). The
+message text differs slightly and the error is catchable by a surrounding
+`<cftry>`, unlike CF. Making it a compile-time error would require resolving
+the taglib path against the invoking template's directory during codegen.
+
+## `<cfmodule name="..">` resolves relative to the current template; CF searches the custom-tag library tree
+
+CF's `<cfmodule name="mod">` looks the tag up in the **installed custom-tag
+library tree** (server + per-application custom-tag mappings; the `name`
+attribute does NOT use the `<cfimport>` prefix mapping — `<cfmodule
+name="mytag:mod">` fails with "Cannot find CFML template for custom tag
+mytag:mod."). This engine has no custom-tag library tree, so `name` is
+resolved as `name.cfm` relative to the invoking template directory. The
+`template` attribute (the common form) matches CF exactly.

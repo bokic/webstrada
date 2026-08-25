@@ -4737,36 +4737,73 @@ TEST_F(ComponentTest, CfimportPathRegistersComponent) {
     EXPECT_EQ(out.equals("START| SUB| SUB| SUB"), true) << out.constData();
 }
 
-TEST_F(ComponentTest, CfmoduleThrowsCustomTagsNotSupported) {
-    bool caught = false;
-    try {
-        runCfc({
-            {"main.cfm",
-             "<cfmodule template=\"foo.cfm\">\n"
-             "<cfoutput>NO_ERROR</cfoutput>"},
-        }, "main.cfm");
-    } catch (const webstrada::exception &e) {
-        caught = true;
-        EXPECT_EQ(std::string(e.what()) == "cfmodule is not supported.", true);
-        EXPECT_EQ(std::string(e.m_detail.constData()).find("not implemented") != std::string::npos, true);
-    }
-    EXPECT_EQ(caught, true);
+TEST_F(ComponentTest, CfmoduleInvokesCustomTag) {
+    // <cfmodule template="foo.cfm" ...> invokes the custom tag with the full
+    // start/body/end lifecycle (hasEndTag=YES) and the same output ordering as
+    // a prefixed custom tag: start, then the (possibly replaced) generated
+    // content, then the end template's own output.
+    string out = runCfc({
+        {"foo.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "[MOD-START:<cfoutput>#attributes.nm#</cfoutput>]"
+         "<cfelse>"
+         "[MOD-END:<cfoutput>#thisTag.generatedContent#</cfoutput>]"
+         "<cfset thisTag.generatedContent = ucase(thisTag.generatedContent)>"
+         "</cfif>\n"},
+        {"main.cfm",
+         "<cfmodule template=\"foo.cfm\" nm=\"X\">Hello</cfmodule><cfoutput>AFTER</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[MOD-START:X] HELLO[MOD-END:Hello] AFTER"), true) << out.constData();
 }
 
-TEST_F(ComponentTest, CfassociateThrowsCustomTagsNotSupported) {
-    bool caught = false;
-    try {
-        runCfc({
-            {"main.cfm",
-             "<cfassociate basetag=\"cffoo\">\n"
-             "<cfoutput>NO_ERROR</cfoutput>"},
-        }, "main.cfm");
-    } catch (const webstrada::exception &e) {
-        caught = true;
-        EXPECT_EQ(std::string(e.what()) == "cfassociate is not supported.", true);
-        EXPECT_EQ(std::string(e.m_detail.constData()).find("not implemented") != std::string::npos, true);
-    }
-    EXPECT_EQ(caught, true);
+TEST_F(ComponentTest, CfassociateCollectsSubtagAttributes) {
+    // <cfassociate basetag=".." datacollection=".."> inside a subtag appends
+    // its attributes to the base tag's thisTag.<datacollection> array; the base
+    // tag reads them (CF's subtag-to-base data flow).
+    string out = runCfc({
+        {"base.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "[BASE-START]"
+         "<cfmodule template=\"sub.cfm\" rname=\"R1\">B</cfmodule>"
+         "<cfoutput>[COLLECTED:#serializeJSON(thisTag.assoc)#]</cfoutput>"
+         "<cfelse>[BASE-END]</cfif>\n"},
+        {"sub.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "[SUB:<cfoutput>#attributes.rname#</cfoutput>]"
+         "<cfassociate basetag=\"cf_base\" datacollection=\"assoc\">"
+         "<cfelse>[SUB-END]</cfif>\n"},
+        {"main.cfm",
+         "<cfmodule template=\"base.cfm\">OUTER</cfmodule>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[BASE-START][SUB:R1] B[SUB-END] [COLLECTED:[{\"RNAME\":\"R1\"}]] OUTER[BASE-END] "), true)
+        << out.constData();
+}
+
+TEST_F(ComponentTest, NestedCustomTagCallerScope) {
+    // A custom tag that invokes another custom tag: the inner tag's `caller`
+    // is the OUTER tag's private variables scope, not the main page's. The
+    // g_customTagStack is a deque so the outer ctx.variables address captured
+    // as the inner callerVariables stays valid across the nested push_back
+    // (was a stale-pointer bug with std::vector).
+    string out = runCfc({
+        {"outer.cfm",
+         "<cfimport prefix=\"mytag\" taglib=\".\">\n"
+         "<cfset callervar = \"inner_val\">\n"
+         "<cfif thisTag.executionMode eq \"start\">\n"
+         "[OUT-START]\n"
+         "<mytag:inner name=\"Inner\" />\n"
+         "<cfelse>\n[OUT-END]\n</cfif>\n"},
+        {"inner.cfm",
+         "<cfoutput>[INNER:#attributes.name#:#caller.callervar#]</cfoutput>\n"
+         "<cfset caller.callervar = \"modified_by_inner\">\n"},
+        {"main.cfm",
+         "<cfimport prefix=\"mytag\" taglib=\".\">\n"
+         "<cfset callervar = \"outer_val\">\n"
+         "<mytag:outer>BODY</mytag:outer>\n"
+         "<cfoutput>[AFTER:#callervar#]</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("\n[OUT-START]\n[INNER:Inner:inner_val] [INNER:Inner:modified_by_inner] BODY\n[OUT-END]\n[AFTER:outer_val]"), true)
+        << out.constData();
 }
 
 

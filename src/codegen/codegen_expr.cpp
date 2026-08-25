@@ -1907,7 +1907,8 @@ llvm::Value *CompileExprAST(
             fname == "CACHEGETPROPERTIES" || fname == "CACHEGETSESSION" || fname == "CACHEIDEXISTS" ||
             fname == "CACHEPUT" || fname == "CACHEREGIONEXISTS" || fname == "CACHEREGIONNEW" ||
             fname == "CACHEREGIONREMOVE" || fname == "CACHEREMOVE" || fname == "CACHEREMOVEALL" ||
-            fname == "CACHESETPROPERTIES" || fname == "REMOVECACHEDQUERY") {
+            fname == "CACHESETPROPERTIES" || fname == "REMOVECACHEDQUERY" ||
+            fname == "GETBASETAGDATA" || fname == "GETBASETAGLIST") {
             // Argument-count limits per function: (min, max).
             int minArgs = 0, maxArgs = 0;
             if (fname == "CACHEGET" || fname == "CACHEIDEXISTS") { minArgs = 1; maxArgs = 2; }
@@ -1921,6 +1922,8 @@ llvm::Value *CompileExprAST(
             else if (fname == "CACHEREMOVE") { minArgs = 1; maxArgs = 4; }
             else if (fname == "CACHESETPROPERTIES") { minArgs = 1; maxArgs = 2; }
             else if (fname == "REMOVECACHEDQUERY") { minArgs = 1; maxArgs = 4; }
+            else if (fname == "GETBASETAGLIST") { minArgs = 0; maxArgs = 0; }
+            else if (fname == "GETBASETAGDATA") { minArgs = 1; maxArgs = 2; }
             if ((int)node->args.size() < minArgs || (int)node->args.size() > maxArgs) {
                 throw webstrada::exception(webstrada::string(("Function " + node->op_val + " requires " +
                     std::to_string(minArgs) + " to " + std::to_string(maxArgs) + " arguments").c_str()));
@@ -1949,7 +1952,7 @@ llvm::Value *CompileExprAST(
         if (fname == "ADDSOAPREQUESTHEADER" || fname == "ADDSOAPRESPONSEHEADER" || fname == "AUTHENTICATEDCONTEXT" || fname == "AUTHENTICATEDUSER" ||             fname == "CREATEENCRYPTEDJWT" || fname == "CREATESIGNEDJWT" || 
             fname == "DOTNETTOCFTYPE" || fname == "ENTITYDELETE" || fname == "ENTITYLOAD" ||
             fname == "ENTITYLOADBYEXAMPLE" || fname == "ENTITYLOADBYPK" || fname == "ENTITYMERGE" || fname == "ENTITYNEW" || fname == "ENTITYRELOAD" || fname == "ENTITYSAVE" || fname == "ENTITYTOQUERY" || fname == "GENERATESAMLSPMETADATA" ||
-            fname == "GETBASETAGDATA" || fname == "GETBASETAGLIST" || fname == "GETFUNCTIONCALLEDNAME" || fname == "GETGATEWAYHELPER" || fname == "GETK2SERVERDOCCOUNT" || fname == "GETK2SERVERDOCCOUNTLIMIT" || fname == "GETPAGECONTEXT" || fname == "GETPRINTERINFO" || fname == "GETPRINTERLIST" ||
+            fname == "GETFUNCTIONCALLEDNAME" || fname == "GETGATEWAYHELPER" || fname == "GETK2SERVERDOCCOUNT" || fname == "GETK2SERVERDOCCOUNTLIMIT" || fname == "GETPAGECONTEXT" || fname == "GETPRINTERINFO" || fname == "GETPRINTERLIST" ||
             fname == "GETSAFEHTML" || fname == "GETSAMLAUTHREQUEST" || fname == "GETSAMLLOGOUTREQUEST" || fname == "GETSOAPREQUEST" || fname == "GETSOAPREQUESTHEADER" || fname == "GETSOAPRESPONSE" || fname == "GETSOAPRESPONSEHEADER" ||             fname == "GETVFSMETADATA"  || fname == "HQLMETHODS" ||
             fname == "INITSAMLAUTHREQUEST" || fname == "INITSAMLLOGOUTREQUEST" || fname == "INTERRUPTTHREAD" || fname == "INVALIDATEOAUTHACCESSTOKEN" || fname == "ISAUTHENTICATED" || fname == "ISAUTHORIZED" ||
             fname == "ISK2SERVERABROKER" || fname == "ISK2SERVERDOCCOUNTEXCEEDED" || fname == "ISK2SERVERONLINE" || fname == "ISPROTECTED" || fname == "ISSAFEHTML" || fname == "ISSAMLLOGOUTRESPONSE" || fname == "ISSOAPREQUEST" ||

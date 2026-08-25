@@ -485,7 +485,36 @@ cfvariant *cfml::cfvariant_assign(
         else if (scopeName.equals("APPLICATION")) scope = const_cast<cfvariant*>(application);
         else if (scopeName.equals("SESSION"))    scope = const_cast<cfvariant*>(session);
         else if (scopeName.equals("REQUEST"))    scope = &g_requestScope;
-        else if (scopeName.equals("THIS")) {
+        else if (scopeName.equals("CALLER")) {
+            if (g_customTagStack.empty() || !g_customTagStack.back().callerVariables) {
+                throw webstrada::exception("Variable CALLER is undefined.");
+            }
+            scope = g_customTagStack.back().callerVariables;
+        } else if (scopeName.equals("ATTRIBUTES")) {
+            if (g_customTagStack.empty()) throw webstrada::exception("Variable ATTRIBUTES is undefined.");
+            scope = &g_customTagStack.back().attributes;
+        } else if (scopeName.equals("THISTAG")) {
+            if (g_customTagStack.empty()) throw webstrada::exception("Variable THISTAG is undefined.");
+            scope = &g_customTagStack.back().thisTag;
+            // thisTag.executionMode / hasEndTag are read-only in CF
+            // (ThistagScope rejects them); assigning generatedContent marks the
+            // custom-tag runtime so the end-mode output logic replaces the
+            // captured body with the new value.
+            string firstSeg = varName;
+            int segDot = firstSeg.indexOf('.');
+            if (segDot >= 0) firstSeg = firstSeg.left(segDot);
+            string firstSegUp = firstSeg;
+            firstSegUp.toUpper();
+            if (firstSegUp.equals("HASENDTAG")) {
+                throw webstrada::exception("Expression", "The HasEndTag variable in the ThisTag scope cannot be set by the user.", "");
+            }
+            if (firstSegUp.equals("EXECUTIONMODE")) {
+                throw webstrada::exception("Expression", "The ExecutionMode variable in the ThisTag scope cannot be set by the user.", "");
+            }
+            if (firstSegUp.equals("GENERATEDCONTENT")) {
+                cfml::cf_custom_tag_mark_content_changed();
+            }
+        } else if (scopeName.equals("THIS")) {
             // this.x = v writes the component's this scope (only valid inside
             // a component method/body; CF: page-level `this` is undefined).
             // ColdFusion stores this-scope keys uppercased.

@@ -1477,8 +1477,8 @@ static size_t compile_script_statement(
             builder.CreateBr(g_returnCtx->exitBB);
         } else {
             auto *cfexit = module->getFunction("cf_exit");
-            if (!cfexit) cfexit = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), false), llvm::Function::InternalLinkage, "cf_exit", module);
-            emitCall(builder, cfexit, {});
+            if (!cfexit) cfexit = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cf_exit", module);
+            emitCall(builder, cfexit, {llvm::ConstantPointerNull::get(builder.getPtrTy())});
             builder.CreateUnreachable();
         }
         auto deadBB = llvm::BasicBlock::Create(context, "exit.cont", mainfunc);

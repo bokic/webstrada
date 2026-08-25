@@ -72,101 +72,33 @@ int main(int argc, char** argv)
                 return EXIT_SUCCESS;
             }
 
-            webstrada::TemplateCache templates;
-            webstrada::string output;
-
-            webstrada::cfvariant cgi = webstrada::cfvariant::Struct;
-            cgi.set("SCRIPT_NAME") = webstrada::cfvariant("/stdin.cfm");
-            cgi.set("PATH_INFO") = webstrada::cfvariant("");
-            cgi.set("REQUEST_URI") = webstrada::cfvariant("/stdin.cfm");
-            cgi.set("REQUEST_METHOD") = webstrada::cfvariant("GET");
-            cgi.set("SERVER_PROTOCOL") = webstrada::cfvariant("HTTP/1.1");
-            cgi.set("DOCUMENT_ROOT") = webstrada::cfvariant(std::filesystem::current_path().string().c_str());
-            webstrada::cfvariant server = webstrada::cfvariant::Struct;
-            cfml::init_server_scope(server);
-            webstrada::cfvariant cookie = webstrada::cfvariant::Struct;
-            webstrada::cfvariant application = webstrada::cfvariant::Struct;
-            webstrada::cfvariant session = webstrada::cfvariant::Struct;
-            webstrada::cfvariant url = webstrada::cfvariant::Struct;
-            webstrada::cfvariant form = webstrada::cfvariant::Struct;
-            webstrada::cfvariant variables = webstrada::cfvariant::Struct;
-
-            cfml::VariantCleanupGuard guard;
-            cfml::response_begin();
-
-            webstrada::ScopeStore scopeStore;
-            {
-                char dbPath[] = "/tmp/WebStrada-cli-scopes-XXXXXX";
-                int fd = mkstemp(dbPath);
-                if (fd != -1) close(fd);
-                scopeStore.open(dbPath);
-                unlink(dbPath);
-            }
-            cfml::scope_begin(&scopeStore, &application, &session);
-
-            // Cache store: the cache functions need a writable store too. Use a
-            // temp file so CLI runs never touch the daemon's real cache DB.
-            {
-                char dbPath[] = "/tmp/WebStrada-cli-cache-XXXXXX";
-                int fd = mkstemp(dbPath);
-                if (fd != -1) close(fd);
-                unlink(dbPath);
-                webstrada::config::cacheDbPath = dbPath;
-                webstrada::open_cache_store();
-            }
-
-            cfml::IncludeRuntime includeRuntime;
-            includeRuntime.currentPath = (std::filesystem::current_path() / "stdin.cfm").string();
-            includeRuntime.webRoot = std::filesystem::current_path().string();
-            includeRuntime.loader = [](const char *path, void *opaque) -> cfml::include_template_fn {
-                webstrada::TemplateCache *cache = static_cast<webstrada::TemplateCache*>(opaque);
-                if (!cache) return nullptr;
-                struct stat st;
-                if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return nullptr;
-                webstrada::template_fn fn = cache->get(webstrada::string(path));
-                auto *target = fn.target<cfml::include_template_fn>();
-                return target ? *target : nullptr;
-            };
-            includeRuntime.loaderOpaque = &templates;
-            includeRuntime.componentLoader = [](const char *path, void *opaque) -> webstrada::ComponentInfo* {
-                webstrada::TemplateCache *cache = static_cast<webstrada::TemplateCache*>(opaque);
-                if (!cache) return nullptr;
-                struct stat st;
-                if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return nullptr;
-                return cache->get_component(webstrada::string(path));
-            };
-            includeRuntime.componentLoaderOpaque = &templates;
-            cfml::include_begin(&includeRuntime);
-
-            webstrada::llvm_codegen compiler;
-            auto compiled = compiler.compile_string(input_code.data(), input_code.size(), false, "stdin");
-            if (compiled == nullptr) {
-                std::println(stderr, "Failed to compile template");
+            char tmpPath[] = "/tmp/WebStrada-stdin-XXXXXX.cfm";
+            int fd = mkstemps(tmpPath, 4);
+            if (fd == -1) {
+                std::println(stderr, "Failed to create temp file for stdin");
                 return EXIT_FAILURE;
             }
+            write(fd, input_code.data(), input_code.size());
+            close(fd);
 
+            std::filesystem::path tplPath = std::filesystem::absolute(tmpPath);
+            const char *docRootEnv = getenv("DOCUMENT_ROOT");
+            std::string webRootStr = docRootEnv ? docRootEnv : std::filesystem::current_path().string();
+
+            webstrada::worker w;
             try {
-                compiled(&output, &cgi, &server, &cookie, &application,
-                         &session, &url, &form, &variables);
+                w.process_cli_request(tplPath.string().c_str(), webRootStr.c_str());
             } catch (const webstrada::abort_exception &ex) {
-                // cfabort — flush output that was written before the abort
             } catch (const webstrada::exit_exception &ex) {
-                // <cfexit> at the top level — flush output written before it
             } catch (...) {
-                // Capture the partial output so the outer handler can flush it
-                // (CF emits the partial page before the error).
-                pendingOutput = cfml::response_encode_all(output);
+                unlink(tmpPath);
+                pendingOutput = cfml::response_encode_all(w.out());
                 havePendingOutput = true;
                 throw;
             }
+            unlink(tmpPath);
 
-            // Finalize a pending whole-page <cfcache> store (CachingFilter).
-            cfml::cf_cache_store_page(&output);
-
-            cfml::include_end();
-            cfml::scope_end();
-
-            pendingOutput = cfml::response_encode_all(output);
+            pendingOutput = cfml::response_encode_all(w.out());
             havePendingOutput = true;
             std::cout.write(pendingOutput.data(), pendingOutput.size());
             return EXIT_SUCCESS;

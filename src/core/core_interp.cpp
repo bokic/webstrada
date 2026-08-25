@@ -626,6 +626,21 @@ webstrada::cfvariant *cfml::lookupVarWritable(const char *name,
         if (g_udfCtx.empty()) return nullptr;
         return descendDottedPath(g_udfCtx.back().localScope, parts, 1);
     }
+    if (parts[0].compareCaseInsensitive("CALLER") == 0) {
+        if (g_customTagStack.empty() || !g_customTagStack.back().callerVariables) return nullptr;
+        if (parts.size() == 1) return g_customTagStack.back().callerVariables;
+        return descendDottedPath(g_customTagStack.back().callerVariables, parts, 1);
+    }
+    if (parts[0].compareCaseInsensitive("ATTRIBUTES") == 0) {
+        if (g_customTagStack.empty()) return nullptr;
+        if (parts.size() == 1) return &g_customTagStack.back().attributes;
+        return descendDottedPath(&g_customTagStack.back().attributes, parts, 1);
+    }
+    if (parts[0].compareCaseInsensitive("THISTAG") == 0) {
+        if (g_customTagStack.empty()) return nullptr;
+        if (parts.size() == 1) return &g_customTagStack.back().thisTag;
+        return descendDottedPath(&g_customTagStack.back().thisTag, parts, 1);
+    }
 
     // 2. Otherwise, check each scope in order to see if it has the first part
     //    as a member, and then traverse any sub-components. Inside a UDF /
@@ -666,6 +681,9 @@ webstrada::cfvariant *cfml::lookupVarWritable(const char *name,
         }
     }
     if (auto *r = tryScope(static_cast<webstrada::cfvariant*>(variables))) return r;
+    if (!g_customTagStack.empty()) {
+        if (auto *r = tryScope(&g_customTagStack.back().attributes)) return r;
+    }
     for (auto it = g_udfCtx.rbegin(); it != g_udfCtx.rend(); ++it) {
         if (auto *r = tryScope(it->parentScope)) return r;
         // A closure / nested function captures the enclosing function's local
@@ -5939,6 +5957,25 @@ cfvariant evaluateExpr(string &out, const string &expr,
             if (fname.equals("ISUSERINROLE")) return tempReturn(cfml::cf_isuserinrole(&a));
             return tempReturn(cfml::cf_isuserinanyrole(&a));
         }
+        if (fname.equals("GETBASETAGLIST")) {
+            if (!call.args.empty()) {
+                throw webstrada::exception("GetBaseTagList does not take any arguments");
+            }
+            return tempReturn(cfml::cf_getbasetaglist());
+        }
+        if (fname.equals("GETBASETAGDATA")) {
+            if (call.args.size() < 1 || call.args.size() > 2) {
+                throw webstrada::exception("GetBaseTagData requires 1 to 2 arguments");
+            }
+            cfvariant a = evaluateExpr(out, call.args[0], cgi, server, cookie, application, session, url, form, variables);
+            cfvariant *level = nullptr;
+            cfvariant lv;
+            if (call.args.size() == 2) {
+                lv = evaluateExpr(out, call.args[1], cgi, server, cookie, application, session, url, form, variables);
+                level = &lv;
+            }
+            return tempReturn(cfml::cf_getbasetagdata(&a, level));
+        }
 
         if (isKnownFunctionName(fname)) {
             throw webstrada::exception("Unknown function call: " + call.name);
@@ -6706,15 +6743,36 @@ void cfml::cfabort(void)
 
 // <cfexit> / script `exit;` outside a function body: abort the currently
 // executing template page (exit_exception, uncatchable by CFML catch blocks).
-void cfml::cf_exit(void)
+// Inside a custom tag the tag runtime catches it; `method` distinguishes
+// exittag (kind 0) from exittemplate (kind 1) so the custom tag start template
+// can decide whether the body still runs.
+void cfml::cf_exit(const cfvariant *method)
 {
-    throw webstrada::exit_exception();
+    int kind = 0;
+    if (method && method->m_type != cfvariant::Null) {
+        webstrada::string low = const_cast<cfvariant*>(method)->toString();
+        low.toLower();
+        if (low.equals("exittemplate")) kind = 1;
+    }
+    throw webstrada::exit_exception(kind);
 }
 
-// <cfexit method="loop">: only valid inside a custom tag; this engine has no
-// custom tags, so it always throws CF's catchable InvalidExitLoopMethodException.
+// <cfexit method="loop">: only valid inside a custom tag in end mode.
 void cfml::cf_exit_loop(void)
 {
+    if (!g_customTagStack.empty()) {
+        CustomTagCallCtx &ctx = g_customTagStack.back();
+        // Check if in end mode
+        std::string mode = ctx.thisTag.has("executionMode") ? ctx.thisTag["executionMode"].toString().constData() : "";
+        for (auto &c : mode) c = tolower(c);
+        if (mode == "end") {
+            ctx.loopRequested = true;
+            throw webstrada::exit_exception();
+        } else {
+            throw webstrada::exception("jakarta.servlet.jsp.JspException",
+                                      "Exit method Loop not allowed from start tag", "");
+        }
+    }
     throw webstrada::exception("Application", "Invalid use of the cfexit tag.",
                               "cfexit method=\"loop\" can be used only inside custom tags. The current template is not a custom tag.");
 }

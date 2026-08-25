@@ -75,6 +75,7 @@ add_library(webstrada-core
     cftags/tag_http.cpp
     cftags/tag_httpparam.cpp
     cftags/tag_include.cpp
+    cftags/tag_custom.cpp
     cftags/tag_cache.cpp
     cftags/tag_cferror.cpp
     cftags/tag_location.cpp

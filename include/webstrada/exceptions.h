@@ -107,7 +107,12 @@ public:
 // At the top level the request handler halts the page (output preserved).
 class exit_exception: public exception {
 public:
-    exit_exception() { m_type = "Template"; }
+    // 0 = <cfexit> bare / method="exittag" / script `exit;` (inside a custom
+    //     tag's start template this skips the body and end tag);
+    // 1 = <cfexit method="exittemplate"> (stops the current template only; the
+    //     custom tag body still runs when it fires in the start template).
+    int kind = 0;
+    exit_exception(int k = 0) { m_type = "Template"; kind = k; }
     bool catchable() const override { return false; }
 };
 

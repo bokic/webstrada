@@ -3,6 +3,7 @@
 #include <webstrada/cf8.h>
 #include <webstrada/string.h>
 #include <libxml/tree.h>
+#include <deque>
 #include <set>
 #include <string>
 #include <vector>
@@ -24,6 +25,42 @@ struct UdfCallCtx {
 };
 extern thread_local std::vector<UdfCallCtx> g_udfCtx;
 extern thread_local std::string g_requestBody;
+
+struct CustomTagCallCtx {
+    std::string tagName;                 // Base name uppercased, e.g. "OUTER" / "GD"
+    std::string publicName;              // GetBaseTagList name, e.g. "CF_OUTER" / "CF_GD"
+    std::string templateName;            // GetBaseTagData match name, e.g. "cf_outer" / "CF_GD"
+    webstrada::cfvariant attributes;     // Struct of attributes passed to custom tag
+    webstrada::cfvariant thisTag;        // Struct: executionMode, hasendtag, GeneratedContent
+    webstrada::cfvariant variables;      // Custom tag's private variables scope
+    webstrada::cfvariant *callerVariables = nullptr; // Pointer to caller's variables scope
+    bool hasEndTag = false;
+    bool loopRequested = false;   // cfexit method="loop" requested a body re-run
+    bool skipBody = false;        // bare cfexit in start template: skip body + end tag
+    bool contentChanged = false;  // end template assigned thisTag.generatedContent
+};
+// A deque: a nested custom tag captures the parent's `ctx.variables` address
+// as its `callerVariables`, and push_back on a std::vector would move the
+// parent element (invalidating that pointer). deque keeps element addresses
+// stable across push_back.
+extern thread_local std::deque<CustomTagCallCtx> g_customTagStack;
+
+namespace cfml {
+void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, cfvariant *callerVariables,
+                         bool isModule, const char *templateNameHint);
+void cf_custom_tag_end_mode(const string *generatedContent);
+void cf_custom_tag_finish();
+bool cf_custom_tag_should_loop();
+bool cf_custom_tag_should_skip_body();
+void cf_custom_tag_mark_content_changed();
+cfvariant *cf_custom_tag_module_path(const cfvariant *templateAttr, const cfvariant *nameAttr);
+void cf_custom_tag_merge_attributecollection(cfvariant *attrs, const cfvariant *collection);
+void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, void *application,
+                          void *session, void *url, void *form, void *variables,
+                          cfvariant *tagPathVar, const char *tagPath, const char *tagName,
+                          cfvariant *attrs, string *bodyContent, bool hasEndTag, bool isEndMode,
+                          bool isModule, const char *templateNameHint);
+}
 
 // Inside a plain (non-component) UDF body, CF's `variables` scope is the
 // CALLING page's variables scope (the captured parent scope), not the

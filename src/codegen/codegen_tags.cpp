@@ -479,6 +479,413 @@ size_t compile_tag_savecontent_statement(
     return nextIdx;
 }
 
+struct CustomTagInvokeCfg {
+    llvm::Value *tagPathVar = nullptr;   // runtime cfvariant path (overrides tagPathStr)
+    std::string tagPathStr;              // static tag template path
+    llvm::Value *tagNameVar = nullptr;   // runtime cfvariant name basis (overrides tagNameStr)
+    std::string tagNameStr;              // static public-name basis (uppercased)
+    llvm::Value *attrsVal = nullptr;     // attributes struct
+    bool isModule = false;               // <cfmodule> naming (CF_<NAME> vs cf_<name>)
+    const char *templateNameHint = nullptr; // static filename hint for the public name
+    bool isSelfClosing = false;
+};
+
+// Emits the IR for a custom-tag invocation: start template, optional body
+// capture and end template (with cfexit method="loop" support), and the final
+// output emission matching CF's ModuleTag.doAfterBody order. Shared by the
+// <prefix:tag> and <cfmodule> forms; `openPattern`/`closePattern` (lowercased)
+// drive the paired-tag scan.
+size_t compile_custom_tag_invoke_ir(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    const std::string &openPattern,
+    const std::string &closePattern,
+    const CustomTagInvokeCfg &cfg,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack)
+{
+    string startText(cfm_text + tokens[start].position, tokens[start].len);
+
+    auto *fInvoke = getOrCreateHelper(module, builder, "cf_custom_tag_invoke", builder.getVoidTy(),
+        {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+         builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+         builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+         builder.getPtrTy(), builder.getPtrTy(), builder.getInt1Ty(), builder.getInt1Ty(),
+         builder.getInt1Ty(), builder.getPtrTy()});
+    auto *fFinish = getOrCreateHelper(module, builder, "cf_custom_tag_finish", builder.getVoidTy(), {});
+    auto *fShouldLoop = getOrCreateHelper(module, builder, "cf_custom_tag_should_loop", builder.getInt1Ty(), {});
+    auto *fShouldSkip = getOrCreateHelper(module, builder, "cf_custom_tag_should_skip_body", builder.getInt1Ty(), {});
+    auto *fSavecontentBegin = getOrCreateHelper(module, builder, "cf_savecontent_begin", builder.getPtrTy(), {builder.getPtrTy()});
+    auto *fSavecontentEnd = getOrCreateHelper(module, builder, "cf_savecontent_end", builder.getVoidTy(),
+        {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+         builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+         builder.getPtrTy(), builder.getPtrTy()});
+    auto *fThrow = getOrCreateHelper(module, builder, "cf_eh_throw", builder.getVoidTy(), {builder.getPtrTy()});
+    auto *nullPtr = llvm::ConstantPointerNull::get(builder.getPtrTy());
+
+    // The tag template path passed to the runtime. A runtime cfvariant
+    // (cfmodule's template/name attribute) goes in the tagPathVar slot; a
+    // static global string (a prefixed tag's taglib/tagName) in the tagPath slot.
+    llvm::Value *tagPathVar = cfg.tagPathVar ? cfg.tagPathVar : nullPtr;
+    llvm::Value *tagPathStrVal = nullPtr;
+    if (!cfg.tagPathVar) {
+        tagPathStrVal = builder.CreateGlobalString(llvm::StringRef(cfg.tagPathStr.c_str(), cfg.tagPathStr.size()), "", 0, module, true);
+    }
+    llvm::Value *tagNameVal = cfg.tagNameVar;
+    if (!tagNameVal) {
+        tagNameVal = builder.CreateGlobalString(llvm::StringRef(cfg.tagNameStr.c_str(), cfg.tagNameStr.size()), "", 0, module, true);
+    }
+    llvm::Value *nameHintVal = nullPtr;
+    if (cfg.templateNameHint) {
+        nameHintVal = builder.CreateGlobalString(llvm::StringRef(cfg.templateNameHint, strlen(cfg.templateNameHint)), "", 0, module, true);
+    }
+
+    // A self-closing tag is a pair with an empty body: ColdFusion runs the
+    // start template and then the end template with hasEndTag=YES.
+    bool isSelfClosing = cfg.isSelfClosing;
+
+    std::vector<TextParserTokenItem> body;
+    size_t bodyStart = tokens[start].position + tokens[start].len;
+    size_t bodyEnd = 0;
+    size_t nextIdx = start + 1;
+    bool hasEndTag = true;
+    bool foundEnd = false;
+
+    if (!isSelfClosing) {
+        // Scan for matching closing tag.
+        int depth = 0;
+        for (size_t i = start + 1; !foundEnd && i < tokens.size(); i++) {
+            const auto &tok = tokens[i];
+            if (tok.token_id == TextParser_cfml_StartTag) {
+                string tn(cfm_text + tok.position, tok.len);
+                tn.toLower();
+                if (tn.startWith(openPattern.c_str()) && !tn.endsWith("/>")) depth++;
+            } else if (tok.token_id == TextParser_cfml_EndTag) {
+                string tn(cfm_text + tok.position, tok.len);
+                tn.toLower();
+                if (tn.startWith(closePattern.c_str())) {
+                    if (depth > 0) {
+                        depth--;
+                    } else {
+                        bodyEnd = tok.position;
+                        nextIdx = i + 1;
+                        foundEnd = true;
+                        break;
+                    }
+                }
+            }
+            body.push_back(tok);
+        }
+        if (!foundEnd) {
+            // Unterminated tag: ColdFusion treats it as a single (start-only)
+            // invocation.
+            hasEndTag = false;
+        }
+    } else {
+        bodyEnd = bodyStart;
+        foundEnd = true;
+    }
+
+    // 1. Invoke start mode.
+    emitCall(builder, fInvoke, {out, cgi, server, cookie, application, session, url, form, variables,
+                                tagPathVar, tagPathStrVal, tagNameVal, cfg.attrsVal, nullPtr, builder.getInt1(hasEndTag), builder.getInt1(false),
+                                builder.getInt1(cfg.isModule), nameHintVal});
+
+    llvm::BasicBlock *loopBodyBB = llvm::BasicBlock::Create(context, "customtag.body", mainfunc);
+    llvm::BasicBlock *loopContBB = llvm::BasicBlock::Create(context, "customtag.cont", mainfunc);
+
+    if (!hasEndTag) {
+        // Single invocation only.
+        builder.CreateBr(loopContBB);
+    } else {
+        // A bare <cfexit>/exittag in the start template skips the body and the
+        // end tag entirely (ColdFusion's doStartTag returns SKIP_BODY).
+        llvm::Value *skipBody = emitCall(builder, fShouldSkip, {});
+        builder.CreateCondBr(skipBody, loopContBB, loopBodyBB);
+    }
+
+    // 2. Loop block for body capture & end-mode execution (supporting cfexit method="loop").
+    builder.SetInsertPoint(loopBodyBB);
+
+    // Capture body output into buffer.
+    llvm::Value *capture = emitCall(builder, fSavecontentBegin, {out});
+
+    if (isSelfClosing || (bodyEnd > bodyStart)) {
+        auto compileBody = [&]() {
+            WhitespaceState wsBody(ws.enabled, ws.flag);
+            wsBody.markTag(false, false);
+            size_t bodyPos = bodyStart;
+            size_t bidx = 0;
+            compile_token_list(body, bidx, bodyPos, context, module, builder, mainfunc,
+                               capture, wsBody, cgi, server, cookie, application, session, url, form, variables,
+                               cfm_text, bodyEnd, loopStack);
+            if (bodyPos < bodyEnd) {
+                wsBody.feed(module, builder, capture, cfm_text + bodyPos, bodyEnd - bodyPos, WsRight::Tag);
+            }
+            wsBody.finish(module, builder, capture, WsRight::Tag);
+        };
+
+        emit_try_catch_codegen(context, module, builder, mainfunc, out,
+                               cgi, server, cookie, application, session, url, form, variables,
+                               cfm_text, cfm_text_size, loopStack,
+                               {{"any", ""}}, false,
+                               compileBody,
+                               [&](size_t, llvm::Value *captured) {
+                                   emitCall(builder, fSavecontentEnd, {capture, cgi, server, cookie, application, session, url, form, variables, nullPtr});
+                                   emitCall(builder, fFinish, {});
+                                   emitCall(builder, fThrow, {captured});
+                                   builder.CreateUnreachable();
+                               },
+                               []() {});
+    }
+
+    // 3. Execute End Mode. Runs while the capture buffer is still alive (it is
+    //    read to seed thisTag.generatedContent); the runtime emits the body
+    //    (or the replacement generatedContent) followed by the end template's
+    //    own output — CF's ModuleTag.doAfterBody order.
+    emitCall(builder, fInvoke, {out, cgi, server, cookie, application, session, url, form, variables,
+                                tagPathVar, tagPathStrVal, tagNameVal, cfg.attrsVal, capture, builder.getInt1(true), builder.getInt1(true),
+                                builder.getInt1(cfg.isModule), nameHintVal});
+
+    // Pop capture buffer (without assigning to a CFML variable).
+    emitCall(builder, fSavecontentEnd, {capture, cgi, server, cookie, application, session, url, form, variables, nullPtr});
+
+    llvm::BasicBlock *checkLoopBB = llvm::BasicBlock::Create(context, "customtag.checkloop", mainfunc);
+
+    builder.CreateBr(checkLoopBB);
+
+    builder.SetInsertPoint(checkLoopBB);
+    // 4. Check should loop.
+    llvm::Value *shouldLoop = emitCall(builder, fShouldLoop, {});
+    builder.CreateCondBr(shouldLoop, loopBodyBB, loopContBB);
+
+    builder.SetInsertPoint(loopContBB);
+    // Finish custom tag.
+    emitCall(builder, fFinish, {});
+
+    return nextIdx;
+}
+
+size_t compile_custom_tag_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    const std::string &prefix,
+    const std::string &tagName,
+    const std::string &taglib,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack)
+{
+    string startText(cfm_text + tokens[start].position, tokens[start].len);
+
+    // Compute tag template path: taglib + "/" + tagName + ".cfm"
+    std::string tagTemplatePath = taglib;
+    if (!tagTemplatePath.empty() && tagTemplatePath.back() != '/') {
+        tagTemplatePath += "/";
+    }
+    tagTemplatePath += tagName;
+    tagTemplatePath += ".cfm";
+
+    // The public-name basis for thisTag/GetBaseTagList: the tag name without
+    // the prefix (CF names it CF_<NAME>).
+    std::string fullTagName = tagName;
+    for (auto &c : fullTagName) c = toupper((unsigned char)c);
+
+    // Parse attributes
+    const std::vector<TextParserTokenItem> *attrParts = &tokens[start].children;
+    for (const auto &ch : tokens[start].children) {
+        if (ch.token_id == TextParser_cfml_Expression) {
+            attrParts = &ch.children;
+            break;
+        }
+    }
+    auto tagAttrs = parseTagAttrs(attrParts, cfm_text);
+
+    auto compileValue = [&](const std::vector<TextParserTokenItem> &valToks) -> llvm::Value* {
+        if (valToks.empty()) return nullptr;
+        if (valToks.size() == 1 &&
+            (valToks[0].token_id == TextParser_cfml_DoubleString ||
+             valToks[0].token_id == TextParser_cfml_SingleString)) {
+            auto node = std::make_unique<ExprAST>();
+            node->type = ExprAST::LiteralString;
+            node->token = valToks[0];
+            return CompileExprAST(module, builder, mainfunc, node, cgi, server, cookie,
+                                  application, session, url, form, variables, cfm_text);
+        }
+        auto ast = parseTokensToAST(valToks, cfm_text);
+        return CompileExprAST(module, builder, mainfunc, ast, cgi, server, cookie,
+                              application, session, url, form, variables, cfm_text);
+    };
+
+    auto *fCreateStruct = getOrCreateHelper(module, builder, "cfvariant_create_struct", builder.getPtrTy(), {});
+    auto *fIndexAssign = getOrCreateHelper(module, builder, "cfvariant_index_assign", builder.getPtrTy(),
+                                           {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
+    auto *fCreateString = getOrCreateHelper(module, builder, "cfvariant_create_string", builder.getPtrTy(), {builder.getPtrTy()});
+
+    llvm::Value *attrsVal = emitCall(builder, fCreateStruct, {});
+    for (const auto &a : tagAttrs) {
+        llvm::Value *val = compileValue(a.second);
+        if (!val) val = emitCall(builder, fCreateString, {builder.CreateGlobalString("", "", 0, module, true)});
+        std::string upperKey = a.first;
+        for (auto &c : upperKey) c = toupper(c);
+        llvm::Value *keyVal = emitCall(builder, fCreateString,
+            {builder.CreateGlobalString(llvm::StringRef(upperKey.c_str(), upperKey.size()), "", 0, module, true)});
+        emitCall(builder, fIndexAssign, {attrsVal, keyVal, val});
+    }
+
+    CustomTagInvokeCfg cfg;
+    cfg.tagPathStr = tagTemplatePath;
+    cfg.tagNameStr = fullTagName;
+    cfg.attrsVal = attrsVal;
+    cfg.isSelfClosing = startText.endsWith("/>");
+
+    std::string openPattern = "<" + prefix + ":" + tagName;
+    for (auto &c : openPattern) c = tolower(c);
+    std::string closePattern = "</" + prefix + ":" + tagName;
+    for (auto &c : closePattern) c = tolower(c);
+
+    return compile_custom_tag_invoke_ir(tokens, start, openPattern, closePattern, cfg,
+                                        context, module, builder, mainfunc, out, ws,
+                                        cgi, server, cookie, application, session, url, form, variables,
+                                        cfm_text, cfm_text_size, loopStack);
+}
+
+size_t compile_cfmodule_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack)
+{
+    string startText(cfm_text + tokens[start].position, tokens[start].len);
+
+    // Parse attributes.
+    const std::vector<TextParserTokenItem> *attrParts = &tokens[start].children;
+    for (const auto &ch : tokens[start].children) {
+        if (ch.token_id == TextParser_cfml_Expression) {
+            attrParts = &ch.children;
+            break;
+        }
+    }
+    auto tagAttrs = parseTagAttrs(attrParts, cfm_text);
+
+    auto compileValue = [&](const std::vector<TextParserTokenItem> &valToks) -> llvm::Value* {
+        if (valToks.empty()) return nullptr;
+        if (valToks.size() == 1 &&
+            (valToks[0].token_id == TextParser_cfml_DoubleString ||
+             valToks[0].token_id == TextParser_cfml_SingleString)) {
+            auto node = std::make_unique<ExprAST>();
+            node->type = ExprAST::LiteralString;
+            node->token = valToks[0];
+            return CompileExprAST(module, builder, mainfunc, node, cgi, server, cookie,
+                                  application, session, url, form, variables, cfm_text);
+        }
+        auto ast = parseTokensToAST(valToks, cfm_text);
+        return CompileExprAST(module, builder, mainfunc, ast, cgi, server, cookie,
+                              application, session, url, form, variables, cfm_text);
+    };
+
+    auto *fCreateStruct = getOrCreateHelper(module, builder, "cfvariant_create_struct", builder.getPtrTy(), {});
+    auto *fIndexAssign = getOrCreateHelper(module, builder, "cfvariant_index_assign", builder.getPtrTy(),
+                                           {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
+    auto *fCreateString = getOrCreateHelper(module, builder, "cfvariant_create_string", builder.getPtrTy(), {builder.getPtrTy()});
+    auto *nullPtr = llvm::ConstantPointerNull::get(builder.getPtrTy());
+
+    // Build the attributes struct from every attribute except
+    // template/name/attributecollection (which configure the module).
+    llvm::Value *aTemplate = nullptr, *aName = nullptr, *aArgColl = nullptr;
+    llvm::Value *attrsVal = emitCall(builder, fCreateStruct, {});
+    for (const auto &a : tagAttrs) {
+        std::string low = lowercase(a.first);
+        if (low == "template" || low == "name" || low == "attributecollection") continue;
+        llvm::Value *val = compileValue(a.second);
+        if (!val) val = emitCall(builder, fCreateString, {builder.CreateGlobalString("", "", 0, module, true)});
+        std::string upperKey = a.first;
+        for (auto &c : upperKey) c = toupper(c);
+        llvm::Value *keyVal = emitCall(builder, fCreateString,
+            {builder.CreateGlobalString(llvm::StringRef(upperKey.c_str(), upperKey.size()), "", 0, module, true)});
+        emitCall(builder, fIndexAssign, {attrsVal, keyVal, val});
+    }
+    // Collect the special attributes (may be dynamic expressions).
+    for (const auto &a : tagAttrs) {
+        std::string low = lowercase(a.first);
+        llvm::Value *val = compileValue(a.second);
+        if (low == "template") aTemplate = val;
+        else if (low == "name") aName = val;
+        else if (low == "attributecollection") aArgColl = val;
+    }
+
+    // Merge attributecollection into the attributes (explicit attrs win).
+    if (aArgColl) {
+        auto *fMerge = getOrCreateHelper(module, builder, "cf_custom_tag_merge_attributecollection", builder.getVoidTy(),
+            {builder.getPtrTy(), builder.getPtrTy()});
+        emitCall(builder, fMerge, {attrsVal, aArgColl});
+    }
+
+    // Compute the tag template path from template/name at runtime.
+    auto *fPath = getOrCreateHelper(module, builder, "cf_custom_tag_module_path", builder.getPtrTy(),
+        {builder.getPtrTy(), builder.getPtrTy()});
+    llvm::Value *pathVal = emitCall(builder, fPath, {aTemplate ? aTemplate : nullPtr,
+                                                     aName ? aName : nullPtr});
+
+    CustomTagInvokeCfg cfg;
+    cfg.tagPathVar = pathVal;
+    cfg.attrsVal = attrsVal;
+    cfg.isModule = true;
+    cfg.isSelfClosing = startText.endsWith("/>");
+
+    std::string openPattern = "<cfmodule";
+    std::string closePattern = "</cfmodule";
+
+    return compile_custom_tag_invoke_ir(tokens, start, openPattern, closePattern, cfg,
+                                        context, module, builder, mainfunc, out, ws,
+                                        cgi, server, cookie, application, session, url, form, variables,
+                                        cfm_text, cfm_text_size, loopStack);
+}
+
 size_t compile_tag_processingdirective_statement(
     const std::vector<TextParserTokenItem> &tokens,
     size_t start,

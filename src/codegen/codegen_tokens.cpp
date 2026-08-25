@@ -72,6 +72,7 @@ static bool isTempVariantFunction(llvm::Function *f, llvm::IRBuilder<> &builder)
         name.starts_with("cfvariant_member_method") ||
         name.starts_with("cfvariant_cleanup_") || name.starts_with("cfvariant_create_udf") ||
         name.starts_with("cfvariant_create_struct") ||
+        name.starts_with("cf_custom_tag_") ||
         name == "cf_application_enable") {
         return false;
     }

@@ -151,7 +151,7 @@
     },
     "StartTag": {
       "type": "StartStop",
-      "startRegex": "<cf[a-z0-9_]+",
+      "startRegex": "<(?:cf[a-z0-9_]*|[a-zA-Z0-9_]+:[a-zA-Z0-9_]+)",
       "endRegex": "\\/?>",
       "multiLine": true,
       "textColor": "0xabd90c",
@@ -161,7 +161,7 @@
     },
     "EndTag": {
       "type": "StartStop",
-      "startRegex": "<\\/cf(?!output)(?!script)(?!query)(?!loop)[a-z0-9_]+",
+      "startRegex": "<\\/(?:cf(?!output)(?!script)(?!query)(?!loop)[a-z0-9_]*|[a-zA-Z0-9_]+:[a-zA-Z0-9_]+)",
       "endRegex": "\\/?>",
       "multiLine": true,
       "textColor": "0xabd90c",

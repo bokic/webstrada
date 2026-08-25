@@ -255,6 +255,22 @@ void cf_savecontent_end(string *captured, void *cgi, void *server, void *cookie,
                         void *application, void *session, void *url, void *form,
                         void *variables, const cfvariant *varName);
 
+// ---- Custom tag runtime (tag_custom.cpp) ----
+void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, cfvariant *callerVariables,
+                         bool isModule, const char *templateNameHint);
+void cf_custom_tag_end_mode(const string *generatedContent);
+void cf_custom_tag_finish();
+bool cf_custom_tag_should_loop();
+bool cf_custom_tag_should_skip_body();
+void cf_custom_tag_mark_content_changed();
+cfvariant *cf_custom_tag_module_path(const cfvariant *templateAttr, const cfvariant *nameAttr);
+void cf_custom_tag_merge_attributecollection(cfvariant *attrs, const cfvariant *collection);
+void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, void *application,
+                          void *session, void *url, void *form, void *variables,
+                          cfvariant *tagPathVar, const char *tagPath, const char *tagName,
+                          cfvariant *attrs, string *bodyContent, bool hasEndTag, bool isEndMode,
+                          bool isModule, const char *templateNameHint);
+
 // <cfxml> runtime: cf_xml_begin pushes a fresh capture buffer (the compiled
 // <cfxml> body writes to it) and returns it; cf_xml_end pops it, trims the
 // captured text like CF's `varStr.trim()`, parses it as an XML document
@@ -983,7 +999,7 @@ void cfabort(void);
  * (uncatchable by CFML catch blocks; swallowed at include/construction/prelude
  * boundaries, halts the page at the top level).
  */
-void cf_exit(void);
+void cf_exit(const cfvariant *method);
 
 /**
  * @brief <cfexit method="loop"> outside a custom tag.
@@ -1556,15 +1572,16 @@ cfvariant *cf_cfinvoke_end(string *out, void *cgi, void *server, void *cookie, v
 
 // <cfimport path="...">: register a component import path (a dotted path or a
 // "prefix.*" wildcard) that CreateObject/`new` fall back to. The taglib/prefix
-// (JSP/custom-tag library) forms are not supported (see cf_cfmodule).
+// form is handled at compile time (see the custom-tag runtime in tag_custom.cpp
+// and codegen_tags.cpp); this runtime stub is a no-op.
 void cf_import_path(const cfvariant *path);
 
-// <cfimport taglib/prefix>: the JSP/custom-tag library import requires the
-// custom-tag runtime (not implemented); throws a catchable Application error.
+// <cfimport taglib/prefix>: processed statically by the compiler (registers the
+// prefix->taglib mapping); the runtime stub is a no-op.
 void cf_import_taglib(const cfvariant *taglib, const cfvariant *prefix);
 
-// <cfmodule> / <cfassociate> require the custom-tag runtime, which this engine
-// does not implement; they throw a catchable Application error.
+// Legacy <cfmodule> runtime stub (unused — the compiler emits
+// cf_custom_tag_invoke via compile_cfmodule_statement).
 void cf_cfmodule(const cfvariant *templateAttr, const cfvariant *nameAttr,
                  const cfvariant *attributecollection);
 void cf_cfassociate(const cfvariant *basetag, const cfvariant *datacollection);
@@ -1740,7 +1757,7 @@ cfvariant *cf_generatepbkdfkey(const cfvariant *algorithm, const cfvariant *pass
 cfvariant *cf_generatesamlspmetadata();
 cfvariant *cf_generatesecretkey(const cfvariant *algorithm, const cfvariant *keySize);
 cfvariant *cf_getapplicationmetadata();
-cfvariant *cf_getbasetagdata();
+cfvariant *cf_getbasetagdata(const cfvariant *tagname = nullptr, const cfvariant *instancenumber = nullptr);
 cfvariant *cf_getbasetaglist();
 cfvariant *cf_getclientvariableslist();
 cfvariant *cf_getcomponentmetadata(const cfvariant *obj);

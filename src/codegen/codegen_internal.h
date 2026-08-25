@@ -163,6 +163,7 @@ extern int g_closureCounter;
 // body compile into different LLVM functions that cannot share an alloca.
 // Used by the fast-path cfvariant_get_var_fast / cfvariant_bare_identifier_fast.
 extern thread_local std::map<std::pair<llvm::Function*, std::string>, llvm::Value*> g_varFastSlots;
+extern thread_local std::map<std::string, std::string> g_importPrefixes;
 struct FunctionReturnCtx {
     llvm::Value *retSlot = nullptr;
     llvm::BasicBlock *exitBB = nullptr;
@@ -420,6 +421,54 @@ size_t compile_tag_silent_statement(
 // an exception still stores the partial content (CF's SaveContentTag.doCatch)
 // before propagating.
 size_t compile_tag_savecontent_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack);
+
+// Custom tag invocation: single tag (<prefix:tag />) or paired tag (<prefix:tag>...</prefix:tag>).
+size_t compile_custom_tag_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    const std::string &prefix,
+    const std::string &tagName,
+    const std::string &taglib,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack);
+
+// <cfmodule template=".." name=".." attributecollection=".."> — invokes a
+// custom tag by path/name, reusing the same start/body/end runtime.
+size_t compile_cfmodule_statement(
     const std::vector<TextParserTokenItem> &tokens,
     size_t start,
     llvm::LLVMContext &context,

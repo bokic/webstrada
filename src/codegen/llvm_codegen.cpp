@@ -53,6 +53,7 @@ thread_local llvm::BasicBlock *g_currentFuncCleanupBB = nullptr;
 thread_local bool g_compileInFunctionBody = false;
 thread_local textparser_t g_textparser = nullptr;
 thread_local std::map<std::pair<llvm::Function*, std::string>, llvm::Value*> g_varFastSlots;
+thread_local std::map<std::string, std::string> g_importPrefixes;
 int g_closureCounter = 0;
 FunctionReturnCtx *g_returnCtx = nullptr;
 
@@ -914,7 +915,7 @@ void compile_token_list(
                 start = 1;
             }
             size_t end = start;
-            while (end < s.length() && (isalnum(s[end]) || s[end] == '_')) {
+            while (end < s.length() && (isalnum(s[end]) || s[end] == '_' || s[end] == ':')) {
                 end++;
             }
             std::string tagName = s.substr(start, end - start);
@@ -922,56 +923,59 @@ void compile_token_list(
                 c = tolower(c);
             }
 
-            static const std::unordered_set<std::string> supported_tags = {
-                "cfset", "cfdump", "cfif", "cfelseif", "cfelse", "cfswitch", "cfcase", "cfdefaultcase", 
-                "cfbreak", "cfcontinue", "cfabort", "cfloop", "cfoutput", "cfscript",
-                "cftry", "cfcatch", "cffinally", "cfthrow", "cfrethrow", "cfcontent", "cfflush",
-                "cfapplication", "cfimage", "cfsilent", "cfinclude", "cfxml",
-                "cffunction", "cfargument", "cfreturn", "cfquery",
-                "cfcomponent", "cfproperty", "cfobject", "cfinvoke", "cfinvokeargument",
-                "cfheader", "cflocation", "cfhttp", "cfhttpparam", "cftransaction",
-                "cfqueryparam", "cfinsert", "cfupdate", "cfdbinfo",
-                "cfstoredproc", "cfprocparam", "cfprocresult",
-                "cfexit", "cferror", "cfcache",
-                "cfimport", "cfmodule", "cfassociate",
-                "cflog", "cftimer", "cftrace",
-                "cfdirectory", "cffile", "cfzip", "cfzipparam",
-                "cfparam", "cfobjectcache",
-                "cfcookie", "cfhtmlhead", "cfprocessingdirective", "cfsavecontent", "cfsetting",
-                "cfexecute", "cffeed", "cfwddx",
-                "cfftp", "cfschedule",
-                "cflogin", "cfloginuser", "cflogout"
-            };
+            size_t colonPos = tagName.find(':');
+            if (colonPos == std::string::npos) {
+                static const std::unordered_set<std::string> supported_tags = {
+                    "cfset", "cfdump", "cfif", "cfelseif", "cfelse", "cfswitch", "cfcase", "cfdefaultcase", 
+                    "cfbreak", "cfcontinue", "cfabort", "cfloop", "cfoutput", "cfscript",
+                    "cftry", "cfcatch", "cffinally", "cfthrow", "cfrethrow", "cfcontent", "cfflush",
+                    "cfapplication", "cfimage", "cfsilent", "cfinclude", "cfxml",
+                    "cffunction", "cfargument", "cfreturn", "cfquery",
+                    "cfcomponent", "cfproperty", "cfobject", "cfinvoke", "cfinvokeargument",
+                    "cfheader", "cflocation", "cfhttp", "cfhttpparam", "cftransaction",
+                    "cfqueryparam", "cfinsert", "cfupdate", "cfdbinfo",
+                    "cfstoredproc", "cfprocparam", "cfprocresult",
+                    "cfexit", "cferror", "cfcache",
+                    "cfimport", "cfmodule", "cfassociate",
+                    "cflog", "cftimer", "cftrace",
+                    "cfdirectory", "cffile", "cfzip", "cfzipparam",
+                    "cfparam", "cfobjectcache",
+                    "cfcookie", "cfhtmlhead", "cfprocessingdirective", "cfsavecontent", "cfsetting",
+                    "cfexecute", "cffeed", "cfwddx",
+                    "cfftp", "cfschedule",
+                    "cflogin", "cfloginuser", "cflogout"
+                };
 
-            static const std::unordered_set<std::string> standard_tags = {
-                "cfabort", "cfajaximport", "cfajaxproxy", "cfapplet", "cfargument", "cfassociate", "cfauthenticate",
-                "cfbreak", "cfcache", "cfcalendar", "cfcase", "cfcatch", "cfchart", "cfchartdata", "cfchartseries", "cfchartset",
-                "cfclient", "cfclientsettings", "cfcol", "cfcollection", "cfcomponent", "cfcontent", "cfcontinue", "cfcookie",
-                "cfdbinfo", "cfdefaultcase", "cfdocument", "cfdocumentitem", "cfdocumentsection", "cfdump",
-                "cfelse", "cfelseif", "cferror", "cfexchangecalendar", "cfexchangeconnection", "cfexchangecontact",
-                "cfexchangeconversation", "cfexchangefilter", "cfexchangefolder", "cfexchangemail", "cfexchangetask",
-                "cfexecute", "cfexit", "cffeed", "cffileupload", "cffinally", "cfflush", "cfform", "cfformgroup",
-                "cfformitem", "cfftp", "cffunction", "cfgraph", "cfgraphdata", "cfgrid", "cfgridcolumn", "cfgridrow",
-                "cfgridupdate", "cfheader", "cfhtmlhead", "cfhtmltopdf", "cfhtmltopdfitem", "cfhttp", "cfhttpparam", "cfif",
-                "cfimage", "cfimap", "cfimapfilter", "cfimpersonate", "cfimport", "cfinclude", "cfindex", "cfinput",
-                "cfinsert", "cfinterface", "cfinvoke", "cfinvokeargument", "cfjava", "cflayout", "cflayoutarea", "cfldap",
-                "cflocation", "cflock", "cflog", "cflogin", "cfloginuser", "cflogout", "cfloop", "cfmail", "cfmailparam",
-                "cfmailpart", "cfmap", "cfmapitem", "cfmediaplayer", "cfmenu", "cfmenuitem", "cfmessagebox", "cfmodule",
-                "cfntauthenticate", "cfoauth", "cfobject", "cfobjectcache", "cfoutput", "cfparam", "cfpdf", "cfpdfform",
-                "cfpdfformparam", "cfpdfparam", "cfpdfsubform", "cfpod", "cfpop", "cfpresentation", "cfpresentationslide",
-                "cfpresenter", "cfprint", "cfprocessingdirective", "cfprocparam", "cfprocresult", "cfprogressbar", "cfproperty",
-                "cfquery", "cfqueryparam", "cfregistry", "cfreport", "cfreportparam", "cfrethrow", "cfreturn", "cfsavecontent",
-                "cfschedule", "cfscript", "cfsearch", "cfselect", "cfservlet", "cfservletparam", "cfset", "cfsetting",
-                "cfsharepoint", "cfsilent", "cfslider", "cfspreadsheet", "cfsprydataset", "cfstoredproc", "cfswitch",
-                "cftable", "cftextarea", "cftextinput", "cfthread", "cfthrow", "cftimer", "cftooltip", "cftrace", "cftransaction",
-                "cftree", "cftreeitem", "cftry", "cfupdate", "cfwddx", "cfwebsocket", "cfwindow", "cfxml"
-            };
+                static const std::unordered_set<std::string> standard_tags = {
+                    "cfabort", "cfajaximport", "cfajaxproxy", "cfapplet", "cfargument", "cfassociate", "cfauthenticate",
+                    "cfbreak", "cfcache", "cfcalendar", "cfcase", "cfcatch", "cfchart", "cfchartdata", "cfchartseries", "cfchartset",
+                    "cfclient", "cfclientsettings", "cfcol", "cfcollection", "cfcomponent", "cfcontent", "cfcontinue", "cfcookie",
+                    "cfdbinfo", "cfdefaultcase", "cfdocument", "cfdocumentitem", "cfdocumentsection", "cfdump",
+                    "cfelse", "cfelseif", "cferror", "cfexchangecalendar", "cfexchangeconnection", "cfexchangecontact",
+                    "cfexchangeconversation", "cfexchangefilter", "cfexchangefolder", "cfexchangemail", "cfexchangetask",
+                    "cfexecute", "cfexit", "cffeed", "cffileupload", "cffinally", "cfflush", "cfform", "cfformgroup",
+                    "cfformitem", "cfftp", "cffunction", "cfgraph", "cfgraphdata", "cfgrid", "cfgridcolumn", "cfgridrow",
+                    "cfgridupdate", "cfheader", "cfhtmlhead", "cfhtmltopdf", "cfhtmltopdfitem", "cfhttp", "cfhttpparam", "cfif",
+                    "cfimage", "cfimap", "cfimapfilter", "cfimpersonate", "cfimport", "cfinclude", "cfindex", "cfinput",
+                    "cfinsert", "cfinterface", "cfinvoke", "cfinvokeargument", "cfjava", "cflayout", "cflayoutarea", "cfldap",
+                    "cflocation", "cflock", "cflog", "cflogin", "cfloginuser", "cflogout", "cfloop", "cfmail", "cfmailparam",
+                    "cfmailpart", "cfmap", "cfmapitem", "cfmediaplayer", "cfmenu", "cfmenuitem", "cfmessagebox", "cfmodule",
+                    "cfntauthenticate", "cfoauth", "cfobject", "cfobjectcache", "cfoutput", "cfparam", "cfpdf", "cfpdfform",
+                    "cfpdfformparam", "cfpdfparam", "cfpdfsubform", "cfpod", "cfpop", "cfpresentation", "cfpresentationslide",
+                    "cfpresenter", "cfprint", "cfprocessingdirective", "cfprocparam", "cfprocresult", "cfprogressbar", "cfproperty",
+                    "cfquery", "cfqueryparam", "cfregistry", "cfreport", "cfreportparam", "cfrethrow", "cfreturn", "cfsavecontent",
+                    "cfschedule", "cfscript", "cfsearch", "cfselect", "cfservlet", "cfservletparam", "cfset", "cfsetting",
+                    "cfsharepoint", "cfsilent", "cfslider", "cfspreadsheet", "cfsprydataset", "cfstoredproc", "cfswitch",
+                    "cftable", "cftextarea", "cftextinput", "cfthread", "cfthrow", "cftimer", "cftooltip", "cftrace", "cftransaction",
+                    "cftree", "cftreeitem", "cftry", "cfupdate", "cfwddx", "cfwebsocket", "cfwindow", "cfxml"
+                };
 
-            if (supported_tags.find(tagName) == supported_tags.end()) {
-                if (standard_tags.find(tagName) != standard_tags.end()) {
-                    throw webstrada::exception(("Tag " + tagName + " is not implemented").c_str());
-                } else {
-                    throw webstrada::exception(("Unknown CFML tag: " + tagName).c_str());
+                if (supported_tags.find(tagName) == supported_tags.end()) {
+                    if (standard_tags.find(tagName) != standard_tags.end()) {
+                        throw webstrada::exception(("Tag " + tagName + " is not implemented").c_str());
+                    } else {
+                        throw webstrada::exception(("Unknown CFML tag: " + tagName).c_str());
+                    }
                 }
             }
         }
@@ -1559,15 +1563,52 @@ void compile_token_list(
                     }
                 }
 
-                auto *fExit = getOrCreateHelper(module, builder, "cf_exit", builder.getVoidTy(), {});
+                auto *fExit = getOrCreateHelper(module, builder, "cf_exit", builder.getVoidTy(), {builder.getPtrTy()});
                 auto *fExitLoop = getOrCreateHelper(module, builder, "cf_exit_loop", builder.getVoidTy(), {});
                 auto *fExitInvalid = getOrCreateHelper(module, builder, "cf_exit_invalid", builder.getVoidTy(), {builder.getPtrTy()});
                 auto *fClassify = getOrCreateHelper(module, builder, "cf_exit_classify", builder.getInt32Ty(), {builder.getPtrTy()});
+                auto *fCreateStr = getOrCreateHelper(module, builder, "cfvariant_create_string", builder.getPtrTy(), {builder.getPtrTy()});
+                auto *nullPtr = llvm::ConstantPointerNull::get(builder.getPtrTy());
+
+                // The method variant passed to cf_exit: null for exittag/bare,
+                // the literal "exittemplate" for method="exittemplate" (the
+                // custom-tag runtime distinguishes the two), or the evaluated
+                // dynamic value.
+                llvm::Value *exitMethodVal = nullptr;
+                if (methodToks) {
+                    if (methodToks->size() == 1 &&
+                        ((*methodToks)[0].token_id == TextParser_cfml_DoubleString ||
+                         (*methodToks)[0].token_id == TextParser_cfml_SingleString)) {
+                        string raw(cfm_text + (*methodToks)[0].position + 1, (*methodToks)[0].len - 2);
+                        string rawLow = raw;
+                        rawLow.toLower();
+                        if (rawLow.equals("exittemplate")) {
+                            exitMethodVal = emitCall(builder, fCreateStr,
+                                {builder.CreateGlobalString(llvm::StringRef("exittemplate", 12), "", 0, module, true)});
+                        }
+                    }
+                }
+                if (exitMethodVal == nullptr && methodToks && staticMethodClass < 0) {
+                    // Dynamically evaluated method: build the value for dispatch.
+                    if (methodToks->size() == 1 &&
+                        ((*methodToks)[0].token_id == TextParser_cfml_DoubleString ||
+                         (*methodToks)[0].token_id == TextParser_cfml_SingleString)) {
+                        auto node = std::make_unique<ExprAST>();
+                        node->type = ExprAST::LiteralString;
+                        node->token = (*methodToks)[0];
+                        exitMethodVal = CompileExprAST(module, builder, mainfunc, node, cgi, server, cookie,
+                                                       application, session, url, form, variables, cfm_text);
+                    } else {
+                        auto ast = parseTokensToAST(*methodToks, cfm_text);
+                        exitMethodVal = CompileExprAST(module, builder, mainfunc, ast, cgi, server, cookie,
+                                                       application, session, url, form, variables, cfm_text);
+                    }
+                }
 
                 auto emitExitPath = [&](llvm::Value *methodVal) {
                     // methodVal != nullptr: runtime dispatch on the evaluated
                     // value (0 = exit, 1 = loop, else invalid method).
-                    if (methodVal) {
+                    if (methodVal && staticMethodClass < 0) {
                         llvm::Value *code = emitCall(builder, fClassify, {methodVal});
                         llvm::BasicBlock *exitBB = llvm::BasicBlock::Create(context, "cfexit.exit", mainfunc);
                         llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(context, "cfexit.loop", mainfunc);
@@ -1588,7 +1629,7 @@ void compile_token_list(
                         // exactly like a bare <cfreturn> (verified on CF).
                         builder.CreateBr(g_returnCtx->exitBB);
                     } else {
-                        emitCall(builder, fExit, {});
+                        emitCall(builder, fExit, {methodVal ? methodVal : nullPtr});
                         builder.CreateUnreachable();
                     }
                     auto deadBB = llvm::BasicBlock::Create(context, "cfexit.cont", mainfunc);
@@ -1602,28 +1643,8 @@ void compile_token_list(
                     builder.CreateUnreachable();
                     auto deadBB = llvm::BasicBlock::Create(context, "cfexit.cont", mainfunc);
                     builder.SetInsertPoint(deadBB);
-                } else if (staticMethodClass == 0) {
-                    emitExitPath(nullptr);
                 } else {
-                    // Absent or dynamically evaluated method: evaluate the
-                    // value and dispatch at runtime.
-                    llvm::Value *methodVal = llvm::ConstantPointerNull::get(builder.getPtrTy());
-                    if (methodToks) {
-                        if (methodToks->size() == 1 &&
-                            ((*methodToks)[0].token_id == TextParser_cfml_DoubleString ||
-                             (*methodToks)[0].token_id == TextParser_cfml_SingleString)) {
-                            auto node = std::make_unique<ExprAST>();
-                            node->type = ExprAST::LiteralString;
-                            node->token = (*methodToks)[0];
-                            methodVal = CompileExprAST(module, builder, mainfunc, node, cgi, server, cookie,
-                                                       application, session, url, form, variables, cfm_text);
-                        } else {
-                            auto ast = parseTokensToAST(*methodToks, cfm_text);
-                            methodVal = CompileExprAST(module, builder, mainfunc, ast, cgi, server, cookie,
-                                                       application, session, url, form, variables, cfm_text);
-                        }
-                    }
-                    emitExitPath(methodVal);
+                    emitExitPath(exitMethodVal);
                 }
             } else if (tagNameLow.startWith("<cfflush")) {
                 // Flush buffered output to the web engine (no-op when empty).
@@ -4301,23 +4322,52 @@ void compile_token_list(
                             "The path attribute cannot be combined with the taglib or prefix attributes.");
                     }
                     if (aTaglib || aPrefix) {
-                        // JSP/custom-tag library import: requires the custom-tag
-                        // runtime, not implemented.
+                        if (!aTaglib || !aPrefix) {
+                            throw webstrada::exception("cfimport",
+                                "Both taglib and prefix attributes are required for custom tag import.");
+                        }
+                        // Record prefix mapping statically
+                        auto tagAttrs = parseTagAttrs(attrParts, cfm_text);
+                        std::string pfxStr, taglibStr;
+                        for (const auto &a : tagAttrs) {
+                            if (lowercase(a.first) == "prefix" && !a.second.empty()) {
+                                const auto &vt = a.second[0];
+                                if (vt.token_id == TextParser_cfml_SingleString || vt.token_id == TextParser_cfml_DoubleString) {
+                                    pfxStr = tokenText(vt, cfm_text);
+                                    if (pfxStr.size() >= 2) pfxStr = pfxStr.substr(1, pfxStr.size() - 2);
+                                } else {
+                                    pfxStr = tokenText(vt, cfm_text);
+                                }
+                            } else if (lowercase(a.first) == "taglib" && !a.second.empty()) {
+                                const auto &vt = a.second[0];
+                                if (vt.token_id == TextParser_cfml_SingleString || vt.token_id == TextParser_cfml_DoubleString) {
+                                    taglibStr = tokenText(vt, cfm_text);
+                                    if (taglibStr.size() >= 2) taglibStr = taglibStr.substr(1, taglibStr.size() - 2);
+                                } else {
+                                    taglibStr = tokenText(vt, cfm_text);
+                                }
+                            }
+                        }
+                        if (!pfxStr.empty() && !taglibStr.empty()) {
+                            g_importPrefixes[lowercase(pfxStr)] = taglibStr;
+                        }
                         auto *fTaglib = getOrCreateHelper(module, builder, "cf_import_taglib", builder.getVoidTy(),
                             {builder.getPtrTy(), builder.getPtrTy()});
-                        emitCall(builder, fTaglib, {aTaglib ? aTaglib : nullPtr,
-                                                    aPrefix ? aPrefix : nullPtr});
+                        emitCall(builder, fTaglib, {aTaglib, aPrefix});
                     } else {
                         auto *fImport = getOrCreateHelper(module, builder, "cf_import_path", builder.getVoidTy(),
                             {builder.getPtrTy()});
                         emitCall(builder, fImport, {aPath ? aPath : nullPtr});
                     }
                 } else if (tagNameLow.startWith("<cfmodule")) {
-                    auto *fModule = getOrCreateHelper(module, builder, "cf_cfmodule", builder.getVoidTy(),
-                        {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
-                    emitCall(builder, fModule, {aTemplate ? aTemplate : nullPtr,
-                                                aName ? aName : nullPtr,
-                                                aArgColl ? aArgColl : nullPtr});
+                    index = compile_cfmodule_statement(tokens, index,
+                                                       context, module, builder, mainfunc,
+                                                       out, ws, cgi, server, cookie, application, session,
+                                                       url, form, variables, cfm_text, cfm_text_size, loopStack) - 1;
+                    pos = token.position + token.len;
+                    if (index < tokens.size()) {
+                        pos = tokens[index].position + tokens[index].len;
+                    }
                 } else {
                     auto *fAssoc = getOrCreateHelper(module, builder, "cf_cfassociate", builder.getVoidTy(),
                         {builder.getPtrTy(), builder.getPtrTy()});
@@ -4325,7 +4375,38 @@ void compile_token_list(
                                                aDatacollection ? aDatacollection : nullPtr});
                 }
             } else {
-                throw webstrada::exception("compiler", "Unknown start tag: " + tokenName);
+                // Check if this is a custom tag: <prefix:tagname ...>
+                std::string s = tokenName.constData();
+                size_t startName = (s.rfind("<", 0) == 0) ? 1 : 0;
+                size_t endName = startName;
+                while (endName < s.length() && (isalnum(s[endName]) || s[endName] == '_' || s[endName] == ':')) {
+                    endName++;
+                }
+                std::string rawTagName = s.substr(startName, endName - startName);
+                size_t colonPos = rawTagName.find(':');
+                if (colonPos != std::string::npos) {
+                    std::string prefix = rawTagName.substr(0, colonPos);
+                    std::string customTagName = rawTagName.substr(colonPos + 1);
+                    std::string pfxLow = lowercase(prefix);
+                    auto it = g_importPrefixes.find(pfxLow);
+                    if (it != g_importPrefixes.end()) {
+                        index = compile_custom_tag_statement(tokens, index, prefix, customTagName, it->second,
+                                                             context, module, builder, mainfunc,
+                                                             out, ws, cgi, server, cookie, application, session,
+                                                             url, form, variables, cfm_text, cfm_text_size, loopStack) - 1;
+                        pos = token.position + token.len;
+                        if (index < tokens.size()) {
+                            pos = tokens[index].position + tokens[index].len;
+                        }
+                    } else {
+                        // The prefix is not imported: ColdFusion leaves
+                        // <prefix:tag> as literal text in the output (its parser
+                        // only recognizes imported prefixes as tags).
+                        llvm_WriteOutput(module, builder, out, cfm_text + token.position, token.len);
+                    }
+                } else {
+                    throw webstrada::exception("compiler", "Unknown start tag: " + tokenName);
+                }
             }
             break;
         }
@@ -5122,6 +5203,30 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
             if (!varName.isEmpty()) {
                 auto keyGlobal = builder.CreateGlobalString(llvm::StringRef(varName.constData(), varName.length()), "", 0, module, true);
                 llvm_CfOutputExpr(module, builder, out, cgi, server, cookie, application, session, url, form, variables, keyGlobal);
+            }
+            break;
+        }
+
+        case TextParser_cfml_EndTag: {
+            // A </prefix:tag> whose prefix is not imported is literal text in
+            // ColdFusion (its parser only treats imported prefixes as tags);
+            // the matching start tag was already emitted as text, so emit the
+            // closing tag too. Structural </cf...> end tags are handled by
+            // their start tag's compile and never reach here as siblings.
+            std::string s = string(cfm_text + token.position, token.len).constData();
+            if (s.rfind("</", 0) == 0) {
+                size_t endName = 2;
+                while (endName < s.length() && (isalnum(s[endName]) || s[endName] == '_' || s[endName] == ':')) {
+                    endName++;
+                }
+                std::string rawName = s.substr(2, endName - 2);
+                size_t colon = rawName.find(':');
+                if (colon != std::string::npos) {
+                    std::string prefix = lowercase(rawName.substr(0, colon));
+                    if (g_importPrefixes.find(prefix) == g_importPrefixes.end()) {
+                        llvm_WriteOutput(module, builder, out, cfm_text + token.position, token.len);
+                    }
+                }
             }
             break;
         }

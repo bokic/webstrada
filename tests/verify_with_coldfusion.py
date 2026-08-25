@@ -111,11 +111,14 @@ def main():
     else:
         base_dir = test_dir
         for root, _, files in os.walk(test_dir):
-            # The shared include library is uploaded as fixed-path helper files
-            # (see below); its members (including subdirectories) are not
-            # standalone tests.
+            # The shared include library and the custom-tag library
+            # directories are uploaded as fixed-path helper files (see below);
+            # their members (including subdirectories) are not standalone
+            # tests.
             rel_root = os.path.relpath(root, test_dir).replace(os.sep, "/")
             if rel_root == "include_lib" or rel_root.startswith("include_lib/"):
+                continue
+            if rel_root == "customtags" or rel_root.startswith("customtags/"):
                 continue
             for file in files:
                 if file.endswith(".cfm"):
@@ -195,6 +198,39 @@ def main():
                 uploaded_lib_files.append(rds_target)
             except subprocess.CalledProcessError as e:
                 print_colored(f"  [ERROR] Failed to upload component file {local_comp}.", COLOR_RED, sys.stderr)
+    # Custom-tag library directories (customtags/, customtags2/, ...). Tests
+    # reference them via <cfimport taglib=".." prefix=".."> relative to the
+    # uploaded test file (at the web root), so they are uploaded with their
+    # real names to the web root; locally the same relative resolution finds
+    # them next to the test file (tests/cfm/customtags/...).
+    for d in sorted(os.listdir(base_dir)):
+        customtags_dir = os.path.join(base_dir, d)
+        if not os.path.isdir(customtags_dir) or not d.startswith("customtags"):
+            continue
+        ct_files = []
+        for root, _, files in os.walk(customtags_dir):
+            for file in files:
+                if not file.endswith(".cfm"):
+                    continue
+                abs_path = os.path.join(root, file)
+                rel_path = os.path.relpath(abs_path, base_dir).replace(os.sep, "/")
+                ct_files.append((abs_path, rel_path))
+        ct_files.sort()
+        for local_ct, remote_rel in ct_files:
+            rds_target = f"{args.rds.rstrip('/')}/{remote_rel}"
+            remote_dir = os.path.dirname(remote_rel)
+            if remote_dir and remote_dir != ".":
+                mkdir_cmd = ["cfrds", "mkdir", f"{args.rds.rstrip('/')}/{remote_dir}"]
+                if args.verbose:
+                    print(f"[RDS mkdir] Running: {' '.join(mkdir_cmd)}")
+                subprocess.run(mkdir_cmd, capture_output=True)
+            if args.verbose:
+                print(f"[RDS Upload ct] {local_ct} -> {rds_target}")
+            try:
+                subprocess.run(["cfrds", "upload", local_ct, rds_target], capture_output=True, check=True)
+                uploaded_lib_files.append(rds_target)
+            except subprocess.CalledProcessError as e:
+                print_colored(f"  [ERROR] Failed to upload custom tag file {local_ct}.", COLOR_RED, sys.stderr)
     # If base_dir contains Application.cfc or Application.cfm, upload them to RDS root
     for app_file in ["Application.cfc", "Application.cfm"]:
         local_app = os.path.join(base_dir, app_file)

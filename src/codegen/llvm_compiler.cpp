@@ -137,6 +137,15 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cf_exit_loop", reinterpret_cast<void*>(cfml::cf_exit_loop));
     llvm::sys::DynamicLibrary::AddSymbol("cf_exit_invalid", reinterpret_cast<void*>(cfml::cf_exit_invalid));
     llvm::sys::DynamicLibrary::AddSymbol("cf_exit_classify", reinterpret_cast<void*>(cfml::cf_exit_classify));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_begin", reinterpret_cast<void*>(cfml::cf_custom_tag_begin));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_end_mode", reinterpret_cast<void*>(cfml::cf_custom_tag_end_mode));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_finish", reinterpret_cast<void*>(cfml::cf_custom_tag_finish));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_should_loop", reinterpret_cast<void*>(cfml::cf_custom_tag_should_loop));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_should_skip_body", reinterpret_cast<void*>(cfml::cf_custom_tag_should_skip_body));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_mark_content_changed", reinterpret_cast<void*>(cfml::cf_custom_tag_mark_content_changed));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_module_path", reinterpret_cast<void*>(cfml::cf_custom_tag_module_path));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_merge_attributecollection", reinterpret_cast<void*>(cfml::cf_custom_tag_merge_attributecollection));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_custom_tag_invoke", reinterpret_cast<void*>(cfml::cf_custom_tag_invoke));
 
     // Itanium C++ exception personality used by all JIT functions' landing pads.
     // Registered via DynamicLibrary so MCJIT can resolve it at JIT time. Resolved
@@ -886,6 +895,7 @@ template_fn llvm_codegen::compile_parsed(parser &parse, const char *name, bool p
     // The slots are per-module allocas in this template's main function, so
     // state must not leak from a previous template compiled on this thread.
     g_varFastSlots.clear();
+    g_importPrefixes.clear();
 
     // Resolve line numbers against this parser's line map for the whole compile.
     TextparserHandleGuard handleGuard(parse.handle());

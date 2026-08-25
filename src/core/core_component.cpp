@@ -1328,16 +1328,11 @@ void cf_import_path(const cfvariant *path)
     if (p.constData() && p.constData()[0]) g_importPaths.push_back(p.constData());
 }
 
-// <cfimport taglib/prefix> and <cfmodule>/<cfassociate> need the custom-tag
-// runtime, which this engine does not implement. They throw a catchable
-// Application error (per AGENTS.md, an unimplementable construct throws a
-// runtime exception with a corresponding message).
+// <cfimport taglib/prefix> is processed statically at compile time.
 void cf_import_taglib(const cfvariant *taglib, const cfvariant *prefix)
 {
     (void)taglib;
     (void)prefix;
-    throw webstrada::exception("Application", "cfimport with a taglib/prefix is not supported.",
-        "Custom tags are not implemented in this engine.");
 }
 
 void cf_cfmodule(const cfvariant *templateAttr, const cfvariant *nameAttr,
@@ -1352,10 +1347,45 @@ void cf_cfmodule(const cfvariant *templateAttr, const cfvariant *nameAttr,
 
 void cf_cfassociate(const cfvariant *basetag, const cfvariant *datacollection)
 {
-    (void)basetag;
-    (void)datacollection;
-    throw webstrada::exception("Application", "cfassociate is not supported.",
-        "Custom tags are not implemented in this engine.");
+    if (g_customTagStack.empty()) {
+        throw webstrada::exception("cfassociate", "cfassociate can be used only inside a custom tag.");
+    }
+    if (!basetag || basetag->m_type == cfvariant::Null) {
+        throw webstrada::exception("cfassociate", "The BASETAG attribute is required.");
+    }
+    std::string base = const_cast<cfvariant*>(basetag)->toString().constData();
+    std::string dc = (datacollection && datacollection->m_type != cfvariant::Null)
+        ? const_cast<cfvariant*>(datacollection)->toString().constData() : "AssocAttribs";
+
+    // When the current tag IS the base tag, skip self and target the next outer
+    // instance (CF's AssociateTag uses instance 2).
+    CustomTagCallCtx &cur = g_customTagStack.back();
+    const std::string &callerName = cur.templateName;
+    int instance = (strcasecmp(base.c_str(), callerName.c_str()) == 0) ? 2 : 1;
+
+    int currentInstance = 0;
+    CustomTagCallCtx *baseCtx = nullptr;
+    for (auto it = g_customTagStack.rbegin(); it != g_customTagStack.rend(); ++it) {
+        const std::string &tmpl = it->templateName;
+        bool match = tmpl.empty() ? (it->tagName == base)
+                                  : (strcasecmp(tmpl.c_str(), base.c_str()) == 0);
+        if (match) {
+            currentInstance++;
+            if (currentInstance == instance) {
+                baseCtx = &(*it);
+                break;
+            }
+        }
+    }
+    if (!baseCtx) {
+        throw webstrada::exception("cfassociate", ("The base tag " + base + " was not found in ancestor custom tags.").c_str());
+    }
+
+    // Append this tag's attributes to the base tag's thisTag.<datacollection>
+    // array (CF's AssociateTag.doStartTag).
+    cfvariant &arr = baseCtx->thisTag.set(dc.c_str());
+    if (arr.m_type != cfvariant::Array) arr.set_type(cfvariant::Array);
+    arr.insert(cur.attributes);
 }
 
 // GetComponentMetaData(obj): the component's introspection struct (name, path,
