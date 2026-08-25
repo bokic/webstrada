@@ -784,9 +784,19 @@ size_t compile_custom_tag_statement(
     cfg.attrsVal = attrsVal;
     cfg.isSelfClosing = startText.endsWith("/>");
 
-    std::string openPattern = "<" + prefix + ":" + tagName;
+    // Adobe CF also supports the legacy direct custom-tag spelling
+    // <cf_name> (the template is name.cfm).  It has no colon, so its paired
+    // tag pattern is different from the imported-prefix form.
+    std::string openPattern;
+    std::string closePattern;
+    if (prefix == "cf_") {
+        openPattern = "<cf_" + tagName;
+        closePattern = "</cf_" + tagName;
+    } else {
+        openPattern = "<" + prefix + ":" + tagName;
+        closePattern = "</" + prefix + ":" + tagName;
+    }
     for (auto &c : openPattern) c = tolower(c);
-    std::string closePattern = "</" + prefix + ":" + tagName;
     for (auto &c : closePattern) c = tolower(c);
 
     return compile_custom_tag_invoke_ir(tokens, start, openPattern, closePattern, cfg,

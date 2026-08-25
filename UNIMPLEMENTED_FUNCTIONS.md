@@ -18,5 +18,10 @@ Total: 161 functions (24.17% of 666) that are still unimplemented and throw the 
 | **REST** | 3 | 1.79% | RestDeleteApplication, RestInitApplication, RestSetResponse |
 
 Notes:
+* The implemented date mutators (`SetYear`, `SetMonth`, `SetDay`, `SetHour`,
+  `SetMinute`, and `SetSecond`) retain their two-argument built-in behavior at
+  page level, while bare calls with the same names inside component methods
+  resolve the component method first (see `ComponentTest.BareDateMutatorNameResolvesComponentMethod`).
 * InvokeCFClientFunction is **not a ColdFusion 2025 function** — CF reports `Variable INVOKECFCLIENTFUNCTION is undefined.`, which the engine reproduces (see fn_ajax.cpp).
 * The **cflogin model** functions (GetAuthUser, GetUserRoles, IsUserLoggedIn, IsUserInRole, IsUserInAnyRole) were implemented on 2026-08-11 with the `<cflogin>`/`<cfloginuser>`/`<cflogout>` tags (see PROGRESS.md).
+Implementation note: direct custom-tag syntax (`<cf_name>`) is a compiler/tag feature and adds no CFML function.

@@ -3985,6 +3985,33 @@ TEST_F(ComponentTest, CreateObjectAndInit) {
     EXPECT_EQ(out.equals("Alice|human|YES|YES"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, BareDateMutatorNameResolvesComponentMethod) {
+    // Date mutators are also built-in functions. A bare call from a CFC
+    // method must resolve the component method first, as Adobe ColdFusion
+    // does; unconditional built-in codegen caused a two-argument arity error.
+    string out = runCfc({
+        {"datearchive.cfc",
+         "component {\n"
+         "  this.year = \"unset\";\n"
+         "  this.month = \"unset\";\n"
+         "  this.day = \"unset\";\n"
+         "  function init(year, month, day) {\n"
+         "    setYear(arguments.year);\n"
+         "    setMonth(arguments.month);\n"
+         "    setDay(arguments.day);\n"
+         "    return this;\n"
+         "  }\n"
+         "  function setYear(value) { this.year = \"Y\" & value; }\n"
+         "  function setMonth(value) { this.month = \"M\" & value; }\n"
+         "  function setDay(value) { this.day = \"D\" & value; }\n"
+         "}\n"},
+        {"main.cfm",
+         "<cfset d = new datearchive(2026, 8, 25)>"
+         "<cfoutput>#d.year#|#d.month#|#d.day#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("Y2026|M8|D25"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, CfloopIndexScopesToLocalVarInMethod) {
     // A var-declared <cfloop> index inside a component method must be written
     // to the function's local scope (the `variables` scope is the instance
@@ -4936,6 +4963,23 @@ TEST_F(ComponentTest, CfmoduleInvokesCustomTag) {
          "<cfmodule template=\"foo.cfm\" nm=\"X\">Hello</cfmodule><cfoutput>AFTER</cfoutput>"},
     }, "main.cfm");
     EXPECT_EQ(out.equals("[MOD-START:X] HELLO[MOD-END:Hello] AFTER"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, DirectCfUnderscoreInvokesCustomTag) {
+    // Adobe CF's legacy direct custom-tag spelling, <cf_name>, resolves
+    // name.cfm relative to the invoking template and uses the same start/body
+    // /end lifecycle as imported custom tags.
+    string out = runCfc({
+        {"layout.cfm",
+         "<cfif thisTag.executionMode eq \"start\">"
+         "[START:<cfoutput>#attributes.title#</cfoutput>]"
+         "<cfelse>"
+         "[END:<cfoutput>#thisTag.generatedContent#</cfoutput>]"
+         "</cfif>"},
+        {"main.cfm",
+         "<cf_layout title=\"X\">BODY</cf_layout><cfoutput>|AFTER</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("[START:X]BODY[END:BODY]|AFTER"), true) << out.constData();
 }
 
 TEST_F(ComponentTest, CfassociateCollectsSubtagAttributes) {

@@ -2483,8 +2483,7 @@ llvm::Value *CompileExprAST(
         if (fname == "ATAN2" || fname == "MAX" || fname == "MIN" ||
             fname == "LEFT" || fname == "RIGHT" || fname == "REPEATSTRING" ||
             fname == "COMPARE" || fname == "COMPARENOCASE" ||
-            fname == "DATECONVERT" || fname == "DATEPART" || fname == "SETDAY" || fname == "SETHOUR" ||
-            fname == "SETMINUTE" || fname == "SETMONTH" || fname == "SETSECOND" || fname == "SETYEAR" ||
+            fname == "DATECONVERT" || fname == "DATEPART" ||
             fname == "BINARYDECODE") {
             if (node->args.size() != 2) {
                 throw webstrada::exception(webstrada::string(("Function " + node->op_val + " requires exactly 2 arguments").c_str()));

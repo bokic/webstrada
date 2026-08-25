@@ -970,7 +970,12 @@ void compile_token_list(
                     "cftree", "cftreeitem", "cftry", "cfupdate", "cfwddx", "cfwebsocket", "cfwindow", "cfxml"
                 };
 
-                if (supported_tags.find(tagName) == supported_tags.end()) {
+                // Adobe CF's direct custom-tag syntax is <cf_name>.  Unlike
+                // <cflayout>, the underscore makes this a custom tag name;
+                // the runtime resolves name.cfm relative to the caller.
+                bool directCustomTag = tagName.size() > 3 &&
+                    tagName.rfind("cf_", 0) == 0;
+                if (!directCustomTag && supported_tags.find(tagName) == supported_tags.end()) {
                     if (standard_tags.find(tagName) != standard_tags.end()) {
                         throw webstrada::exception(("Tag " + tagName + " is not implemented").c_str());
                     } else {
@@ -4388,6 +4393,18 @@ void compile_token_list(
                         // <prefix:tag> as literal text in the output (its parser
                         // only recognizes imported prefixes as tags).
                         llvm_WriteOutput(module, builder, out, cfm_text + token.position, token.len);
+                    }
+                } else if (lowercase(rawTagName).rfind("cf_", 0) == 0 && rawTagName.size() > 3) {
+                    // Direct custom tag: <cf_name> maps to name.cfm in the
+                    // same custom-tag search context used by prefixed tags.
+                    std::string customTagName = rawTagName.substr(3);
+                    index = compile_custom_tag_statement(tokens, index, "cf_", customTagName, ".",
+                                                         context, module, builder, mainfunc,
+                                                         out, ws, cgi, server, cookie, application, session,
+                                                         url, form, variables, cfm_text, cfm_text_size, loopStack) - 1;
+                    pos = token.position + token.len;
+                    if (index < tokens.size()) {
+                        pos = tokens[index].position + tokens[index].len;
                     }
                 } else {
                     throw webstrada::exception("compiler", "Unknown start tag: " + tokenName);

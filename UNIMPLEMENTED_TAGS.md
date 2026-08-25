@@ -1,5 +1,7 @@
 # Unimplemented CFML Tags
 
+Direct custom-tag syntax (`<cf_name>`) is implemented; this does not change the status of the separate built-in `<cflayout>` tag.
+
 Total: 89 tags (53.94% of 165) marked `❌ No` in PROGRESS.md (CFML Tags table), all of which are planned to be implemented eventually.
 
 | Category | Count | % of total | Tags |
