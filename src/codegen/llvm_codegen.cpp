@@ -4773,8 +4773,10 @@ void compile_token_list(
 
             if (loopKind == LOOP_NUMERIC && (lpIndexName.isEmpty() || lpFromExpr.isEmpty() || lpToExpr.isEmpty()))
                 throw webstrada::exception("cfloop", "Missing required attributes (from, to, index)");
-            if ((loopKind == LOOP_LIST || loopKind == LOOP_ARRAY) && lpIndexName.isEmpty())
-                throw webstrada::exception("cfloop", "cfloop list/array requires an index attribute");
+            if (loopKind == LOOP_LIST && lpIndexName.isEmpty())
+                throw webstrada::exception("cfloop", "cfloop list requires an index attribute");
+            if (loopKind == LOOP_ARRAY && lpIndexName.isEmpty() && lpItemName.isEmpty())
+                throw webstrada::exception("cfloop", "cfloop array requires an index or item attribute");
             if (loopKind == LOOP_COLLECTION && lpItemName.isEmpty())
                 throw webstrada::exception("cfloop", "cfloop collection requires an item attribute");
 
@@ -4821,9 +4823,12 @@ void compile_token_list(
                 return CompileStringExpression(module, builder, mainfunc, cgi, server, cookie, application, session, url, form, variables, ex, cfm_text);
             };
 
-            // Loop variable set each iteration: numeric/list/array use `index`,
-            // collection uses `item`.
-            string lpLoopVarName = (loopKind == LOOP_COLLECTION) ? lpItemName : lpIndexName;
+            // Array and collection loops may bind each value with `item`; list
+            // loops use `index`. An array also accepts the traditional index
+            // attribute when item is omitted.
+            string lpLoopVarName = ((loopKind == LOOP_COLLECTION ||
+                                     (loopKind == LOOP_ARRAY && !lpItemName.isEmpty()))
+                                        ? lpItemName : lpIndexName);
 
 llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getInt64Ty());
             llvm::AllocaInst *lpLenVar = nullptr;
