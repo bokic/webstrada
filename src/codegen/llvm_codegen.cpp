@@ -136,43 +136,51 @@ void emitStackCaptureOnException(llvm::Module *module, llvm::IRBuilder<> &builde
 
 // ---- definitions ----
 
+static bool isScriptTrivia(const TextParserTokenItem &token)
+{
+    return token.token_id == TextParser_cfml_ScriptLineComment ||
+           token.token_id == TextParser_cfml_ScriptBlockComment ||
+           token.token_id == TextParser_cfml_Separator;
+}
+
+static size_t nextScriptToken(const std::vector<TextParserTokenItem> &tokens, size_t index)
+{
+    while (index < tokens.size() && isScriptTrivia(tokens[index])) index++;
+    return index;
+}
+
 size_t parseFunctionDecl(const std::vector<TextParserTokenItem> &tokens, size_t start,
                                 const char *cfm_text, UdfDef &def)
 {
     def = UdfDef();
-    if (start + 1 < tokens.size() && tokens[start + 1].token_id == TextParser_cfml_Function) {
-        def.name = tokenText(tokens[start + 1], cfm_text);
+    size_t idx = nextScriptToken(tokens, start + 1);
+    if (idx < tokens.size() && tokens[idx].token_id == TextParser_cfml_Function) {
+        def.name = tokenText(tokens[idx], cfm_text);
     }
-    size_t idx = start + 2;
+    idx = nextScriptToken(tokens, idx + 1);
     if (idx < tokens.size() && tokens[idx].token_id == TextParser_cfml_Parenthesis) {
         parseParamList(tokens[idx], cfm_text, def.paramNames, def.paramTypes, def.paramDefaults);
-        idx++;
+        idx = nextScriptToken(tokens, idx + 1);
     }
     // Attributes: returntype="numeric", output="false", ... as Variable =
     // DoubleString triples between the parens and the body.
     while (idx + 2 < tokens.size() &&
            tokens[idx].token_id == TextParser_cfml_Variable &&
-           isOperatorToken(tokens[idx + 1].token_id)) {
+           nextScriptToken(tokens, idx + 1) + 1 < tokens.size() &&
+           isOperatorToken(tokens[nextScriptToken(tokens, idx + 1)].token_id)) {
+        size_t op = nextScriptToken(tokens, idx + 1);
+        size_t value = nextScriptToken(tokens, op + 1);
         std::string attrName = tokenText(tokens[idx], cfm_text);
         std::string attrUpper;
         for (auto &c : attrName) attrUpper.push_back((char)toupper((unsigned char)c));
-        if (attrUpper == "RETURNTYPE" && tokens[idx + 2].token_id == TextParser_cfml_DoubleString) {
-            std::string v = tokenText(tokens[idx + 2], cfm_text);
+        if (attrUpper == "RETURNTYPE" && value < tokens.size() && tokens[value].token_id == TextParser_cfml_DoubleString) {
+            std::string v = tokenText(tokens[value], cfm_text);
             if (v.size() >= 2) v = v.substr(1, v.size() - 2);
             def.returnType = v;
         }
-        idx += 3;
-        while (idx < tokens.size() &&
-               (tokens[idx].token_id == TextParser_cfml_ScriptLineComment ||
-                tokens[idx].token_id == TextParser_cfml_ScriptBlockComment)) {
-            idx++;
-        }
+        idx = nextScriptToken(tokens, value + 1);
     }
-    while (idx < tokens.size() &&
-           (tokens[idx].token_id == TextParser_cfml_ScriptLineComment ||
-            tokens[idx].token_id == TextParser_cfml_ScriptBlockComment)) {
-        idx++;
-    }
+    idx = nextScriptToken(tokens, idx);
     if (idx < tokens.size() && tokens[idx].token_id == TextParser_cfml_CodeBlock) {
         const auto &cb = tokens[idx];
         if (!cb.children.empty() && cb.children[0].token_id == TextParser_cfml_ScriptExpression) {
@@ -224,16 +232,18 @@ void collectFunctionDecls(const std::vector<TextParserTokenItem> &tokens,
     while (i < tokens.size()) {
         const auto &t = tokens[i];
         if (t.token_id == TextParser_cfml_Keyword && kwTextIs(t, cfm_text, "function")) {
-            if (i + 1 < tokens.size() && tokens[i + 1].token_id == TextParser_cfml_Function) {
+            size_t name = nextScriptToken(tokens, i + 1);
+            if (name < tokens.size() && tokens[name].token_id == TextParser_cfml_Function) {
                 UdfDef def;
                 i = parseFunctionDecl(tokens, i, cfm_text, def);
                 out.push_back(std::move(def));
                 continue;
             }
-            if (i + 2 < tokens.size() &&
-                tokens[i + 1].token_id == TextParser_cfml_Parenthesis &&
-                tokens[i + 2].token_id == TextParser_cfml_CodeBlock) {
-                i += 3; // closure header + body: closure-scoped, skip
+            size_t next = nextScriptToken(tokens, i + 1);
+            size_t afterName = nextScriptToken(tokens, next + 1);
+            if (next < tokens.size() && tokens[next].token_id == TextParser_cfml_Parenthesis &&
+                afterName < tokens.size() && tokens[afterName].token_id == TextParser_cfml_CodeBlock) {
+                i = afterName + 1; // closure header + body: closure-scoped, skip
                 continue;
             }
             i++;

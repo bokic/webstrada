@@ -606,6 +606,11 @@ ComponentInfo *cf_component_load(const char *path)
         throw webstrada::exception("component",
             webstrada::string(("Could not resolve the component " + std::string(path) + ".").c_str()));
     }
+    if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+        fprintf(stderr, "[WebStrada][DebugComponent] component_load requested='%s' resolvedBeforeExt='%s' currentPath='%s' webRoot='%s'\n",
+                path, resolved.c_str(), rt->currentPath.c_str(), rt->webRoot.c_str());
+        fflush(stderr);
+    }
     // A bare component name ("comp1", "foo.bar.comp") has no extension; CF
     // appends .cfc.
     if (!(resolved.size() >= 4 && resolved.compare(resolved.size() - 4, 4, ".cfc") == 0) &&
@@ -613,6 +618,11 @@ ComponentInfo *cf_component_load(const char *path)
         resolved += ".cfc";
     }
     ComponentInfo *info = rt->componentLoader(resolved.c_str(), rt->componentLoaderOpaque);
+    if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+        fprintf(stderr, "[WebStrada][DebugComponent] component_loader path='%s' result=%s\n",
+                resolved.c_str(), info ? "loaded" : "missing");
+        fflush(stderr);
+    }
     if (!info && !g_importPaths.empty()) {
         // <cfimport path="..."> fallback: a bare component name that missed the
         // plain relative resolution is tried against the registered import

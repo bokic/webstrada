@@ -2671,7 +2671,7 @@ cfvariant evaluateExpr(string &out, const string &expr,
         if (fname.equals("STRUCTAPPEND")) {
             if (call.args.size() < 2 || call.args.size() > 3) throw webstrada::exception("StructAppend requires 2 or 3 arguments");
             cfvariant *var = lookupVarWritable(call.args[0].constData(), cgi, server, cookie, application, session, url, form, variables);
-            if (!var || var->m_type != cfvariant::Struct) throw webstrada::exception("StructAppend: First argument must be a struct variable");
+            if (!var || (var->m_type != cfvariant::Struct && var->m_type != cfvariant::Component)) throw webstrada::exception("StructAppend: First argument must be a struct variable");
             cfvariant a1 = evaluateExpr(out, call.args[1], cgi, server, cookie, application, session, url, form, variables);
             cfvariant a2;
             if (call.args.size() == 3) a2 = evaluateExpr(out, call.args[2], cgi, server, cookie, application, session, url, form, variables);

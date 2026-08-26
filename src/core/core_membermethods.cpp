@@ -1691,7 +1691,7 @@ static cfvariant *cf_call_builtin_dispatch(
     }
     if (fname.equals("STRUCTAPPEND")) {
         if (arg_count < 2 || arg_count > 3) throw webstrada::exception("StructAppend requires 2 or 3 arguments");
-        if (!mut_arg0 || mut_arg0->m_type != cfvariant::Struct) throw webstrada::exception("StructAppend: First argument must be a struct");
+        if (!mut_arg0 || (mut_arg0->m_type != cfvariant::Struct && mut_arg0->m_type != cfvariant::Component)) throw webstrada::exception("StructAppend: First argument must be a struct");
         return cf_structappend(mut_arg0, args[1], arg_count == 3 ? args[2] : nullptr);
     }
     if (fname.equals("STRUCTCOPY")) {

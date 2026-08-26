@@ -7,6 +7,10 @@ changed.
 Compatibility note (2026-08-26): script-form methods nested in tag-based CFCs
 are now registered for component dispatch; no CFML function status changed.
 
+Compatibility note (2026-08-26): script-form method declarations in tag-based
+CFCs are removed from the executable `<cfscript>` stream after hoisting; this
+is a code-generation fix and does not change the function implementation list.
+
 Compatibility note (2026-08-26): dotted assignments in tag-based component
 methods now resolve and persist through the live `this` scope; no CFML function
 status changed.

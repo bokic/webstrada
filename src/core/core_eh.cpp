@@ -463,6 +463,13 @@ webstrada::string listItemAt(const webstrada::string &s, const webstrada::string
 long long cfml::cfforInLength(const webstrada::cfvariant *coll, const webstrada::cfvariant *delims)
 {
     if (!coll) return 0;
+    if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+        fprintf(stderr, "[WebStrada][DebugComponent] for_in_length collectionType=%d arraySize=%zu structSize=%zu\n",
+                static_cast<int>(coll->m_type),
+                coll->m_array ? coll->m_array->size() : 0,
+                coll->m_struct ? coll->m_struct->size() : 0);
+        fflush(stderr);
+    }
     webstrada::string dels = (delims && delims->m_type == webstrada::cfvariant::String && delims->m_str)
         ? *delims->m_str
         : webstrada::string(",");
@@ -496,6 +503,20 @@ cfvariant *cfml::cfforInItem(const webstrada::cfvariant *coll, long long index, 
             if (!coll->m_array) throw webstrada::exception("Cannot iterate over a null array");
             if (index < 1 || index > static_cast<long long>(coll->m_array->size()))
                 throw webstrada::exception("Array index out of bounds");
+            if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+                const cfvariant &item = coll->m_array->at(static_cast<size_t>(index - 1));
+                fprintf(stderr, "[WebStrada][DebugComponent] for_in_item index=%lld itemType=%d itemStructKeys=",
+                        index, static_cast<int>(item.m_type));
+                if (item.m_struct) {
+                    bool first = true;
+                    for (const auto &entry : *item.m_struct) {
+                        fprintf(stderr, "%s%s", first ? "" : ",", entry.first.constData() ? entry.first.constData() : "");
+                        first = false;
+                    }
+                }
+                fprintf(stderr, "\n");
+                fflush(stderr);
+            }
             return &coll->m_array->at(static_cast<size_t>(index - 1));
         }
         case webstrada::cfvariant::Struct: {
@@ -813,11 +834,39 @@ cfvariant *cfml::cfvariant_get_member(
         msg.append(".");
         throw webstrada::exception(msg);
     }
+    if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+        fprintf(stderr, "[WebStrada][DebugComponent] member_get base='%s' key='%s' valueType=%d structKeys=",
+                name ? name : "", key ? key : "", static_cast<int>(v->m_type));
+        if (v->m_struct) {
+            bool first = true;
+            for (const auto &entry : *v->m_struct) {
+                fprintf(stderr, "%s%s", first ? "" : ",", entry.first.constData() ? entry.first.constData() : "");
+                first = false;
+            }
+        }
+        fprintf(stderr, "\n");
+        fflush(stderr);
+    }
     // Index the resolved base with the key (cfvariant_index auto-creates a
     // missing struct key, mirroring CF's read-through on an existing struct).
     cfvariant *keyVal = new cfvariant(key);
     cf_register_temp(keyVal);
-    return cfml::cfvariant_index(v, keyVal);
+    cfvariant *result = cfml::cfvariant_index(v, keyVal);
+    if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+        size_t arraySize = 0;
+        size_t structSize = 0;
+        if (result && result->m_type == cfvariant::Array && result->m_array) {
+            arraySize = result->m_array->size();
+        }
+        if (result && (result->m_type == cfvariant::Struct || result->m_type == cfvariant::Xml) && result->m_struct) {
+            structSize = result->m_struct->size();
+        }
+        fprintf(stderr, "[WebStrada][DebugComponent] member_get_result base='%s' key='%s' resultType=%d arraySize=%zu structSize=%zu\n",
+                name ? name : "", key ? key : "", result ? static_cast<int>(result->m_type) : -1,
+                arraySize, structSize);
+        fflush(stderr);
+    }
+    return result;
 }
 
 cfvariant *cfml::cfvariant_bare_identifier(

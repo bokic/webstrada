@@ -37,6 +37,19 @@ namespace webstrada {
 
 // ---- forward declarations ----
 
+static bool isScriptTriviaForDeclaration(const TextParserTokenItem &token)
+{
+    return token.token_id == TextParser_cfml_ScriptLineComment ||
+           token.token_id == TextParser_cfml_ScriptBlockComment ||
+           token.token_id == TextParser_cfml_Separator;
+}
+
+static size_t nextDeclarationToken(const std::vector<TextParserTokenItem> &tokens, size_t index)
+{
+    while (index < tokens.size() && isScriptTriviaForDeclaration(tokens[index])) index++;
+    return index;
+}
+
 static size_t compile_script_statement(
     const std::vector<TextParserTokenItem> &tokens,
     size_t start,
@@ -452,11 +465,35 @@ static size_t compile_script_for(
         if (inIdx == innerTokens.size()) {
             throw webstrada::exception("Invalid for loop: expected ';' or 'in' in the loop header");
         }
-        if (inIdx == 0 || inIdx + 1 >= innerTokens.size()) {
+        // Script for-in permits an optional declaration keyword, e.g.
+        // `for (var panel in items)`. The declaration is not the iteration
+        // variable; otherwise the generated assignment binds `var` and the
+        // body lookup of `panel` fails with "Element ... is undefined in
+        // PANEL" (seen in Mango 2.1 AdminUtil.cfc).
+        size_t itemIdx = 0;
+        bool declaredLocal = false;
+        if (itemIdx < inIdx) {
+            webstrada::string first(cfm_text + innerTokens[itemIdx].position, innerTokens[itemIdx].len);
+            if (first.equals("var") || first.equals("local")) {
+                declaredLocal = true;
+                itemIdx++;
+            }
+        }
+        if (itemIdx >= inIdx || inIdx + 1 >= innerTokens.size()) {
             throw webstrada::exception("Invalid for-in loop");
         }
 
-        webstrada::string itemName(cfm_text + innerTokens[0].position, innerTokens[0].len);
+        webstrada::string itemName(cfm_text + innerTokens[itemIdx].position, innerTokens[itemIdx].len);
+        if (declaredLocal) {
+            auto *fMarkLocal = module->getFunction("cf_udf_mark_local");
+            if (!fMarkLocal) {
+                fMarkLocal = llvm::Function::Create(
+                    llvm::FunctionType::get(builder.getVoidTy(), {builder.getPtrTy()}, false),
+                    llvm::Function::InternalLinkage, "cf_udf_mark_local", module);
+            }
+            emitCall(builder, fMarkLocal,
+                     {builder.CreateGlobalString(llvm::StringRef(itemName.constData(), itemName.length()), "", 0, module, true)});
+        }
         std::vector<TextParserTokenItem> collToks(innerTokens.begin() + inIdx + 1, innerTokens.end());
         TextParserTokenItem collTok;
         collTok.token_id = TextParser_cfml_Expression;
@@ -1585,6 +1622,43 @@ void compile_script_expression(
     size_t i = 0;
     while (i < tokens.size()) {
         const auto &token = tokens[i];
+
+        // Function declarations in a <cfscript> block are hoisted and compiled
+        // as UDFs by the component/template compiler. They are declarations,
+        // not executable expressions in this stream. This is especially
+        // important for tag-based CFCs, where the surrounding <cfscript> pair
+        // is also compiled as ordinary page code.
+        size_t functionKeyword = i;
+        if (token.token_id == TextParser_cfml_Keyword &&
+            string(cfm_text + token.position, token.len).equals("function")) {
+            // already at the declaration keyword
+        } else if (token.token_id == TextParser_cfml_Variable) {
+            // Access/return-type modifiers are emitted as Variable tokens
+            // (for example `private function` and `public string function`).
+            size_t probe = i;
+            for (int count = 0; count < 6; count++) {
+                probe = nextDeclarationToken(tokens, probe + 1);
+                if (probe >= tokens.size()) break;
+                if (tokens[probe].token_id == TextParser_cfml_Keyword &&
+                    string(cfm_text + tokens[probe].position, tokens[probe].len).equals("function")) {
+                    functionKeyword = probe;
+                    break;
+                }
+                if (tokens[probe].token_id != TextParser_cfml_Variable) break;
+            }
+        }
+        if (functionKeyword < tokens.size() &&
+            tokens[functionKeyword].token_id == TextParser_cfml_Keyword) {
+            size_t name = nextDeclarationToken(tokens, functionKeyword + 1);
+            if (name < tokens.size() && tokens[name].token_id == TextParser_cfml_Function) {
+                UdfDef declaration;
+                size_t after = parseFunctionDecl(tokens, functionKeyword, cfm_text, declaration);
+                if (after > i) {
+                    i = after;
+                    continue;
+                }
+            }
+        }
 
         if (token.token_id == TextParser_cfml_ScriptLineComment ||
             token.token_id == TextParser_cfml_ScriptBlockComment ||

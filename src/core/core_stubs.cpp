@@ -74,11 +74,24 @@ cfvariant *cfml::cf_createobject(const cfvariant **args, int argc,
     t.toLower();
     if (t.equals("component")) {
         string path = const_cast<cfvariant*>(args[1])->toString();
+        if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+            IncludeRuntime *rt = cfml::include_context();
+            fprintf(stderr, "[WebStrada][DebugComponent] CreateObject type=component requested='%s' currentPath='%s' webRoot='%s'\n",
+                    path.constData() ? path.constData() : "",
+                    rt ? rt->currentPath.c_str() : "",
+                    rt ? rt->webRoot.c_str() : "");
+            fflush(stderr);
+        }
         ComponentInfo *info = cf_component_load(path.constData());
         if (!info) {
             std::string p = path.constData() ? path.constData() : "";
             throw webstrada::exception("component",
                 webstrada::string(("The component " + p + " could not be found.").c_str()));
+        }
+        if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+            fprintf(stderr, "[WebStrada][DebugComponent] CreateObject loaded cfcPath='%s' fullName='%s' displayPath='%s'\n",
+                    info->cfcPath.c_str(), info->fullName.c_str(), info->displayPath.c_str());
+            fflush(stderr);
         }
         // The loaded info is retained; release it even when instantiation throws
         // (e.g. instantiating an interface), so the definition is not leaked.

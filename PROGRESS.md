@@ -14,6 +14,12 @@ unqualified `structBlend()` call from `Mango.cfc`.
 Regression coverage: `ComponentTest.TagComponentScriptFunctionIsComponentMethod`
 and `tests/cfm/component_script_method_test/`.
 
+The tag-based CFC path also skips hoisted script declarations when compiling
+the surrounding `<cfscript>` block as executable code. Access and return-type
+modifiers such as `private function` and `public string function` are handled,
+so each declaration is compiled once as a component method. Regression
+coverage is in `tests/cfm/component_script_private_method_test/`.
+
 Compatibility note (2026-08-26): dotted assignments in tag-based component
 methods now flatten parser-glued names such as `this.settings` before walking
 the live component `this` scope. Missing intermediate members are created as
