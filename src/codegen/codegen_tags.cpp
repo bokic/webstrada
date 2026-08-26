@@ -479,6 +479,107 @@ size_t compile_tag_savecontent_statement(
     return nextIdx;
 }
 
+size_t compile_script_savecontent_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack)
+{
+    // Script syntax is `savecontent variable="name" { ... }`.  The parser
+    // represents this as: savecontent, variable, =, value, CodeBlock.
+    auto skipTrivia = [&](size_t p) {
+        while (p < tokens.size() &&
+               (tokens[p].token_id == TextParser_cfml_ScriptLineComment ||
+                tokens[p].token_id == TextParser_cfml_ScriptBlockComment ||
+                tokens[p].token_id == TextParser_cfml_Separator)) p++;
+        return p;
+    };
+    size_t i = start + 1;
+    i = skipTrivia(i);
+    if (i >= tokens.size() || tokens[i].token_id != TextParser_cfml_Variable ||
+        lowercase(tokenText(tokens[i], cfm_text)) != "variable") {
+        throw webstrada::exception("The savecontent statement requires a variable attribute.");
+    }
+    i++;
+    i = skipTrivia(i);
+    if (i >= tokens.size() || !isOperatorToken(tokens[i].token_id)) {
+        throw webstrada::exception("The savecontent statement requires variable=.");
+    }
+    i++;
+    i = skipTrivia(i);
+    if (i >= tokens.size()) throw webstrada::exception("The savecontent statement requires a variable value.");
+    std::vector<TextParserTokenItem> varTokens{tokens[i]};
+    i++;
+    i = skipTrivia(i);
+    if (i >= tokens.size() || tokens[i].token_id != TextParser_cfml_CodeBlock) {
+        throw webstrada::exception("The savecontent statement requires a body.");
+    }
+    const auto &codeBlock = tokens[i];
+    size_t next = i + 1;
+
+    std::unique_ptr<ExprAST> varAst;
+    if (varTokens.size() == 1 &&
+        (varTokens[0].token_id == TextParser_cfml_DoubleString ||
+         varTokens[0].token_id == TextParser_cfml_SingleString)) {
+        varAst = std::make_unique<ExprAST>();
+        varAst->type = ExprAST::LiteralString;
+        varAst->token = varTokens[0];
+    } else {
+        varAst = parseTokensToAST(varTokens, cfm_text);
+    }
+    llvm::Value *varVal = CompileExprAST(module, builder, mainfunc, varAst,
+        cgi, server, cookie, application, session, url, form, variables, cfm_text);
+
+    auto *fValidate = getOrCreateHelper(module, builder, "cf_savecontent_validate", builder.getVoidTy(), {builder.getPtrTy()});
+    auto *fBegin = getOrCreateHelper(module, builder, "cf_savecontent_begin", builder.getPtrTy(), {builder.getPtrTy()});
+    auto *fEnd = getOrCreateHelper(module, builder, "cf_savecontent_end", builder.getVoidTy(),
+        {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+         builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+         builder.getPtrTy(), builder.getPtrTy()});
+    auto *fThrow = getOrCreateHelper(module, builder, "cf_eh_throw", builder.getVoidTy(), {builder.getPtrTy()});
+
+    emitCall(builder, fValidate, {varVal});
+    llvm::Value *capture = emitCall(builder, fBegin, {out});
+    std::vector<llvm::Value*> assignArgs = {capture, cgi, server, cookie, application,
+                                             session, url, form, variables, varVal};
+
+    auto compileBody = [&]() {
+        const std::vector<TextParserTokenItem> *body = &codeBlock.children;
+        if (body->size() == 1 && (*body)[0].token_id == TextParser_cfml_ScriptExpression) {
+            body = &(*body)[0].children;
+        }
+        compile_script_expression(*body, context, module, builder, mainfunc, capture,
+            cgi, server, cookie, application, session, url, form, variables,
+            cfm_text, cfm_text_size, loopStack);
+    };
+
+    emit_try_catch_codegen(context, module, builder, mainfunc, out,
+        cgi, server, cookie, application, session, url, form, variables,
+        cfm_text, cfm_text_size, loopStack, {{"any", ""}}, false,
+        compileBody,
+        [&](size_t, llvm::Value *caught) {
+            emitCall(builder, fEnd, assignArgs);
+            emitCall(builder, fThrow, {caught});
+            builder.CreateUnreachable();
+        }, []() {});
+    emitCall(builder, fEnd, assignArgs);
+    return next;
+}
+
 struct CustomTagInvokeCfg {
     llvm::Value *tagPathVar = nullptr;   // runtime cfvariant path (overrides tagPathStr)
     std::string tagPathStr;              // static tag template path

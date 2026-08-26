@@ -445,6 +445,27 @@ size_t compile_tag_savecontent_statement(
     size_t cfm_text_size,
     std::vector<LoopInfo> &loopStack);
 
+// Script form: savecontent variable="name" { ... }.
+size_t compile_script_savecontent_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack);
+
 // Custom tag invocation: single tag (<prefix:tag />) or paired tag (<prefix:tag>...</prefix:tag>).
 size_t compile_custom_tag_statement(
     const std::vector<TextParserTokenItem> &tokens,

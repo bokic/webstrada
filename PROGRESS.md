@@ -10,15 +10,21 @@ Compatibility note (2026-08-27): `<cfmailpart>` and `<cfmailparam>` are also
 accepted as non-delivering logging stubs; nested mail content is consumed
 without page output or SMTP/file-attachment work.
 
+Compatibility note (2026-08-27): Adobe script-form `savecontent variable="..." {
+... }` and `include "...";` statements are compiled as statements rather
+than being sent to the expression parser. This fixes loading script CFCs such
+as Mango's sampledash plugin; verified in `tests/cfm/script_savecontent_test.cfm`.
+
 Compatibility note (2026-08-26): quoted string keys in named function
 arguments (for example `'emailto' = ''`) are accepted by the JIT and
 interpreter, matching Adobe ColdFusion. This fixes plugin CFC loading for
 Mango_2_1; verified in `tests/cfm/quoted_named_argument_test.cfm`.
 
-Compatibility note (2026-08-26): Mango_2_1 setup and import author-creation
-calls now place the role in argument 7 and pass `active=true` in argument 8;
-the previous calls passed the role string to the Boolean parameter and stopped
-setup on Adobe ColdFusion as well.
+Compatibility note (2026-08-27): Mango_2_1 setup author creation now passes
+`password, name, email` in the order required by `AdminUtil.newAuthor`, then
+places the role in argument 7 and `active=true` in argument 8. The previous
+setup call validated the author's name as an email and stopped with “Email is
+not valid.”
 
 Compatibility note (2026-08-26): typed Boolean UDF argument conversion now
 reports Adobe ColdFusion's argument-validation message when a value cannot be

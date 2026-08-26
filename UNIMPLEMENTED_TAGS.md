@@ -8,6 +8,10 @@ Compatibility note (2026-08-27): `<cfmail>`, `<cfmailpart>`, and `<cfmailparam>`
 are accepted as non-delivering logging stubs; no SMTP, multipart, or
 attachment operation is performed.
 
+Compatibility note (2026-08-27): script-form `savecontent` and `include`
+statements are supported by the compiler; this is separate from the remaining
+tag inventory and fixes script CFC/plugin loading.
+
 | Category | Count | % of total | Tags |
 |---|---|---|---|
 | **UI/Form controls** | 29 | 17.58% | cfapplet, cfcalendar, cfcol, cfform, cfformgroup, cfformitem, cfgrid, cfgridcolumn, cfgridrow, cfgridupdate, cfinput, cflayout, cflayoutarea, cfmediaplayer, cfmenu, cfmenuitem, cfmessagebox, cfpod, cfprogressbar, cfselect, cfslider, cftable, cftextarea, cftextinput, cftooltip, cftree, cftreeitem, cfwindow, cffileupload |

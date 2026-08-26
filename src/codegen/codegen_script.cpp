@@ -1551,6 +1551,41 @@ static size_t compile_script_statement(
                                               cfm_text, cfm_text_size, loopStack);
     }
 
+    // Script equivalents of <cfsavecontent> and <cfinclude>.  These are
+    // statements in Adobe CFML, even though textparser represents their
+    // keywords as ordinary Variable tokens.  Sending them to the expression
+    // parser produces the misleading "Unexpected tokens in expression" error
+    // seen while loading Mango's sampledash plugin.
+    if (token.token_id == TextParser_cfml_Variable) {
+        std::string keyword = tokenText(token, cfm_text);
+        for (auto &c : keyword) c = (char)tolower((unsigned char)c);
+        if (keyword == "savecontent") {
+            return compile_script_savecontent_statement(tokens, start, context, module, builder, mainfunc,
+                out, cgi, server, cookie, application, session, url, form, variables,
+                cfm_text, cfm_text_size, loopStack);
+        }
+        if (keyword == "include" && start + 1 < tokens.size() &&
+            tokens[start + 1].token_id == TextParser_cfml_DoubleString) {
+            auto *fString = getOrCreateHelper(module, builder, "cfvariant_create_string",
+                                               builder.getPtrTy(), {builder.getPtrTy()});
+            auto *fInclude = getOrCreateHelper(module, builder, "cf_include", builder.getVoidTy(),
+                {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+                 builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(),
+                 builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()});
+            const auto &pathToken = tokens[start + 1];
+            llvm::Value *path = emitCall(builder, fString,
+                {builder.CreateGlobalString(llvm::StringRef(tokenText(pathToken, cfm_text)), "", 0, module, true)});
+            auto *nullPtr = llvm::ConstantPointerNull::get(builder.getPtrTy());
+            emitCall(builder, fInclude, {out, cgi, server, cookie, application, session,
+                                         url, form, variables,
+                                         g_currentIncludeLocalScope ? g_currentIncludeLocalScope : nullPtr,
+                                         path, nullPtr});
+            size_t after = start + 2;
+            if (after < tokens.size() && tokens[after].token_id == TextParser_cfml_ExpressionEnd) after++;
+            return after;
+        }
+    }
+
     std::vector<TextParserTokenItem> stmtTokens;
     size_t i = start;
     while (i < tokens.size() && tokens[i].token_id != TextParser_cfml_ExpressionEnd) {

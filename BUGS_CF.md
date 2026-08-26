@@ -6,6 +6,13 @@ defects; the engine either cannot be byte-verified against CF for the affected c
 deliberately reproduces a CF quirk. For bugs in the engine itself see `BUGS.md`; for cosmetic
 output artifacts see `BUGS_COSMETIC.md`.
 
+## CF 2025 RDS verification host is missing the `mango2` datasource
+
+On 2026-08-27, `cfrds sql rds://admin:admin@192.168.100.10:8500/mango2 ...`
+returned `Datasource mango2 could not be found`. This prevents checking
+Mango's `system/authorization` setting row against Adobe CF until the
+ColdFusion datasource is restored or ColdFusion Server is restarted.
+
 ## CF 2021 test server cannot render the `MalformedRegularExpressionException` message
 
 The RDS host at `192.168.100.10` is missing `coldfusion/runtime/StringFunc.MalformedRegularExpressionException.properties`, so any call that throws a malformed-regex error (`REFind("(", ...)`, or ORO-rejected patterns like lookbehind `(?<=...)` / named groups / atomic `(?>` / scoped modifiers `(?i:`) aborts the HTTP response with `server-error: true` (empty body) even inside `cftry/cfcatch` — `#cfcatch.message#` itself throws. Only the `scope` and empty-regex argument errors render (their properties exist). Consequently the regex error-path verification tests (`tests/cfm/refind_re_errors_test.cfm`) cover only those two message shapes; the ORO-rejected constructs are asserted to throw via unit tests (`RegexFunctionsTest.JitRejectsOroUnsupported`) instead. The engine's own messages use ORO's verbatim strings (`Sequence (?<...) not recognized`, etc.).
