@@ -181,6 +181,7 @@ void cfdump(string &out, const cfvariant &var);
  * @param[in]  size  Number of bytes to append from @p text.
  */
 void cfwriteoutput(string &out, const char *text, size_t size);
+void cfoutputvariant(string &out, const cfvariant *value);
 
 // Whitespace management helper used by compiled templates: appends a single
 // space to `out` unless the output buffer is empty or already ends in

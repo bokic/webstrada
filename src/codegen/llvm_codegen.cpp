@@ -5261,8 +5261,20 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
         case TextParser_cfml_SharpExpression: {
             auto varName = extractVarFromSharpExpr(token, cfm_text);
             if (!varName.isEmpty()) {
-                auto keyGlobal = builder.CreateGlobalString(llvm::StringRef(varName.constData(), varName.length()), "", 0, module, true);
-                llvm_CfOutputExpr(module, builder, out, cgi, server, cookie, application, session, url, form, variables, keyGlobal);
+                if (varName.contains('(') || varName.contains('[')) {
+                    // Compile compound expressions in the current function
+                    // context so unqualified component methods (including
+                    // private methods) retain their owner component.
+                    auto value = CompileStringExpression(module, builder, mainfunc,
+                        cgi, server, cookie, application, session, url, form, variables,
+                        varName, cfm_text);
+                    auto outputVariant = getOrCreateHelper(module, builder, "cfoutputvariant",
+                        builder.getVoidTy(), {builder.getPtrTy(), builder.getPtrTy()});
+                    emitCall(builder, outputVariant, {out, value});
+                } else {
+                    auto keyGlobal = builder.CreateGlobalString(llvm::StringRef(varName.constData(), varName.length()), "", 0, module, true);
+                    llvm_CfOutputExpr(module, builder, out, cgi, server, cookie, application, session, url, form, variables, keyGlobal);
+                }
             }
             break;
         }

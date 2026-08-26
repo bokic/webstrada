@@ -2,6 +2,13 @@
 
 Get all technical info from: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusion-tags/tag-summary.html
 
+Compatibility note (2026-08-26): compound expressions in nested
+`<cfsavecontent>`/`<cfoutput>` bodies now compile in the active component-method
+context, preserving unqualified private CFC method calls. This fixes MangoBlog's
+Statistics `formatAge()` call. Regression coverage:
+`ComponentTest.PrivateMethodInsideCfsavecontent` and
+`tests/cfm/cfsavecontent_private_method_test.cfm`.
+
 Compatibility note (2026-08-26): active component/UDF local and `arguments`
 scopes now take precedence over an included template's caller-local scope;
 this fixes component calls from MangoBlog's request hook. Regression coverage:

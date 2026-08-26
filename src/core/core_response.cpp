@@ -51,6 +51,12 @@ void cfml::cfwriteoutput(webstrada::string &out, const char *text, size_t size)
     }
 }
 
+void cfml::cfoutputvariant(webstrada::string &out, const cfvariant *value)
+{
+    if (cfml::response().binary || !value) return;
+    out.append(const_cast<cfvariant *>(value)->toString());
+}
+
 void cfml::cf_whitespace_space(webstrada::string &out)
 {
     if (cfml::response().binary) return; // cfcontent file/variable: other output ignored
@@ -140,4 +146,3 @@ int64_t nowSeconds()
 {
     return static_cast<int64_t>(std::time(nullptr));
 }
-

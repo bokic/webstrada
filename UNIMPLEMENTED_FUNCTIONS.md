@@ -1,5 +1,9 @@
 # Unimplemented CFML Functions
 
+Compatibility note (2026-08-26): nested save-content output expressions now
+preserve the active component method context; this execution fix does not add
+or remove a CFML function from the unimplemented list.
+
 Compatibility note (2026-08-26): the per-worker compilation cache checks source
 modification times for all `.cfm` templates and `.cfc` components, including
 `Application.cfm`/`Application.cfc`; changed components are recompiled before

@@ -454,6 +454,19 @@ static string extractVarNameFromToken(const TextParserTokenItem &valueToken, con
 
 string extractVarFromSharpExpr(const TextParserTokenItem &sharpExpr, const char *text)
 {
+    // The complete SharpExpression source is required for compound values
+    // such as function calls. A child Variable token would otherwise reduce
+    // `formatAge(1)` to `formatAge` before cfoutputexpr evaluates it.
+    string source(text + sharpExpr.position, sharpExpr.len);
+    source = source.trimmed();
+    if (source.length() >= 2 && source.first() == '#' &&
+        source.at(source.length() - 1) == '#') {
+        source = source.mid(1, source.length() - 2).trimmed();
+    }
+    if (source.contains('(') || source.contains('[')) {
+        return source;
+    }
+
     for (auto &child : sharpExpr.children) {
         // The SharpExpression's Expression group is deleted when it wraps a
         // single child (deleteIfOnlyOneChild in cfml_definition.json), so a

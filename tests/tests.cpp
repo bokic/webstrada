@@ -4356,6 +4356,26 @@ TEST_F(ComponentTest, PrivateMethodNotCallableFromOutside) {
     EXPECT_EQ(out.equals("PRIV |S|NO"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, PrivateMethodInsideCfsavecontent) {
+    string out = runCfc({
+        {"person.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"formatAge\" returntype=\"string\" access=\"private\" output=\"false\">"
+         "<cfargument name=\"value\" required=\"true\"><cfreturn \"ok\"></cffunction>\n"
+         "  <cffunction name=\"render\" returntype=\"string\" output=\"false\">\n"
+         "    <cfset var direct = formatAge(1)>\n"
+         "    <cfset var interpolated = \"#formatAge(2)#\">\n"
+         "    <cfset var content = \"\">\n"
+         "    <cfsavecontent variable=\"content\"><cfoutput>#formatAge(3)#|#formatAge(4) & \"!\"#</cfoutput></cfsavecontent>\n"
+         "    <cfreturn direct & \"|\" & interpolated & \"|\" & content>\n"
+         "  </cffunction>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset p = new person()><cfoutput>#p.render()#</cfoutput>"},
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("ok|ok|ok|ok!"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, AbortedComponentCompileDoesNotPoisonNextCompile) {
     // A compile-time abort (here: the unimplemented <cflock> tag inside a
     // try/catch inside a method) used to skip the manual g_ehContext /

@@ -69,6 +69,7 @@ llvm_codegen::llvm_codegen()
     llvm::InitializeNativeTargetAsmParser();
 
     llvm::sys::DynamicLibrary::AddSymbol("cfwriteoutput", reinterpret_cast<void*>(cfml::cfwriteoutput));
+    llvm::sys::DynamicLibrary::AddSymbol("cfoutputvariant", reinterpret_cast<void*>(cfml::cfoutputvariant));
     llvm::sys::DynamicLibrary::AddSymbol("cf_whitespace_space", reinterpret_cast<void*>(cfml::cf_whitespace_space));
     llvm::sys::DynamicLibrary::AddSymbol("cf_silent_begin", reinterpret_cast<void*>(cfml::cf_silent_begin));
     llvm::sys::DynamicLibrary::AddSymbol("cf_silent_end", reinterpret_cast<void*>(cfml::cf_silent_end));
