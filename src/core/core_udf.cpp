@@ -420,8 +420,28 @@ cfvariant *cfml::cf_udf_coerce_arg(const cfvariant *val, const char *typeName, c
         return ret;
     }
     if (t.equals("boolean")) {
+        if (std::getenv("WEBSTRADA_DEBUG_COMPONENTS")) {
+            webstrada::string debugValue = const_cast<cfvariant*>(val)->toString();
+            fprintf(stderr, "[WebStrada][DebugComponent] boolean_coerce function='%s' argument='%s' valueType=%d value='%s'\n",
+                    funcName ? funcName : "", argName ? argName : "",
+                    static_cast<int>(val->m_type),
+                    debugValue.constData() ? debugValue.constData() : "");
+            fflush(stderr);
+        }
         auto *ret = new cfvariant(cfvariant::Boolean);
-        ret->m_bool = isTruthy(*val);
+        try {
+            ret->m_bool = isTruthy(*val);
+        } catch (const webstrada::exception &) {
+            // Adobe reports Boolean conversion failures as typed argument
+            // validation errors, rather than exposing Cast._boolean's
+            // generic conversion message. The argument name is displayed in
+            // uppercase by ColdFusion's validator.
+            webstrada::string displayName(argName ? argName : "");
+            displayName.toUpper();
+            throw webstrada::exception(webstrada::string("The ") + displayName +
+                                      " argument passed to the " + funcName +
+                                      " function is not of type boolean.");
+        }
         cf_register_temp(ret);
         return ret;
     }

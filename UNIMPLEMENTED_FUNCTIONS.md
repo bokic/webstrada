@@ -1,5 +1,13 @@
 # Unimplemented CFML Functions
 
+Compatibility note (2026-08-26): Mango_2_1 author-creation call sites were
+corrected to place the role in argument 7 and pass `active=true` in argument 8;
+no function implementation status changed.
+
+Compatibility note (2026-08-26): typed Boolean UDF argument conversion now
+matches Adobe ColdFusion's argument-validation exception message; no function
+implementation status changed.
+
 Compatibility note (2026-08-26): CFC indexed-assignment member creation was
 fixed as an execution/code-generation behavior; no CFML function status
 changed.

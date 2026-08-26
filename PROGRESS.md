@@ -2,6 +2,16 @@
 
 Get all technical info from: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusion-tags/tag-summary.html
 
+Compatibility note (2026-08-26): Mango_2_1 setup and import author-creation
+calls now place the role in argument 7 and pass `active=true` in argument 8;
+the previous calls passed the role string to the Boolean parameter and stopped
+setup on Adobe ColdFusion as well.
+
+Compatibility note (2026-08-26): typed Boolean UDF argument conversion now
+reports Adobe ColdFusion's argument-validation message when a value cannot be
+converted, including the uppercase argument name. Verified against CF 2025 in
+`tests/cfm/typed_boolean_argument_error_test.cfm`.
+
 Compatibility note (2026-08-26): indexed assignment through an undefined CFC
 `this` member creates the member as a struct before descending into it. This
 fixes MangoBlog setup's `this.mappings["/org/mangoblog"]` initialization.

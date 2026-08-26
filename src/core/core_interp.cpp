@@ -64,6 +64,17 @@ static bool splitNamedArg(const string &arg, string &nameOut, string &valueOut)
 {
     string s = arg.trimmed();
     if (s.isEmpty()) return false;
+    if ((s.at(0) == '\'' || s.at(0) == '"')) {
+        char quote = s.at(0);
+        size_t close = s.indexOf(quote, 1);
+        if (close == std::string::npos) return false;
+        size_t eq = close + 1;
+        while (eq < s.length() && (s.at(eq) == ' ' || s.at(eq) == '\t' || s.at(eq) == '\r' || s.at(eq) == '\n')) eq++;
+        if (eq >= s.length() || s.at(eq) != '=') return false;
+        nameOut = s.mid(1, close - 1);
+        valueOut = s.mid(eq + 1, s.length() - eq - 1).trimmed();
+        return !nameOut.isEmpty() && !valueOut.isEmpty();
+    }
     // First char must be an identifier start.
     char c0 = s.at(0);
     if (!(isalpha(static_cast<unsigned char>(c0)) || c0 == '_')) return false;

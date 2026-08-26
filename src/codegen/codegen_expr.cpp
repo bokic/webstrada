@@ -203,8 +203,22 @@ void parseParamList(const TextParserTokenItem &parenToken, const char *cfm_text,
         std::string name, type;
         std::vector<TextParserTokenItem> defToks;
         size_t start = 0;
-        if (group.size() >= 2 && group[0].token_id == TextParser_cfml_Variable &&
-            group[1].token_id == TextParser_cfml_Variable) {
+        std::string firstText = std::string(cfm_text + group[0].position, group[0].len);
+        if (firstText == "required" && group.size() >= 2) {
+            // Script syntax permits `required key` and `required string key`.
+            // `required` is a parameter modifier, never the parameter type.
+            size_t nameIdx = 1;
+            if (group.size() >= 3) {
+                std::string candidateType(cfm_text + group[1].position, group[1].len);
+                if (isCfParamTypeName(candidateType)) {
+                    type = candidateType;
+                    nameIdx = 2;
+                }
+            }
+            name = std::string(cfm_text + group[nameIdx].position, group[nameIdx].len);
+            start = nameIdx + 1;
+        } else if (group.size() >= 2 && group[0].token_id == TextParser_cfml_Variable &&
+                   group[1].token_id == TextParser_cfml_Variable) {
             type = std::string(cfm_text + group[0].position, group[0].len);
             name = std::string(cfm_text + group[1].position, group[1].len);
             start = 2;
@@ -609,7 +623,8 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 // whose value is the RHS — BUGS.md "Named arguments").
                 auto maybeNamedArg = [&](std::unique_ptr<ExprAST> ast) -> std::unique_ptr<ExprAST> {
                     if (ast && ast->type == ExprAST::Assign && ast->op_val == "=" &&
-                        ast->left && ast->left->type == ExprAST::Variable) {
+                        ast->left && (ast->left->type == ExprAST::Variable ||
+                                      ast->left->type == ExprAST::LiteralString)) {
                         auto na = std::make_unique<ExprAST>();
                         na->type = ExprAST::NamedArg;
                         na->string_val = ast->left->string_val;
