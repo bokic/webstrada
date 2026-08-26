@@ -150,6 +150,28 @@ static llvm::Value *emitMemberWalk(llvm::Module *module, llvm::IRBuilder<> &buil
     return lhs;
 }
 
+// Assignment variant: missing intermediate members are containers, not reads.
+// Adobe CF therefore permits targets such as this.settings.skins.path even
+// when `path` (or an intermediate member) has not been declared yet.
+static llvm::Value *emitMemberWalkForAssignment(llvm::Module *module, llvm::IRBuilder<> &builder,
+                                                llvm::Value *lhs,
+                                                const std::vector<std::string> &parts)
+{
+    auto *fIdx = module->getFunction("cfvariant_index_for_assignment");
+    if (!fIdx) fIdx = llvm::Function::Create(
+        llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false),
+        llvm::Function::InternalLinkage, "cfvariant_index_for_assignment", module);
+    for (const auto &seg : parts) {
+        auto *fStr = module->getFunction("cfvariant_create_string");
+        if (!fStr) fStr = llvm::Function::Create(
+            llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false),
+            llvm::Function::InternalLinkage, "cfvariant_create_string", module);
+        auto *keyVal = emitCall(builder, fStr, {builder.CreateGlobalString(seg, "", 0, module, true)});
+        lhs = emitCall(builder, fIdx, {lhs, keyVal});
+    }
+    return lhs;
+}
+
 static bool isCfParamTypeName(const std::string &s)
 {
     std::string t;
@@ -449,6 +471,19 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                     while (!path.empty() && isspace((unsigned char)path.front())) path.erase(path.begin());
                 }
                 size_t ni = i + 1;
+                // TextParser emits the class name as a Variable followed by
+                // the constructor Function token for plain `new Foo(...)`.
+                // Dotted names may arrive as one glued Variable token. Older
+                // code expected the Function token immediately after `new`,
+                // which incorrectly rejected Mango's `new LocaleManager(...)`.
+                if (ni < tokens.size() && tokens[ni].token_id == TextParser_cfml_Variable) {
+                    std::string className(cfm_text + tokens[ni].position, tokens[ni].len);
+                    while (!className.empty() && isspace((unsigned char)className.back())) className.pop_back();
+                    if (!path.empty()) path += ".";
+                    path += className;
+                    i = ni;
+                    ni = i + 1;
+                }
                 if (ni >= tokens.size() || tokens[ni].token_id != TextParser_cfml_Function) {
                     throw webstrada::exception("new requires a component path");
                 }
@@ -1401,6 +1436,35 @@ llvm::Value *CompileExprAST(
         std::string op = node->op_val;
 
         if (op == ".") {
+            // Tag-form component methods can receive a flattened `this.foo`
+            // token from the CFML parser. Resolve `this` as the component
+            // object first, then walk each member; passing `this.foo.bar` as a
+            // single lookup name loses the live component scope context.
+            std::vector<std::string> thisPath;
+            std::function<void(const ExprAST *)> collectThisPath = [&](const ExprAST *part) {
+                if (part && part->type == ExprAST::BinaryOp && part->op_val == ".") {
+                    collectThisPath(part->left.get());
+                    collectThisPath(part->right.get());
+                } else if (part && part->type == ExprAST::Variable) {
+                    auto pieces = splitMemberPath(part->string_val);
+                    thisPath.insert(thisPath.end(), pieces.begin(), pieces.end());
+                }
+            };
+            collectThisPath(node.get());
+            if (thisPath.size() >= 2) {
+                std::string rootName = thisPath.front();
+                for (auto &c : rootName) c = (char)toupper((unsigned char)c);
+                if (rootName == "THIS") {
+                    auto root = std::make_unique<ExprAST>();
+                    root->type = ExprAST::Variable;
+                    root->string_val = thisPath.front();
+                    root->isChainBase = true;
+                    auto *base = CompileExprAST(module, builder, function, root,
+                        cgi, server, cookie, application, session, url, form, variables, cfm_text);
+                    return emitMemberWalk(module, builder, base,
+                        std::vector<std::string>(thisPath.begin() + 1, thisPath.end()));
+                }
+            }
             // A terminal `.key` on a chain base resolves via cfvariant_get_member
             // so an undefined base reports CF's ELEMENT message ("Element KEY is
             // undefined in BASE."), matching CF 2025 (was BUGS.md
@@ -1599,7 +1663,28 @@ llvm::Value *CompileExprAST(
                 base = std::move(base->left);
             }
             std::reverse(idxASTs.begin(), idxASTs.end());
-            auto *arr = CompileExprAST(module, builder, function, base, cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            llvm::Value *arr = nullptr;
+            // Adobe CF permits a missing component member to be created when
+            // an indexed assignment descends through it. Mango's
+            // Application.cfc relies on this for this.mappings["/org/..."]
+            // without first assigning structNew().
+            if (base->type == ExprAST::BinaryOp && base->op_val == "." &&
+                base->right && base->right->type == ExprAST::Variable) {
+                auto *fMember = module->getFunction("cfvariant_index_for_assignment");
+                if (!fMember) fMember = llvm::Function::Create(
+                    llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false),
+                    llvm::Function::InternalLinkage, "cfvariant_index_for_assignment", module);
+                auto *owner = CompileExprAST(module, builder, function, base->left,
+                    cgi, server, cookie, application, session, url, form, variables, cfm_text);
+                auto *fStr = module->getFunction("cfvariant_create_string");
+                if (!fStr) fStr = llvm::Function::Create(
+                    llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false),
+                    llvm::Function::InternalLinkage, "cfvariant_create_string", module);
+                auto *key = emitCall(builder, fStr, {getPtrGlobalString(base->right->string_val)});
+                arr = emitCall(builder, fMember, {owner, key});
+            } else {
+                arr = CompileExprAST(module, builder, function, base, cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            }
             auto *rhs = CompileExprAST(module, builder, function, node->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
             if (idxASTs.size() == 1) {
                 auto *idx = CompileExprAST(module, builder, function, idxASTs[0], cgi, server, cookie, application, session, url, form, variables, cfm_text);
@@ -1637,38 +1722,45 @@ llvm::Value *CompileExprAST(
             return emitCall(builder, fDeep, {arr, idxArr, builder.getInt32(static_cast<int>(idxVals.size())), rhs});
         }
         else if (node->left->type == ExprAST::BinaryOp && node->left->op_val == ".") {
-            auto *arr = CompileExprAST(module, builder, function, node->left->left, cgi, server, cookie, application, session, url, form, variables, cfm_text);
-            // A glued dotted member name in the assignment target (e.g.
-            // s1[key].k2.k3 = v) must walk the intermediate hops with
-            // cfvariant_index and only index_assign the final one (see
-            // splitMemberPath).
-            if (node->left->right->type == ExprAST::Variable &&
-                node->left->right->string_val.find('.') != std::string::npos) {
-                std::vector<std::string> parts = splitMemberPath(node->left->right->string_val);
-                std::vector<std::string> head(parts.begin(), parts.end() - 1);
-                llvm::Value *base = head.empty() ? arr : emitMemberWalk(module, builder, arr, head);
-                const std::string &lastSeg = parts.back();
-                auto *fStr = module->getFunction("cfvariant_create_string");
-                if (!fStr) fStr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_create_string", module);
-                auto *keyVal = emitCall(builder, fStr, {getPtrGlobalString(lastSeg)});
-                auto *rhs2 = CompileExprAST(module, builder, function, node->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
-                auto *fAssign = module->getFunction("cfvariant_index_assign");
-                if (!fAssign) fAssign = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_index_assign", module);
-                if (node->op_val == "=") {
-                    return emitCall(builder, fAssign, {base, keyVal, rhs2});
+            // Flatten the complete dotted target. The parser may glue several
+            // simple member names into one Variable token (for example
+            // `this.settings`), so walking only BinaryOp nodes can accidentally
+            // use `this.settings` as the root and fail before auto-creating the
+            // missing intermediate structs.
+            std::vector<std::string> path;
+            std::function<void(const ExprAST *)> collectPath = [&](const ExprAST *part) {
+                if (part && part->type == ExprAST::BinaryOp && part->op_val == ".") {
+                    collectPath(part->left.get());
+                    collectPath(part->right.get());
+                } else if (part && part->type == ExprAST::Variable) {
+                    auto pieces = splitMemberPath(part->string_val);
+                    path.insert(path.end(), pieces.begin(), pieces.end());
                 }
-                auto *fIdx = module->getFunction("cfvariant_index");
-                if (!fIdx) fIdx = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_index", module);
-                auto *cur = emitCall(builder, fIdx, {base, keyVal});
-                return emitCall(builder, fAssign, {base, keyVal, compoundOp(cur, rhs2)});
-            }
+            };
+            collectPath(node->left.get());
+            auto *fStr = module->getFunction("cfvariant_create_string");
+            if (!fStr) fStr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_create_string", module);
+            llvm::Value *arr = nullptr;
             llvm::Value *keyVal = nullptr;
-            if (node->left->right->type == ExprAST::Variable) {
-                auto *fStr = module->getFunction("cfvariant_create_string");
-                if (!fStr) fStr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "cfvariant_create_string", module);
-                keyVal = emitCall(builder, fStr, {getPtrGlobalString(node->left->right->string_val)});
+            if (path.size() >= 2) {
+                auto root = std::make_unique<ExprAST>();
+                root->type = ExprAST::Variable;
+                root->string_val = path.front();
+                root->isChainBase = true;
+                arr = CompileExprAST(module, builder, function, root,
+                    cgi, server, cookie, application, session, url, form, variables, cfm_text);
+                std::vector<std::string> head(path.begin() + 1, path.end() - 1);
+                arr = emitMemberWalkForAssignment(module, builder, arr, head);
+                keyVal = emitCall(builder, fStr, {getPtrGlobalString(path.back())});
             } else {
-                keyVal = CompileExprAST(module, builder, function, node->left->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
+                // Preserve the normal member-assignment path for AST shapes
+                // that contain a computed/non-variable member expression.
+                arr = CompileExprAST(module, builder, function, node->left->left,
+                    cgi, server, cookie, application, session, url, form, variables, cfm_text);
+                keyVal = node->left->right->type == ExprAST::Variable
+                    ? emitCall(builder, fStr, {getPtrGlobalString(node->left->right->string_val)})
+                    : CompileExprAST(module, builder, function, node->left->right,
+                        cgi, server, cookie, application, session, url, form, variables, cfm_text);
             }
             auto *rhs = CompileExprAST(module, builder, function, node->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
             auto *f = module->getFunction("cfvariant_index_assign");

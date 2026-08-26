@@ -2797,11 +2797,13 @@ cfvariant evaluateExpr(string &out, const string &expr,
         }
 
         if (fname.equals("ARRAYAPPEND")) {
-            if (call.args.size() != 2) throw webstrada::exception("ArrayAppend requires exactly 2 arguments");
+            if (call.args.size() < 2 || call.args.size() > 3) throw webstrada::exception("ArrayAppend requires 2 or 3 arguments");
             cfvariant *var = lookupVarWritable(call.args[0].constData(), cgi, server, cookie, application, session, url, form, variables);
             if (!var) throw webstrada::exception("ArrayAppend: First argument must be an array variable");
             cfvariant val = evaluateExpr(out, call.args[1], cgi, server, cookie, application, session, url, form, variables);
-            return tempReturn(cfml::cf_arrayappend(var, &val));
+            cfvariant merge;
+            if (call.args.size() == 3) merge = evaluateExpr(out, call.args[2], cgi, server, cookie, application, session, url, form, variables);
+            return tempReturn(cfml::cf_arrayappend(var, &val, call.args.size() == 3 ? &merge : nullptr));
         }
 
         if (fname.equals("ARRAYPREPEND")) {

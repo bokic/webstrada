@@ -1,5 +1,19 @@
 # Unimplemented CFML Functions
 
+Compatibility note (2026-08-26): CFC indexed-assignment member creation was
+fixed as an execution/code-generation behavior; no CFML function status
+changed.
+
+Compatibility note (2026-08-26): script-form methods nested in tag-based CFCs
+are now registered for component dispatch; no CFML function status changed.
+
+Compatibility note (2026-08-26): dotted assignments in tag-based component
+methods now resolve and persist through the live `this` scope; no CFML function
+status changed.
+
+Compatibility note (2026-08-26): cfscript `new` class-name token handling was
+corrected for component construction; no CFML function status changed.
+
 Compatibility note (2026-08-26): nested save-content output expressions now
 preserve the active component method context; this execution fix does not add
 or remove a CFML function from the unimplemented list.

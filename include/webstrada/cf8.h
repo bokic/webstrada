@@ -1145,7 +1145,7 @@ cfvariant *cf_arrayfirst(const cfvariant *arr);
 cfvariant *cf_arraylast(const cfvariant *arr);
 cfvariant *cf_arraypop(cfvariant *arr);
 cfvariant *cf_arrayshift(cfvariant *arr);
-cfvariant *cf_arrayappend(cfvariant *arr, const cfvariant *val);
+cfvariant *cf_arrayappend(cfvariant *arr, const cfvariant *val, const cfvariant *merge = nullptr);
 cfvariant *cf_arrayprepend(cfvariant *arr, const cfvariant *val);
 cfvariant *cf_arrayisempty(const cfvariant *arr);
 cfvariant *cf_arrayclear(cfvariant *arr);
@@ -1340,6 +1340,10 @@ int cf_is_truthy_value(const cfvariant *v);
 cfvariant *cf_ternary_select(const cfvariant *cond, const cfvariant *thenV, const cfvariant *elseV);
 
 cfvariant *cfvariant_index(cfvariant *arr, const cfvariant *idx);
+// Resolves an indexed assignment base, creating a missing component member as
+// a struct when the assignment needs to descend into it (e.g.
+// this.mappings["/x"] = path).
+cfvariant *cfvariant_index_for_assignment(cfvariant *arr, const cfvariant *idx);
 cfvariant *cfvariant_index_assign(cfvariant *arr, const cfvariant *idx, const cfvariant *val);
 // Nested index assignment a[i1][i2]...[in] = v, auto-creating missing
 // intermediate array rows like ColdFusion (a = ArrayNew(2); a[1][5] = 1).

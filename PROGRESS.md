@@ -2,6 +2,32 @@
 
 Get all technical info from: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusion-tags/tag-summary.html
 
+Compatibility note (2026-08-26): indexed assignment through an undefined CFC
+`this` member creates the member as a struct before descending into it. This
+fixes MangoBlog setup's `this.mappings["/org/mangoblog"]` initialization.
+Regression coverage: `ComponentTest.IndexedAssignmentCreatesMissingComponentMember`
+and `tests/cfm/component_implicit_member_test/`.
+
+Compatibility note (2026-08-26): script-form function declarations nested in
+tag-based CFCs are registered as component methods, fixing MangoBlog's
+unqualified `structBlend()` call from `Mango.cfc`.
+Regression coverage: `ComponentTest.TagComponentScriptFunctionIsComponentMethod`
+and `tests/cfm/component_script_method_test/`.
+
+Compatibility note (2026-08-26): dotted assignments in tag-based component
+methods now flatten parser-glued names such as `this.settings` before walking
+the live component `this` scope. Missing intermediate members are created as
+structs and writes persist on the component instance, fixing MangoBlog's
+`Blog.cfc:setSettings()` `SETTINGS.SKINS.PATH` failure. Regression coverage:
+`ComponentTest.TagComponentNestedThisAssignmentCreatesMembers` and
+`tests/cfm/component_nested_this_assignment_test/`.
+
+Compatibility note (2026-08-26): cfscript `new` expressions now accept the
+class-name Variable token emitted before the constructor call token, including
+plain names such as `new LocaleManager(...)`. This fixes MangoBlog's
+internationalizer construction path. Existing coverage includes
+`ComponentTest.NewAutoCallsInit`.
+
 Compatibility note (2026-08-26): compound expressions in nested
 `<cfsavecontent>`/`<cfoutput>` bodies now compile in the active component-method
 context, preserving unqualified private CFC method calls. This fixes MangoBlog's

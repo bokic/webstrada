@@ -13,13 +13,18 @@
 
 namespace cfml {
 
-cfvariant *cf_arrayappend(cfvariant *arr, const cfvariant *val) {
+cfvariant *cf_arrayappend(cfvariant *arr, const cfvariant *val, const cfvariant *merge) {
     if (!arr || !val) throw webstrada::exception("ArrayAppend: Missing argument(s)");
     if (arr->m_isXmlNodeList) throwXmlNodeListUnsupported("ArrayAppend");
     if (!isCfArray(arr)) {
         throwNotArrayError(arr);
     }
-    arr->insert(*val);
+    if (merge && isTruthy(*merge) && isCfArray(val)) {
+        std::vector<cfvariant> values = *val->m_array;
+        for (const auto &item : values) arr->insert(item);
+    } else {
+        arr->insert(*val);
+    }
     auto *ret = new cfvariant(cfvariant::Boolean);
     ret->m_bool = true;
     return ret;

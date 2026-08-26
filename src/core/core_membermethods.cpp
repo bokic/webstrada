@@ -970,7 +970,7 @@ cfvariant *cfml::cfvariant_copy_value(const cfvariant *a) {
     return tempRet(v);
 }
 
- cfvariant *cfml::cfvariant_index(cfvariant *arr, const cfvariant *idx) {
+cfvariant *cfml::cfvariant_index(cfvariant *arr, const cfvariant *idx) {
     if (arr->m_type == cfvariant::Array) {
         int i = getIntValue(*idx);
         // A live query-column reference (q.a / q["a"] materialization) reads
@@ -1096,6 +1096,36 @@ cfvariant *cfml::cfvariant_copy_value(const cfvariant *a) {
         throw webstrada::exception("You have attempted to dereference a scalar variable of type class " +
             scalarJavaTypeName(arr) + " as a structure with members.");
     }
+}
+
+cfvariant *cfml::cfvariant_index_for_assignment(cfvariant *arr, const cfvariant *idx) {
+    if (arr && arr->m_type == cfvariant::Component) {
+        string key = const_cast<cfvariant*>(idx)->toString();
+        key.toUpper();
+        // `this` expressions are temporary component wrappers. Mutating the
+        // wrapper can trigger struct copy-on-write, leaving the real instance
+        // unchanged; assignments must target the live this scope instead.
+        cfvariant *scope = (arr->m_component && arr->m_component->thisScope)
+            ? arr->m_component->thisScope : arr;
+        if (!scope->m_struct) throw webstrada::exception("Component has no this scope");
+        auto it = scope->m_struct->find(key);
+        if (it == scope->m_struct->end()) {
+            if (cf_component_has_method(arr, key.constData())) {
+                cf_component_throw_method_not_found(arr, key.constData());
+            }
+            cfvariant &member = scope->set(key);
+            member = cfvariant(cfvariant::Struct);
+            return &member;
+        }
+        return &it->second;
+    }
+    if (arr && (arr->m_type == cfvariant::Struct || arr->m_type == cfvariant::Xml)) {
+        string key = const_cast<cfvariant*>(idx)->toString();
+        cfvariant &member = arr->set(key);
+        if (member.m_type == cfvariant::NotSet) member = cfvariant(cfvariant::Struct);
+        return &member;
+    }
+    return cfvariant_index(arr, idx);
 }
 
 cfvariant *cfml::cfvariant_index_named(cfvariant *arr, const cfvariant *idx, const char *varName, int dimension) {
@@ -1723,10 +1753,15 @@ static cfvariant *cf_call_builtin_dispatch(
     }
 
     if (fname.equals("ARRAYAPPEND")) {
-        if (arg_count != 2) throw webstrada::exception("ArrayAppend requires exactly 2 arguments");
+        if (arg_count < 2 || arg_count > 3) throw webstrada::exception("ArrayAppend requires 2 or 3 arguments");
         if (mut_arg0->m_isXmlNodeList) throwXmlNodeListUnsupported("ArrayAppend");
         if (!isCfArray(mut_arg0)) throwNotArrayError(mut_arg0);
-        mut_arg0->insert(*args[1]);
+        if (arg_count == 3 && isTruthy(*args[2]) && isCfArray(args[1])) {
+            std::vector<cfvariant> values = *args[1]->m_array;
+            for (const auto &item : values) mut_arg0->insert(item);
+        } else {
+            mut_arg0->insert(*args[1]);
+        }
         return cfvariant_create_bool(true);
     }
     if (fname.equals("ARRAYPREPEND")) {

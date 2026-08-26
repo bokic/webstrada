@@ -285,6 +285,7 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cfvariant_compare", reinterpret_cast<void*>(cfml::cfvariant_compare));
     llvm::sys::DynamicLibrary::AddSymbol("cf_is_truthy_value", reinterpret_cast<void*>(cfml::cf_is_truthy_value));
     llvm::sys::DynamicLibrary::AddSymbol("cfvariant_index", reinterpret_cast<void*>(cfml::cfvariant_index));
+    llvm::sys::DynamicLibrary::AddSymbol("cfvariant_index_for_assignment", reinterpret_cast<void*>(cfml::cfvariant_index_for_assignment));
     llvm::sys::DynamicLibrary::AddSymbol("cfvariant_index_named", reinterpret_cast<void*>(cfml::cfvariant_index_named));
     llvm::sys::DynamicLibrary::AddSymbol("cfvariant_index_assign", reinterpret_cast<void*>(cfml::cfvariant_index_assign));
     llvm::sys::DynamicLibrary::AddSymbol("cfvariant_index_assign_deep", reinterpret_cast<void*>(cfml::cfvariant_index_assign_deep));
@@ -1473,6 +1474,29 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
         // declarations (collected for compilation) and everything else (the
         // construction body, compiled below with the cffunction/cfproperty blocks
         // skipped by compile_token_list).
+        // In tag-based CFCs, a <cfscript> tag is represented as a nested token
+        // in some parser layouts rather than as a direct sibling. Collect all
+        // script-form declarations in the component body before the direct
+        // sibling scan below; this is required for unqualified calls to those
+        // methods from another component method.
+        std::function<void(const std::vector<TextParserTokenItem>&)> collectNestedScriptMethods;
+        collectNestedScriptMethods = [&](const std::vector<TextParserTokenItem> &nodes) {
+            for (const auto &node : nodes) {
+                if (node.token_id == TextParser_cfml_ScriptTagPair) {
+                    for (const auto &child : node.children) {
+                        if (child.token_id == TextParser_cfml_ScriptExpression) {
+                            collectFunctionDecls(child.children, cfm_text, methodDefs);
+                        }
+                    }
+                } else if (!node.children.empty()) {
+                    collectNestedScriptMethods(node.children);
+                }
+            }
+        };
+        std::vector<TextParserTokenItem> componentBody(tokens.begin() + compStart + 1,
+                                                        tokens.begin() + compEnd);
+        collectNestedScriptMethods(componentBody);
+
         for (size_t i = compStart + 1; i < compEnd; i++) {
             const auto &tok = tokens[i];
             if (tok.token_id == TextParser_cfml_StartTag) {
@@ -1635,7 +1659,6 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
                                cfm_text, cfm_text_size, true);
         }
     }
-
     // Attach the C++ Itanium personality to every JIT function.
     {
         llvm::Function *pers = getOrCreatePersonality(module, builder, nullptr);

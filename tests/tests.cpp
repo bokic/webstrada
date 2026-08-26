@@ -4005,6 +4005,62 @@ TEST_F(ComponentTest, CreateObjectAndInit) {
     EXPECT_EQ(out.equals("Alice|human|YES|YES"), true) << out.constData();
 }
 
+TEST_F(ComponentTest, IndexedAssignmentCreatesMissingComponentMember) {
+    // Adobe CF creates a missing this-scope member as a struct when an
+    // indexed assignment descends through it. MangoBlog's setup
+    // Application.cfc uses this.mappings["/org/mangoblog"] without an
+    // earlier this.mappings = structNew().
+    string out = runCfc({
+        {"app.cfc",
+         "component {\n"
+         "  this.mappings['/org/mangoblog'] = 'components';\n"
+         "  function value() { return this.mappings['/org/mangoblog']; }\n"
+         "}"},
+        {"main.cfm",
+         "<cfset c = CreateObject('component', 'app')>"
+         "<cfoutput>#c.value()#|#IsStruct(c.mappings)#</cfoutput>"}
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("components|YES"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, TagComponentScriptFunctionIsComponentMethod) {
+    // A function declared in <cfscript> inside a tag-based CFC is a component
+    // method. MangoBlog's Mango.cfc uses this form for structBlend().
+    string out = runCfc({
+        {"bare.cfc",
+         "<cfcomponent>\n"
+         "  <cffunction name=\"init\" output=\"false\"><cfreturn structBlend()></cffunction>\n"
+         "  <cfscript>\n"
+         "    function structBlend() { return \"OK\"; }\n"
+         "  </cfscript>\n"
+         "</cfcomponent>"},
+        {"main.cfm",
+         "<cfset c = CreateObject('component', 'bare')>"
+         "<cfoutput>#c.init()#</cfoutput>"}
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("OK"), true) << out.constData();
+}
+
+TEST_F(ComponentTest, TagComponentNestedThisAssignmentCreatesMembers) {
+    // Tag-form CFC methods must resolve flattened dotted `this` names against
+    // the live component scope. This is the setup pattern used by MangoBlog's
+    // Blog.cfc when it fills in settings.skins.path.
+    string out = runCfc({
+        {"blog.cfc",
+         "<cfcomponent>"
+         "<cfset this.settings = structNew()>"
+         "<cffunction name=\"setSettings\" output=\"false\">"
+         "<cfargument name=\"settings\" type=\"struct\" required=\"true\">"
+         "<cfset this.settings.skins.path = \"base/skins/\">"
+         "<cfreturn this.settings.skins.path>"
+         "</cffunction></cfcomponent>"},
+        {"main.cfm",
+         "<cfset b = CreateObject('component', 'blog')>"
+         "<cfoutput>#b.setSettings({skins:{}})#</cfoutput>"}
+    }, "main.cfm");
+    EXPECT_EQ(out.equals("base/skins/"), true) << out.constData();
+}
+
 TEST_F(ComponentTest, CfincludeInsideComponentMethodSeesMethodLocal) {
     // An included template executes in the caller's scope.  In particular, a
     // component method's var-declared local must remain visible through the
