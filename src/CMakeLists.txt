@@ -97,6 +97,7 @@ add_library(webstrada-core
     cftags/tag_wddx.cpp
     cftags/tag_feed.cpp
     cftags/tag_ftp.cpp
+    cftags/tag_mail.cpp
     cftags/tag_schedule.cpp
     cftags/tag_zip.cpp
     cftags/tag_param.cpp

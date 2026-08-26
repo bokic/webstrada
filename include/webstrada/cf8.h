@@ -410,6 +410,9 @@ void cf_feed_tag(const cfvariant *attrs,
 // no FTP/scheduling work. Templates using the tags compile and run instead of
 // failing with "Tag cfftp/cfschedule is not implemented".
 void cf_ftp_tag(const cfvariant *attrs);
+void cf_mail_tag(const cfvariant *attrs);
+void cf_mailpart_tag(const cfvariant *attrs);
+void cf_mailparam_tag(const cfvariant *attrs);
 void cf_schedule_tag(const cfvariant *attrs);
 
 // <cfzip> / <cfzipparam> runtime: cf_zip_begin pushes a per-thread context and

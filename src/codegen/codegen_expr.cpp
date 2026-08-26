@@ -627,7 +627,15 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                                       ast->left->type == ExprAST::LiteralString)) {
                         auto na = std::make_unique<ExprAST>();
                         na->type = ExprAST::NamedArg;
-                        na->string_val = ast->left->string_val;
+                        if (ast->left->type == ExprAST::LiteralString) {
+                            na->string_val.assign(cfm_text + ast->left->token.position,
+                                                   ast->left->token.len);
+                            if (na->string_val.size() >= 2) {
+                                na->string_val = na->string_val.substr(1, na->string_val.size() - 2);
+                            }
+                        } else {
+                            na->string_val = ast->left->string_val;
+                        }
                         na->right = std::move(ast->right);
                         return na;
                     }

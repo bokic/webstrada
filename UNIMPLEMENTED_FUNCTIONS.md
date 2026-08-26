@@ -1,5 +1,11 @@
 # Unimplemented CFML Functions
 
+Compatibility note (2026-08-27): `<cfmail>` now runs as a logging stub; no
+function implementation status changed.
+
+Compatibility note (2026-08-26): quoted string keys in named arguments are
+now supported; no function implementation status changed.
+
 Compatibility note (2026-08-26): Mango_2_1 author-creation call sites were
 corrected to place the role in argument 7 and pass `active=true` in argument 8;
 no function implementation status changed.

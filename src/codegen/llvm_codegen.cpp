@@ -949,7 +949,7 @@ void compile_token_list(
                     "cfqueryparam", "cfinsert", "cfupdate", "cfdbinfo",
                     "cfstoredproc", "cfprocparam", "cfprocresult",
                     "cfexit", "cferror", "cfcache",
-                    "cfimport", "cfmodule", "cfassociate",
+                    "cfimport", "cfmodule", "cfassociate", "cfmail", "cfmailpart", "cfmailparam",
                     "cflog", "cftimer", "cftrace",
                     "cfdirectory", "cffile", "cfzip", "cfzipparam",
                     "cfparam", "cfobjectcache",
@@ -4085,6 +4085,26 @@ void compile_token_list(
                 }
             } else if (tagNameLow.startWith("<cfftp")) {
                 index = compile_tag_ftp_statement(tokens, index, context, module, builder, mainfunc,
+                                                  out, ws, cgi, server, cookie, application, session, url, form, variables,
+                                                  cfm_text, cfm_text_size, loopStack) - 1;
+                pos = token.position + token.len;
+                if (index < tokens.size()) {
+                    pos = tokens[index].position + tokens[index].len;
+                }
+            } else if (tagNameLow.startWith("<cfmailpart")) {
+                index = compile_tag_mailpart_statement(tokens, index, context, module, builder, mainfunc,
+                                                  out, ws, cgi, server, cookie, application, session, url, form, variables,
+                                                  cfm_text, cfm_text_size, loopStack) - 1;
+                pos = token.position + token.len;
+                if (index < tokens.size()) pos = tokens[index].position + tokens[index].len;
+            } else if (tagNameLow.startWith("<cfmailparam")) {
+                index = compile_tag_mailparam_statement(tokens, index, context, module, builder, mainfunc,
+                                                  out, ws, cgi, server, cookie, application, session, url, form, variables,
+                                                  cfm_text, cfm_text_size, loopStack) - 1;
+                pos = token.position + token.len;
+                if (index < tokens.size()) pos = tokens[index].position + tokens[index].len;
+            } else if (tagNameLow.startWith("<cfmail")) {
+                index = compile_tag_mail_statement(tokens, index, context, module, builder, mainfunc,
                                                   out, ws, cgi, server, cookie, application, session, url, form, variables,
                                                   cfm_text, cfm_text_size, loopStack) - 1;
                 pos = token.position + token.len;

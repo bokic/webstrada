@@ -1881,7 +1881,7 @@ size_t compile_tag_directory_statement(
     size_t cfm_text_size,
     std::vector<LoopInfo> &loopStack)
 {
-    (void)context; (void)out; (void)ws; (void)loopStack;
+    (void)context; (void)ws; (void)loopStack;
     static const std::unordered_set<std::string> dirValidAttrs = {
         "action", "recurse", "directory", "destination", "name", "filter", "sort",
         "newdirectory", "mode", "listinfo", "type", "storeLocation", "storeACL"
@@ -3313,6 +3313,104 @@ size_t compile_tag_ftp_statement(
                                                      attrParts, cfm_text);
     auto *fTag = getOrCreateHelper(module, builder, "cf_ftp_tag", builder.getVoidTy(),
         {builder.getPtrTy()});
+    emitCall(builder, fTag, {attrsVal});
+    return start + 1;
+}
+
+size_t compile_tag_mail_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack)
+{
+    (void)context; (void)out; (void)ws; (void)loopStack;
+    const std::vector<TextParserTokenItem> *attrParts = &tokens[start].children;
+    for (const auto &ch : tokens[start].children) {
+        if (ch.token_id == TextParser_cfml_Expression) {
+            attrParts = &ch.children;
+            break;
+        }
+    }
+    llvm::Value *attrsVal = compileTagAttrsStructAll(module, builder, mainfunc,
+                                                     cgi, server, cookie, application, session, url, form, variables,
+                                                     attrParts, cfm_text);
+    // Compile the body into a silent buffer so expressions are evaluated and
+    // nested cfmailpart/cfmailparam calls are logged, without page output.
+    std::vector<TextParserTokenItem> body;
+    size_t bodyStart = 0, bodyEnd = 0;
+    size_t nextIdx = scanTagBody(tokens, start, "<cfmail", cfm_text, body, bodyStart, bodyEnd, cfm_text_size);
+    auto *fSilentBegin = getOrCreateHelper(module, builder, "cf_silent_begin", builder.getPtrTy(), {builder.getPtrTy()});
+    auto *fSilentEnd = getOrCreateHelper(module, builder, "cf_silent_end", builder.getVoidTy(), {});
+    llvm::Value *capture = emitCall(builder, fSilentBegin, {out});
+    WhitespaceState wsBody(ws.enabled, ws.flag);
+    wsBody.markTag(false, false);
+    size_t bodyPos = bodyStart, bodyIdx = 0;
+    compile_token_list(body, bodyIdx, bodyPos, context, module, builder, mainfunc,
+                       capture, wsBody, cgi, server, cookie, application, session, url, form, variables,
+                       cfm_text, bodyEnd, loopStack);
+    if (bodyPos < bodyEnd) wsBody.feed(module, builder, capture, cfm_text + bodyPos, bodyEnd - bodyPos, WsRight::Tag);
+    wsBody.finish(module, builder, capture, WsRight::Tag);
+    emitCall(builder, fSilentEnd, {});
+    auto *fTag = getOrCreateHelper(module, builder, "cf_mail_tag", builder.getVoidTy(), {builder.getPtrTy()});
+    emitCall(builder, fTag, {attrsVal});
+    return nextIdx;
+}
+
+size_t compile_tag_mailpart_statement(
+    const std::vector<TextParserTokenItem> &tokens, size_t start,
+    llvm::LLVMContext &context, llvm::Module *module, llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc, llvm::Value *out, WhitespaceState &ws,
+    llvm::Value *cgi, llvm::Value *server, llvm::Value *cookie,
+    llvm::Value *application, llvm::Value *session, llvm::Value *url,
+    llvm::Value *form, llvm::Value *variables, const char *cfm_text,
+    size_t cfm_text_size, std::vector<LoopInfo> &loopStack)
+{
+    (void)context; (void)out; (void)ws; (void)loopStack;
+    const std::vector<TextParserTokenItem> *attrParts = &tokens[start].children;
+    for (const auto &ch : tokens[start].children) {
+        if (ch.token_id == TextParser_cfml_Expression) { attrParts = &ch.children; break; }
+    }
+    llvm::Value *attrsVal = compileTagAttrsStructAll(module, builder, mainfunc,
+        cgi, server, cookie, application, session, url, form, variables, attrParts, cfm_text);
+    auto *fTag = getOrCreateHelper(module, builder, "cf_mailpart_tag", builder.getVoidTy(), {builder.getPtrTy()});
+    emitCall(builder, fTag, {attrsVal});
+    std::vector<TextParserTokenItem> body;
+    size_t bodyStart = 0, bodyEnd = 0;
+    return scanTagBody(tokens, start, "<cfmailpart", cfm_text, body, bodyStart, bodyEnd, cfm_text_size);
+}
+
+size_t compile_tag_mailparam_statement(
+    const std::vector<TextParserTokenItem> &tokens, size_t start,
+    llvm::LLVMContext &context, llvm::Module *module, llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc, llvm::Value *out, WhitespaceState &ws,
+    llvm::Value *cgi, llvm::Value *server, llvm::Value *cookie,
+    llvm::Value *application, llvm::Value *session, llvm::Value *url,
+    llvm::Value *form, llvm::Value *variables, const char *cfm_text,
+    size_t cfm_text_size, std::vector<LoopInfo> &loopStack)
+{
+    (void)context; (void)out; (void)ws; (void)cfm_text_size; (void)loopStack;
+    const std::vector<TextParserTokenItem> *attrParts = &tokens[start].children;
+    for (const auto &ch : tokens[start].children) {
+        if (ch.token_id == TextParser_cfml_Expression) { attrParts = &ch.children; break; }
+    }
+    llvm::Value *attrsVal = compileTagAttrsStructAll(module, builder, mainfunc,
+        cgi, server, cookie, application, session, url, form, variables, attrParts, cfm_text);
+    auto *fTag = getOrCreateHelper(module, builder, "cf_mailparam_tag", builder.getVoidTy(), {builder.getPtrTy()});
     emitCall(builder, fTag, {attrsVal});
     return start + 1;
 }

@@ -2,6 +2,19 @@
 
 Get all technical info from: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusion-tags/tag-summary.html
 
+Compatibility note (2026-08-27): `<cfmail>` is accepted as a non-delivering
+stub that logs all evaluated attributes and consumes its body, including
+nested `<cfmailpart>` content. No SMTP operation is performed.
+
+Compatibility note (2026-08-27): `<cfmailpart>` and `<cfmailparam>` are also
+accepted as non-delivering logging stubs; nested mail content is consumed
+without page output or SMTP/file-attachment work.
+
+Compatibility note (2026-08-26): quoted string keys in named function
+arguments (for example `'emailto' = ''`) are accepted by the JIT and
+interpreter, matching Adobe ColdFusion. This fixes plugin CFC loading for
+Mango_2_1; verified in `tests/cfm/quoted_named_argument_test.cfm`.
+
 Compatibility note (2026-08-26): Mango_2_1 setup and import author-creation
 calls now place the role in argument 7 and pass `active=true` in argument 8;
 the previous calls passed the role string to the Boolean parameter and stopped

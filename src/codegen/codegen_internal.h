@@ -825,6 +825,47 @@ size_t compile_tag_ftp_statement(
     size_t cfm_text_size,
     std::vector<LoopInfo> &loopStack);
 
+// <cfmail>: delivery is not implemented; log evaluated attributes and skip
+// the body (including nested cfmailpart tags).
+size_t compile_tag_mail_statement(
+    const std::vector<TextParserTokenItem> &tokens,
+    size_t start,
+    llvm::LLVMContext &context,
+    llvm::Module *module,
+    llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc,
+    llvm::Value *out,
+    WhitespaceState &ws,
+    llvm::Value *cgi,
+    llvm::Value *server,
+    llvm::Value *cookie,
+    llvm::Value *application,
+    llvm::Value *session,
+    llvm::Value *url,
+    llvm::Value *form,
+    llvm::Value *variables,
+    const char *cfm_text,
+    size_t cfm_text_size,
+    std::vector<LoopInfo> &loopStack);
+
+size_t compile_tag_mailpart_statement(
+    const std::vector<TextParserTokenItem> &tokens, size_t start,
+    llvm::LLVMContext &context, llvm::Module *module, llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc, llvm::Value *out, WhitespaceState &ws,
+    llvm::Value *cgi, llvm::Value *server, llvm::Value *cookie,
+    llvm::Value *application, llvm::Value *session, llvm::Value *url,
+    llvm::Value *form, llvm::Value *variables, const char *cfm_text,
+    size_t cfm_text_size, std::vector<LoopInfo> &loopStack);
+
+size_t compile_tag_mailparam_statement(
+    const std::vector<TextParserTokenItem> &tokens, size_t start,
+    llvm::LLVMContext &context, llvm::Module *module, llvm::IRBuilder<> &builder,
+    llvm::Function *mainfunc, llvm::Value *out, WhitespaceState &ws,
+    llvm::Value *cgi, llvm::Value *server, llvm::Value *cookie,
+    llvm::Value *application, llvm::Value *session, llvm::Value *url,
+    llvm::Value *form, llvm::Value *variables, const char *cfm_text,
+    size_t cfm_text_size, std::vector<LoopInfo> &loopStack);
+
 // <cfschedule> (codegen_tags.cpp): not implemented — handler-validated like
 // CF (unknown attributes accepted/ignored; a static missing `action` is a
 // compile-time error with CF's message) and calls cf_schedule_tag, which only
