@@ -1252,6 +1252,9 @@ llvm::Value *CompileExprAST(
         if (!f) f = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {builder.getInt1Ty()}, false), llvm::Function::InternalLinkage, "cfvariant_create_bool_literal", module);
         return emitCall(builder, f, {builder.getInt1(node->bool_val)});
     }
+    case ExprAST::NamedArg:
+        throw webstrada::exception(
+            "Named argument reached expression compiler outside a function call.");
     case ExprAST::ArrayLiteral: {
         auto *fArr = module->getFunction("cfvariant_create_array");
         if (!fArr) fArr = llvm::Function::Create(llvm::FunctionType::get(builder.getPtrTy(), {}, false), llvm::Function::InternalLinkage, "cfvariant_create_array", module);

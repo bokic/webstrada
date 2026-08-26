@@ -106,7 +106,7 @@ string makeCfToken()
     for (int i = 0; i < 16; i++) uuid[i] = (unsigned char)(rand() % 256);
     uuid[6] = (unsigned char)((uuid[6] & 0x0F) | 0x40);
     uuid[8] = (unsigned char)((uuid[8] & 0x3F) | 0x80);
-    char hex[33] = {0};
+    char hex[64] = {0};
     std::snprintf(hex, sizeof(hex),
         "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X",
         uuid[0], uuid[1], uuid[2], uuid[3], uuid[4], uuid[5], uuid[6], uuid[7],
