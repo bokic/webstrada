@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+extern char **environ;
+
 namespace cfml {
 
 // <cfhttp> request context stack (tag_http.cpp / tag_httpparam.cpp). The
@@ -745,7 +747,7 @@ void init_server_scope(webstrada::cfvariant &serverScope)
     serverScope["os"]["name"] = "LINUX";
     serverScope["os"]["version"] = cfml::readfile("/proc/sys/kernel/osrelease");
 
-    char **s = environ;
+    char **s = ::environ;
     while(s && *s) {
         const char *separator = strstr(*s, "=");
         if (separator) {

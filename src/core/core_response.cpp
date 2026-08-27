@@ -33,6 +33,8 @@
 #include <vector>
 #include <map>
 #include <set>
+
+extern char **environ;
 #include <fstream>
 #include <filesystem>
 #include <unistd.h>
@@ -102,8 +104,6 @@ std::string config::compileExtForInclude = "*";
 
 void config::loadDatasourcesFromEnv()
 {
-    extern char **environ;
-    // Resolve the global environ (not webstrada::config::environ).
     char **env = ::environ;
     static const char kPrefix[] = "WSDATASOURCE_";
     static const size_t kPrefixLen = sizeof(kPrefix) - 1;

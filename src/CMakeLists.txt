@@ -9,6 +9,7 @@ find_package(LLVM REQUIRED)
 find_package(LibXml2 REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(textparser REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBXSLT REQUIRED libxslt)
 pkg_check_modules(JSONC REQUIRED json-c)
@@ -545,6 +546,7 @@ endif()
 
 target_include_directories(webstrada-core PUBLIC
     ../include
+    ${LLVM_INCLUDE_DIRS}
     ${LIBXML2_INCLUDE_DIRS}
     ${LIBXSLT_INCLUDE_DIRS}
     ${JSONC_INCLUDE_DIRS}
@@ -576,6 +578,7 @@ target_link_libraries(webstrada-core PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
     ZLIB::ZLIB
+    textparser::libtextparser
     ${LIBXSLT_LIBRARIES}
     ${JSONC_LIBRARIES}
     ${PCRE2_LIBRARIES}
@@ -627,7 +630,7 @@ file(MAKE_DIRECTORY ${DEFINITIONS_OUTPUT_DIR})
 foreach(def_file cfml_definition.json)
     add_custom_command(
         OUTPUT ${DEFINITIONS_OUTPUT_DIR}/${def_file}.h
-        COMMAND /usr/bin/textparser_json2h.py --no-native-regex ${DEFINITIONS_OUTPUT_DIR}/${def_file}
+        COMMAND textparser_json2h.py --no-native-regex ${DEFINITIONS_OUTPUT_DIR}/${def_file}
         DEPENDS ${DEFINITIONS_OUTPUT_DIR}/${def_file}
         COMMENT "Generating ${def_file}.h"
     )

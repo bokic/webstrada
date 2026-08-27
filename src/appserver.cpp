@@ -10,7 +10,9 @@
 #include <fcgio.h>
 
 #include <sys/socket.h>
+#ifdef __linux__
 #include <sys/prctl.h>
+#endif
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
@@ -87,7 +89,9 @@ int webstrada::appserver::run()
         {
             int pid = fork();
             if (pid == 0) {
+#ifdef __linux__
                 prctl(PR_SET_PDEATHSIG, SIGTERM);
+#endif
 
                 printf("Starting forked worker. pid: %d\n", getpid());
 

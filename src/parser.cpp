@@ -3,8 +3,6 @@
 
 #include <textparser.hpp>
 #include <cfml_definition.json.h>
-#include <threads.h>
-
 
 using namespace webstrada;
 

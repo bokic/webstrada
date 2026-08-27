@@ -20,7 +20,7 @@ cfvariant *cf_abs(const cfvariant *arg) {
     if (arg->m_type == cfvariant::Number) {
         ret = new cfvariant(std::abs(arg->m_int));
     } else if (arg->m_type == cfvariant::Long) {
-        __int128 res = std::abs((__int128)arg->m_long);
+        __int128 res = arg->m_long < 0 ? -static_cast<__int128>(arg->m_long) : static_cast<__int128>(arg->m_long);
         if (res >= -2147483648LL && res <= 2147483647LL) {
             ret = new cfvariant(static_cast<int>(res));
         } else if (res <= (__int128)LLONG_MAX) {

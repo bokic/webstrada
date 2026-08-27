@@ -912,7 +912,7 @@ template_fn llvm_codegen::compile_parsed(parser &parse, const char *name, bool p
     auto module = new llvm::Module(name ? name : "template", m_context);
     llvm::IRBuilder<> builder(m_context);
 
-    auto mainfunc = llvm::Function::Create(llvm::FunctionType::get(builder.getInt32Ty(), {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "main", module);
+    auto mainfunc = llvm::Function::Create(llvm::FunctionType::get(builder.getInt32Ty(), {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()}, false), llvm::Function::InternalLinkage, "mainCFML", module);
 
     auto *mainEntry = llvm::BasicBlock::Create(m_context, "entry", mainfunc);
     builder.SetInsertPoint(mainEntry);
@@ -1115,7 +1115,7 @@ template_fn llvm_codegen::compile_parsed(parser &parse, const char *name, bool p
 
     engine.get()->finalizeObject();
 
-    auto funcPtr = engine.get()->getPointerToNamedFunction("main");
+    auto funcPtr = engine.get()->getFunctionAddress("mainCFML");
 
     m_engines.push_back(std::move(engine));
 

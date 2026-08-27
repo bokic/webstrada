@@ -35,6 +35,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -103,8 +104,8 @@ std::string javaDoubleToString(double d)
     if (d == 0.0) return "0.0";
     int decExp = static_cast<int>(std::floor(std::log10(std::fabs(d))));
     char buf[128];
-    auto res = std::to_chars(buf, buf + sizeof(buf), d);
-    std::string s(buf, res.ptr);
+    int n = std::snprintf(buf, sizeof(buf), "%.*g", std::numeric_limits<double>::max_digits10, d);
+    std::string s(buf, n);
     auto epos = s.find_first_of("eE");
     if (epos == std::string::npos) {
         // fixed-point shortest repr.
