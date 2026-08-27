@@ -34,7 +34,6 @@
 #include <map>
 #include <set>
 
-extern char **environ;
 #include <fstream>
 #include <filesystem>
 #include <unistd.h>

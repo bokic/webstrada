@@ -31,8 +31,6 @@
 #include <string>
 #include <vector>
 
-extern char **environ;
-
 namespace cfml {
 
 // <cfhttp> request context stack (tag_http.cpp / tag_httpparam.cpp). The
