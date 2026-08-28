@@ -66,11 +66,15 @@ bool ScopeStore::open(const std::string &dbPath)
         " app_token      TEXT NOT NULL,"
         " max_inactive   INTEGER NOT NULL DEFAULT 0,"
         " last_access    INTEGER NOT NULL"
-        ");";
+        ");"
+        "CREATE INDEX IF NOT EXISTS idx_scope_expires ON cf_scope(expires_at);"
+        "CREATE INDEX IF NOT EXISTS idx_security_app ON cf_security(app_token);";
     if (!exec(kSchema)) return false;
 
     // Migration for stores created before the start_time column existed.
     exec("ALTER TABLE cf_scope ADD COLUMN start_time INTEGER NOT NULL DEFAULT 0;");
+    exec("CREATE INDEX IF NOT EXISTS idx_scope_expires ON cf_scope(expires_at);");
+    exec("CREATE INDEX IF NOT EXISTS idx_security_app ON cf_security(app_token);");
 
     return true;
 }

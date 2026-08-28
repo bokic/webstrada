@@ -71,11 +71,17 @@ bool ProfilerStore::open(const std::string &dbPath)
         " elapsed_ms REAL,"
         " FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE"
         ");"
-        "CREATE INDEX IF NOT EXISTS idx_traces_req ON request_traces(request_id);";
+        "CREATE INDEX IF NOT EXISTS idx_traces_req ON request_traces(request_id);"
+        "CREATE INDEX IF NOT EXISTS idx_traces_req_seq ON request_traces(request_id, seq);"
+        "CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp);"
+        "CREATE INDEX IF NOT EXISTS idx_requests_url ON requests(url);";
 
     if (!exec(kSchema)) return false;
 
     exec("ALTER TABLE request_traces ADD COLUMN stack_trace TEXT;");
+    exec("CREATE INDEX IF NOT EXISTS idx_traces_req_seq ON request_traces(request_id, seq);");
+    exec("CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp);");
+    exec("CREATE INDEX IF NOT EXISTS idx_requests_url ON requests(url);");
 
     return true;
 }

@@ -113,16 +113,24 @@ export class AdminApiService {
     return this.http.post<DatasourceTestResult>(`${this.base}/datasources.cfm`, { name, action: 'verify' });
   }
 
-  getServerInfo(excludeAdmin = true): Observable<ServerInfo> {
-    return this.http.get<ServerInfo>(`${this.base}/serverinfo.cfm`, {
-      params: { excludeAdmin: excludeAdmin ? 'true' : 'false' },
-    });
+  getServerInfo(excludeAdmin = true, limit = 10, beforeId = 0, sinceId = 0): Observable<ServerInfo> {
+    const params: Record<string, string> = {
+      excludeAdmin: excludeAdmin ? 'true' : 'false',
+      limit: String(limit),
+    };
+    if (beforeId > 0) params['beforeId'] = String(beforeId);
+    if (sinceId > 0) params['sinceId'] = String(sinceId);
+    return this.http.get<ServerInfo>(`${this.base}/serverinfo.cfm`, { params });
   }
 
-  getTracing(excludeAdmin = false): Observable<ServerInfo> {
-    return this.http.get<ServerInfo>(`${this.base}/tracing.cfm`, {
-      params: { excludeAdmin: excludeAdmin ? 'true' : 'false' },
-    });
+  getTracing(excludeAdmin = false, limit = 10, beforeId = 0, sinceId = 0): Observable<ServerInfo> {
+    const params: Record<string, string> = {
+      excludeAdmin: excludeAdmin ? 'true' : 'false',
+      limit: String(limit),
+    };
+    if (beforeId > 0) params['beforeId'] = String(beforeId);
+    if (sinceId > 0) params['sinceId'] = String(sinceId);
+    return this.http.get<ServerInfo>(`${this.base}/tracing.cfm`, { params });
   }
 
   getCacheInfo(): Observable<CacheInfo> {

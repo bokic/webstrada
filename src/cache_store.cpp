@@ -98,8 +98,13 @@ bool CacheStore::open(const std::string &dbPath)
         " lastupdate  INTEGER NOT NULL,"
         " hits        INTEGER NOT NULL DEFAULT 0,"
         " PRIMARY KEY (region, id)"
-        ");";
+        ");"
+        "CREATE INDEX IF NOT EXISTS idx_cache_lastaccess ON cf_cache(lastaccess);"
+        "CREATE INDEX IF NOT EXISTS idx_cache_ttl ON cf_cache(created, timetolive);";
     if (!exec(kSchema)) return false;
+
+    exec("CREATE INDEX IF NOT EXISTS idx_cache_lastaccess ON cf_cache(lastaccess);");
+    exec("CREATE INDEX IF NOT EXISTS idx_cache_ttl ON cf_cache(created, timetolive);");
 
     // Standard CF regions always exist.
     exec("INSERT OR IGNORE INTO cf_cache_region (region, props) VALUES ('OBJECT', '{}');");

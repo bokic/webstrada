@@ -3,7 +3,7 @@
     <div>
       <h1 class="page-title">Execution Tracing</h1>
       <p class="page-desc">
-        Real-time execution trace of requests processed by WebStrada. Auto-refreshes every second with infinite history scroll.
+        Real-time execution trace of requests processed by WebStrada. Auto-refreshes every second with infinite history scroll and execution flame graph.
       </p>
     </div>
     <div class="page-actions trace-controls">
@@ -18,6 +18,7 @@
     </div>
   </div>
 
+  <!-- Request Trace Log Table -->
   <div class="trace-container-box">
     <div class="trace-box-header">
       <div class="trace-box-title">
@@ -61,7 +62,10 @@
           </thead>
           <tbody>
             @for (r of requests(); track r.id) {
-              <tr>
+              <tr
+                [class.selected]="selectedId() === r.id"
+                (click)="selectRow(r)"
+              >
                 <td class="muted mono">#{{ r.id }}</td>
                 <td class="muted mono">{{ r.time }}</td>
                 <td>
@@ -101,5 +105,124 @@
         }
       }
     </div>
+  </div>
+
+  <!-- Flame Graph Widget Below Table -->
+  <div class="flame-section-box">
+    <div class="flame-header">
+      <div class="flame-title-group">
+        <span class="flame-title">Execution Flame Graph</span>
+        @if (selectedRequest(); as req) {
+          <span class="flame-req-badge mono">
+            #{{ req.id }} {{ req.method }} {{ req.template }} &bull; {{ req.durationText }}
+          </span>
+        }
+      </div>
+
+      <!-- Color Legend -->
+      <div class="flame-legend">
+        <span class="legend-item"><span class="legend-dot color-req"></span>Request</span>
+        <span class="legend-item"><span class="legend-dot color-tmpl"></span>Template</span>
+        <span class="legend-item"><span class="legend-dot color-comp"></span>CFC Component</span>
+        <span class="legend-item"><span class="legend-dot color-query"></span>CFQUERY</span>
+        <span class="legend-item"><span class="legend-dot color-tag"></span>CFTAG</span>
+        <span class="legend-item"><span class="legend-dot color-inc"></span>CFINCLUDE</span>
+        <span class="legend-item"><span class="legend-dot color-fn"></span>DB Engine</span>
+        <span class="legend-item"><span class="legend-dot color-err"></span>CFCATCH</span>
+      </div>
+    </div>
+
+    @if (!selectedRequest()) {
+      <div class="empty-state">
+        Select a request row in the table above to view its execution flame graph.
+      </div>
+    } @else {
+      <div class="flame-container">
+        <!-- Vertical Grid Lines corresponding to Time Ticks -->
+        <div class="flame-grid-lines">
+          @for (tick of timeTicks(); track tick.percent) {
+            <div class="grid-line" [style.left.%]="tick.percent"></div>
+          }
+        </div>
+
+        <!-- Flame Graph Stacked Bars (Highest depth at top, Lowest / Depth 0 at bottom) -->
+        <div class="flame-levels-stack">
+          @for (depth of getDepthArray(); track depth) {
+            <div class="flame-level-row">
+              <div class="flame-depth-label">
+                @if (depth === 0) {
+                  Root (0 stack)
+                } @else {
+                  Depth {{ depth }}
+                }
+              </div>
+              <div class="flame-level-track">
+                @for (frame of getFramesAtDepth(depth); track frame.id) {
+                  <div
+                    class="flame-bar"
+                    [class]="getFrameColorClass(frame.type)"
+                    [class.active]="hoveredFrame()?.id === frame.id"
+                    [style.left.%]="frame.leftPercent"
+                    [style.width.%]="frame.widthPercent"
+                    (mouseenter)="onFrameHover(frame)"
+                    (mouseleave)="onFrameHover(null)"
+                  >
+                    <span class="bar-label">{{ frame.name }}</span>
+                    <span class="bar-dur">{{ frame.durationMs.toFixed(1) }}ms</span>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- X-Axis Timeline at bottom (0mS to End of Request) -->
+        <div class="flame-timeline-axis">
+          @for (tick of timeTicks(); track tick.percent) {
+            <div class="axis-tick" [style.left.%]="tick.percent">
+              <div class="tick-mark"></div>
+              <div class="tick-label">{{ tick.label }}</div>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Detail Inspection Card on Hover -->
+      @if (hoveredFrame(); as h) {
+        <div class="flame-details-card">
+          <div class="detail-header">
+            <span class="detail-name mono">{{ h.name }}</span>
+            <span class="badge gray">{{ h.typeLabel }}</span>
+            <span class="badge">{{ h.durationMs.toFixed(2) }} ms</span>
+          </div>
+          <div class="detail-body">
+            <div class="detail-row">
+              <span class="detail-label">Execution Time:</span>
+              <span class="detail-val mono">{{ h.startMs.toFixed(2) }} ms &rarr; {{ (h.startMs + h.durationMs).toFixed(2) }} ms ({{ ((h.durationMs / (selectedRequest()?.durationMs || 1)) * 100).toFixed(1) }}% of request)</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Source Location:</span>
+              <span class="detail-val mono">{{ h.file }}:{{ h.line }}</span>
+            </div>
+            @if (h.stackTrace) {
+              <div class="detail-row">
+                <span class="detail-label">Call Stack:</span>
+                <span class="detail-val mono text-stack">{{ h.stackTrace }}</span>
+              </div>
+            }
+            @if (h.details) {
+              <div class="detail-row">
+                <span class="detail-label">Details:</span>
+                <span class="detail-val">{{ h.details }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      } @else {
+        <div class="flame-details-hint muted">
+          Hover over any flame graph bar to inspect call stack trace and execution timing details.
+        </div>
+      }
+    }
   </div>
 </div>
