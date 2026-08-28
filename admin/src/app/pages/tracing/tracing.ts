@@ -18,7 +18,9 @@ export type FlameEventType =
   | 'include'
   | 'function'
   | 'error'
-  | 'http';
+  | 'http'
+  | 'parser'
+  | 'compiler';
 
 export interface FlameFrame {
   id: string;
@@ -105,6 +107,7 @@ export class Tracing implements OnInit, OnDestroy {
   private allServerPool: TraceRow[] = [];
   private currentOffset = 0;
   private readonly pageSize = 10;
+  protected readonly maxRows = 1000;
   private nextId = 1000;
 
   ngOnInit() {
@@ -282,7 +285,14 @@ export class Tracing implements OnInit, OnDestroy {
     const prevScrollHeight = el ? el.scrollHeight : 0;
     const prevScrollTop = el ? el.scrollTop : 0;
 
-    this.requests.update((existing) => [...newRows, ...existing]);
+    this.requests.update((existing) => {
+      const combined = [...newRows, ...existing];
+      if (combined.length > this.maxRows) {
+        // Drop oldest excess rows from the end of the table
+        return combined.slice(0, this.maxRows);
+      }
+      return combined;
+    });
 
     setTimeout(() => {
       if (el) {
@@ -298,17 +308,28 @@ export class Tracing implements OnInit, OnDestroy {
   }
 
   private fetchOlderBatch() {
-    this.loadingOlder.set(true);
     const list = this.requests();
+    if (list.length >= this.maxRows) {
+      this.hasMoreOlder.set(false);
+      this.loadingOlder.set(false);
+      return;
+    }
+
+    this.loadingOlder.set(true);
     const oldestId = list.length > 0 ? list[list.length - 1].id : 0;
 
     this.api.getTracing(this.excludeAdmin(), this.pageSize, oldestId, 0).subscribe({
       next: (info) => {
         const olderRows = this.mapRecentRequests(info.recentRequests);
         if (olderRows.length > 0) {
-          this.requests.update((existing) => [...existing, ...olderRows]);
+          this.requests.update((existing) => {
+            const available = this.maxRows - existing.length;
+            const toAdd = olderRows.slice(0, Math.max(0, available));
+            return [...existing, ...toAdd];
+          });
           this.currentOffset += olderRows.length;
-          this.hasMoreOlder.set(olderRows.length >= this.pageSize);
+          const currentTotal = this.requests().length;
+          this.hasMoreOlder.set(olderRows.length >= this.pageSize && currentTotal < this.maxRows);
         } else {
           this.hasMoreOlder.set(false);
         }
@@ -321,9 +342,14 @@ export class Tracing implements OnInit, OnDestroy {
         );
 
         if (nextBatch.length > 0) {
-          this.requests.update((existing) => [...existing, ...nextBatch]);
+          this.requests.update((existing) => {
+            const available = this.maxRows - existing.length;
+            const toAdd = nextBatch.slice(0, Math.max(0, available));
+            return [...existing, ...toAdd];
+          });
           this.currentOffset += nextBatch.length;
-          this.hasMoreOlder.set(this.currentOffset < this.allServerPool.length);
+          const currentTotal = this.requests().length;
+          this.hasMoreOlder.set(this.currentOffset < this.allServerPool.length && currentTotal < this.maxRows);
         } else {
           this.hasMoreOlder.set(false);
         }
@@ -353,23 +379,29 @@ export class Tracing implements OnInit, OnDestroy {
   }
 
   private buildFlameGraph(row: TraceRow) {
-    const frames = row.flameFrames && row.flameFrames.length > 0
-      ? row.flameFrames
-      : this.generateFlameFrames(row);
-
     const totalDur = Math.max(row.durationMs, 0.1);
-    let highestDepth = 0;
+    this.updateTimeTicks(totalDur);
 
-    for (const f of frames) {
-      if (f.depth > highestDepth) highestDepth = f.depth;
-      f.leftPercent = (f.startMs / totalDur) * 100;
-      f.widthPercent = Math.max((f.durationMs / totalDur) * 100, 0.4);
-    }
+    // Fetch real SQLite line execution steps from backend profiler store
+    this.api.getRequestTrace(row.id).subscribe({
+      next: (details) => {
+        if (details.steps && details.steps.length > 0) {
+          const realFrames = this.mapSqliteStepsToFlameFrames(row, details.steps);
+          this.applyFlameFrames(row, realFrames);
+        } else {
+          // Fallback to modeled frames if lineExecutionTrace was not active for this request
+          const fallbackFrames = this.generateFlameFrames(row);
+          this.applyFlameFrames(row, fallbackFrames);
+        }
+      },
+      error: () => {
+        const fallbackFrames = this.generateFlameFrames(row);
+        this.applyFlameFrames(row, fallbackFrames);
+      },
+    });
+  }
 
-    this.flameFrames.set(frames);
-    this.maxDepth.set(highestDepth);
-
-    // Build time axis ticks (5 ticks from 0 to totalDur)
+  private updateTimeTicks(totalDur: number) {
     const ticks: TimeTick[] = [];
     const count = 5;
     for (let i = 0; i <= count; i++) {
@@ -381,6 +413,275 @@ export class Tracing implements OnInit, OnDestroy {
       });
     }
     this.timeTicks.set(ticks);
+  }
+
+  private applyFlameFrames(row: TraceRow, frames: FlameFrame[]) {
+    const totalDur = Math.max(row.durationMs, 0.1);
+    let highestDepth = 0;
+
+    for (const f of frames) {
+      if (f.depth > highestDepth) highestDepth = f.depth;
+      f.leftPercent = (f.startMs / totalDur) * 100;
+      f.widthPercent = Math.max((f.durationMs / totalDur) * 100, 0.4);
+    }
+
+    this.flameFrames.set(frames);
+    this.maxDepth.set(highestDepth);
+  }
+
+  private mapSqliteStepsToFlameFrames(row: TraceRow, steps: import('../../services/admin-api.service').TraceStepDto[]): FlameFrame[] {
+    const totalDur = Math.max(row.durationMs, 0.1);
+    const tmpl = row.template;
+    const frames: FlameFrame[] = [];
+
+    // Root Frame (Depth 0 - no stack trace)
+    frames.push({
+      id: `real-root-${row.id}`,
+      name: `${row.method} ${tmpl}`,
+      type: 'request',
+      typeLabel: 'HTTP Request',
+      startMs: 0,
+      durationMs: totalDur,
+      depth: 0,
+      file: tmpl,
+      line: 1,
+      stackTrace: 'HTTP Worker > Request Pipeline',
+      details: `Status: ${row.statusText}, Total Duration: ${totalDur.toFixed(2)} ms`,
+      leftPercent: 0,
+      widthPercent: 100,
+    });
+
+    let index = 0;
+    const entryStack: { id: string; type: string; path: string; function: string; startMs: number; depth: number; stackTrace: string }[] = [];
+    const parseStack: { id: string; path: string; startMs: number; depth: number }[] = [];
+    const compileStack: { id: string; path: string; startMs: number; depth: number }[] = [];
+
+    for (const s of steps) {
+      const ts = s.timestampMs ?? s.elapsedMs ?? 0;
+      const dur = Math.max(s.durationMs ?? s.deltaMs ?? 0, 0.001);
+      const stepStartMs = Math.max(0, ts - dur);
+      const stepEndMs = ts;
+
+      // Determine base depth from stack trace hierarchy
+      let stackDepth = 1;
+      if (s.stackTrace && s.stackTrace.length > 0) {
+        const countPipes = (s.stackTrace.match(/\|/g) || []).length;
+        const countArrows = (s.stackTrace.match(/>/g) || []).length;
+        stackDepth = 1 + Math.max(countPipes, countArrows);
+      }
+
+      const fileName = s.path ? s.path.split('/').pop() || s.path : tmpl;
+
+      if (s.type === 'PARSE_START') {
+        parseStack.push({
+          id: `parse-${row.id}-${index++}`,
+          path: s.path,
+          startMs: ts,
+          depth: stackDepth,
+        });
+      } else if (s.type === 'PARSE_END') {
+        let matched = -1;
+        for (let i = parseStack.length - 1; i >= 0; i--) {
+          if (parseStack[i].path === s.path) {
+            matched = i;
+            break;
+          }
+        }
+        const openParse = matched >= 0 ? parseStack.splice(matched, 1)[0] : null;
+        const parseStart = openParse ? openParse.startMs : stepStartMs;
+        const spanDur = Math.max(0.001, ts - parseStart);
+
+        frames.push({
+          id: openParse ? openParse.id : `parse-${row.id}-${index++}`,
+          name: `Parse: ${fileName}`,
+          type: 'parser',
+          typeLabel: 'Parser',
+          startMs: parseStart,
+          durationMs: spanDur,
+          depth: openParse ? openParse.depth : stackDepth,
+          file: s.path || tmpl,
+          line: 0,
+          stackTrace: 'TextParser Engine',
+          details: `Parse: ${parseStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
+          leftPercent: (parseStart / totalDur) * 100,
+          widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
+        });
+      } else if (s.type === 'COMPILE_START') {
+        compileStack.push({
+          id: `compile-${row.id}-${index++}`,
+          path: s.path,
+          startMs: ts,
+          depth: stackDepth,
+        });
+      } else if (s.type === 'COMPILE_END') {
+        let matched = -1;
+        for (let i = compileStack.length - 1; i >= 0; i--) {
+          if (compileStack[i].path === s.path) {
+            matched = i;
+            break;
+          }
+        }
+        const openCompile = matched >= 0 ? compileStack.splice(matched, 1)[0] : null;
+        const compileStart = openCompile ? openCompile.startMs : stepStartMs;
+        const spanDur = Math.max(0.001, ts - compileStart);
+
+        frames.push({
+          id: openCompile ? openCompile.id : `compile-${row.id}-${index++}`,
+          name: `Compile: ${fileName}`,
+          type: 'compiler',
+          typeLabel: 'JIT Compiler',
+          startMs: compileStart,
+          durationMs: spanDur,
+          depth: openCompile ? openCompile.depth : stackDepth,
+          file: s.path || tmpl,
+          line: 0,
+          stackTrace: 'LLVM JIT Compiler',
+          details: `JIT Compile: ${compileStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
+          leftPercent: (compileStart / totalDur) * 100,
+          widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
+        });
+      } else if (s.type === 'ENTRY') {
+        // Track open entry block
+        entryStack.push({
+          id: `entry-${row.id}-${index++}`,
+          type: s.function ? 'component' : 'template',
+          path: s.path,
+          function: s.function,
+          startMs: ts,
+          depth: stackDepth,
+          stackTrace: s.stackTrace,
+        });
+      } else if (s.type === 'EXIT') {
+        // Close matching entry block and create its encompassing flame frame
+        let matched = -1;
+        for (let i = entryStack.length - 1; i >= 0; i--) {
+          if (entryStack[i].path === s.path) {
+            matched = i;
+            break;
+          }
+        }
+        const openEntry = matched >= 0 ? entryStack.splice(matched, 1)[0] : null;
+        const entryStart = openEntry ? openEntry.startMs : stepStartMs;
+        const spanDur = Math.max(0.001, ts - entryStart);
+        const name = s.function && s.function.length > 0
+          ? `${s.function}()`
+          : fileName;
+
+        frames.push({
+          id: `span-${row.id}-${index++}`,
+          name,
+          type: openEntry ? openEntry.type as FlameEventType : 'template',
+          typeLabel: s.function ? 'CFC Method' : 'Template',
+          startMs: entryStart,
+          durationMs: spanDur,
+          depth: openEntry ? openEntry.depth : stackDepth,
+          file: s.path || tmpl,
+          line: s.line,
+          stackTrace: s.stackTrace || (s.path ? `${s.path}:${s.line}` : ''),
+          details: `Span: ${entryStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
+          leftPercent: (entryStart / totalDur) * 100,
+          widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
+        });
+      } else if (s.type === 'ENGINE') {
+        // Engine startup / lifecycle steps
+        const name = s.function || s.path || 'Engine Step';
+        frames.push({
+          id: `engine-${row.id}-${index++}`,
+          name,
+          type: 'function',
+          typeLabel: 'DB Engine',
+          startMs: stepStartMs,
+          durationMs: dur,
+          depth: 1,
+          file: '[ENGINE]',
+          line: 0,
+          stackTrace: 'Engine Internal Pipeline',
+          details: `${name} (${stepStartMs.toFixed(3)} ms &ndash; ${stepEndMs.toFixed(3)} ms)`,
+          leftPercent: (stepStartMs / totalDur) * 100,
+          widthPercent: Math.max((dur / totalDur) * 100, 0.4),
+        });
+      } else {
+        // Line execution, Query, Tag, Catch, etc.
+        const type = this.mapStepType(s.type);
+        const typeLabel = this.formatTypeLabel(s.type);
+        const name = s.function && s.function.length > 0
+          ? `${s.function}()`
+          : (s.line > 0 ? `${fileName}:${s.line}` : s.type);
+
+        frames.push({
+          id: `step-${row.id}-${index++}`,
+          name,
+          type,
+          typeLabel,
+          startMs: stepStartMs,
+          durationMs: dur,
+          depth: stackDepth + 1,
+          file: s.path || tmpl,
+          line: s.line,
+          stackTrace: s.stackTrace || (s.path ? `${s.path}:${s.line}` : ''),
+          details: `Event: ${s.type}, Start: ${stepStartMs.toFixed(3)} ms, End: ${stepEndMs.toFixed(3)} ms (${dur.toFixed(3)} ms)`,
+          leftPercent: (stepStartMs / totalDur) * 100,
+          widthPercent: Math.max((dur / totalDur) * 100, 0.4),
+        });
+      }
+    }
+
+    // Close any remaining open entries
+    while (entryStack.length > 0) {
+      const open = entryStack.pop()!;
+      const spanDur = Math.max(0.001, totalDur - open.startMs);
+      const fileName = open.path ? open.path.split('/').pop() || open.path : tmpl;
+      const name = open.function ? `${open.function}()` : fileName;
+
+      frames.push({
+        id: `open-${row.id}-${index++}`,
+        name,
+        type: open.type as FlameEventType,
+        typeLabel: open.function ? 'CFC Method' : 'Template',
+        startMs: open.startMs,
+        durationMs: spanDur,
+        depth: open.depth,
+        file: open.path || tmpl,
+        line: 0,
+        stackTrace: open.stackTrace,
+        details: `Span: ${open.startMs.toFixed(3)} ms &ndash; ${totalDur.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
+        leftPercent: (open.startMs / totalDur) * 100,
+        widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
+      });
+    }
+
+    return frames;
+  }
+
+  private mapStepType(type: string): FlameEventType {
+    const t = (type || '').toUpperCase();
+    if (t.includes('PARSE')) return 'parser';
+    if (t.includes('COMPILE')) return 'compiler';
+    if (t.includes('QUERY') || t.includes('DB_')) return 'query';
+    if (t.includes('CFC') || t.includes('COMPONENT') || t.includes('METHOD')) return 'component';
+    if (t.includes('CUSTOM_TAG') || t.includes('TAG')) return 'custom_tag';
+    if (t.includes('INCLUDE')) return 'include';
+    if (t.includes('ERROR') || t.includes('CATCH') || t.includes('EXCEPTION')) return 'error';
+    if (t.includes('HTTP')) return 'http';
+    if (t.includes('ENTRY') || t.includes('TEMPLATE') || t.includes('LINE')) return 'template';
+    if (t.includes('ENGINE') || t.includes('FUNCTION')) return 'function';
+    return 'template';
+  }
+
+  private formatTypeLabel(type: string): string {
+    const t = (type || '').toUpperCase();
+    if (t.includes('PARSE')) return 'Parser';
+    if (t.includes('COMPILE')) return 'JIT Compiler';
+    if (t.includes('QUERY')) return 'CFQUERY';
+    if (t.includes('CFC')) return 'CFC Method';
+    if (t.includes('CUSTOM_TAG')) return 'CFTAG';
+    if (t.includes('INCLUDE')) return 'CFINCLUDE';
+    if (t.includes('ERROR') || t.includes('CATCH')) return 'CFCATCH';
+    if (t.includes('HTTP')) return 'CFHTTP';
+    if (t.includes('ENGINE')) return 'DB Engine';
+    if (t.includes('ENTRY')) return 'Template Entry';
+    if (t.includes('LINE')) return 'Line Execution';
+    return type || 'Step';
   }
 
   private generateFlameFrames(row: TraceRow): FlameFrame[] {
@@ -763,6 +1064,8 @@ export class Tracing implements OnInit, OnDestroy {
       case 'function': return 'frame-function';
       case 'error': return 'frame-error';
       case 'http': return 'frame-http';
+      case 'parser': return 'frame-parser';
+      case 'compiler': return 'frame-compiler';
       default: return 'frame-default';
     }
   }

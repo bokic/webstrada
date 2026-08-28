@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 #include <cstring>
 #include <cstdio>
+#include <unistd.h>
 
 namespace webstrada {
 
@@ -94,11 +95,11 @@ void ProfilerStore::close()
     }
 }
 
-bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
+int64_t ProfilerStore::recordRequest(const RequestTraceSummary &summary)
 {
-    if (!m_db) return false;
+    if (!m_db) return 0;
 
-    if (!exec("BEGIN IMMEDIATE;")) return false;
+    if (!exec("BEGIN IMMEDIATE;")) return 0;
 
     static const char *kInsertReq =
         "INSERT INTO requests ("
@@ -113,7 +114,7 @@ bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
     if (sqlite3_prepare_v2(m_db, kInsertReq, -1, &stmtReq, nullptr) != SQLITE_OK) {
         m_lastError = sqlite3_errmsg(m_db);
         exec("ROLLBACK;");
-        return false;
+        return 0;
     }
 
     sqlite3_bind_double(stmtReq, 1, summary.timestamp);
@@ -135,7 +136,7 @@ bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
         m_lastError = sqlite3_errmsg(m_db);
         sqlite3_finalize(stmtReq);
         exec("ROLLBACK;");
-        return false;
+        return 0;
     }
     sqlite3_finalize(stmtReq);
 
@@ -151,7 +152,7 @@ bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
         if (sqlite3_prepare_v2(m_db, kInsertTrace, -1, &stmtTrace, nullptr) != SQLITE_OK) {
             m_lastError = sqlite3_errmsg(m_db);
             exec("ROLLBACK;");
-            return false;
+            return 0;
         }
 
         int seq = 0;
@@ -163,8 +164,8 @@ bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
             sqlite3_bind_text(stmtTrace, 5, step.function.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_int(stmtTrace, 6, step.line);
             sqlite3_bind_text(stmtTrace, 7, step.stackTrace.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_double(stmtTrace, 8, step.deltaMs);
-            sqlite3_bind_double(stmtTrace, 9, step.elapsedMs);
+            sqlite3_bind_double(stmtTrace, 8, step.durationMs);
+            sqlite3_bind_double(stmtTrace, 9, step.timestampMs);
 
             sqlite3_step(stmtTrace);
             sqlite3_reset(stmtTrace);
@@ -172,7 +173,80 @@ bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
         sqlite3_finalize(stmtTrace);
     }
 
-    return exec("COMMIT;");
+    if (exec("COMMIT;")) {
+        return reqId;
+    }
+    return 0;
+}
+
+bool ProfilerStore::getRequestSteps(int64_t requestId, std::vector<TraceStep> &steps)
+{
+    if (!m_db) return false;
+
+    static const char *kQuery =
+        "SELECT seq, event_type, path, function_name, line_number, stack_trace, delta_ms, elapsed_ms "
+        "FROM request_traces WHERE request_id = ? ORDER BY seq ASC;";
+
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, kQuery, -1, &stmt, nullptr) != SQLITE_OK) {
+        m_lastError = sqlite3_errmsg(m_db);
+        return false;
+    }
+
+    sqlite3_bind_int64(stmt, 1, requestId);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        TraceStep step;
+        step.seq = sqlite3_column_int(stmt, 0);
+        const unsigned char *type = sqlite3_column_text(stmt, 1);
+        const unsigned char *path = sqlite3_column_text(stmt, 2);
+        const unsigned char *func = sqlite3_column_text(stmt, 3);
+        int line = sqlite3_column_int(stmt, 4);
+        const unsigned char *st = sqlite3_column_text(stmt, 5);
+        double delta = sqlite3_column_double(stmt, 6);
+        double elapsed = sqlite3_column_double(stmt, 7);
+
+        if (type) step.type = reinterpret_cast<const char *>(type);
+        if (path) step.path = reinterpret_cast<const char *>(path);
+        if (func) step.function = reinterpret_cast<const char *>(func);
+        step.line = line;
+        if (st) step.stackTrace = reinterpret_cast<const char *>(st);
+        step.durationMs = delta;
+        step.timestampMs = elapsed;
+
+        steps.push_back(std::move(step));
+    }
+    sqlite3_finalize(stmt);
+    return true;
+}
+
+namespace {
+ProfilerStore g_profilerStore;
+}
+
+ProfilerStore &profiler_store()
+{
+    return g_profilerStore;
+}
+
+void open_profiler_store()
+{
+    char exe[4096];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    std::string dbPath;
+    if (n > 0) {
+        exe[n] = '\0';
+        std::string path(exe);
+        size_t slash = path.find_last_of('/');
+        dbPath = (slash != std::string::npos)
+            ? path.substr(0, slash + 1) + "WebStrada-profiler.sqlite"
+            : "WebStrada-profiler.sqlite";
+    } else {
+        dbPath = "WebStrada-profiler.sqlite";
+    }
+    if (!g_profilerStore.isOpen()) {
+        g_profilerStore.open(dbPath);
+    }
 }
 
 } // namespace webstrada

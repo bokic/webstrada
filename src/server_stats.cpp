@@ -44,14 +44,14 @@ void request_begin(const std::string &method, const std::string &templatePath)
     t_reqStartMs = nowMs();
 }
 
-void request_end(int statusCode)
+void request_end(int statusCode, int64_t reqId)
 {
     double durationMs = nowMs() - t_reqStartMs;
     std::lock_guard<std::mutex> lock(g_mutex);
     ++g_requests;
     g_totalMs += durationMs;
     RecentRequest rr;
-    rr.id = g_requests;
+    rr.id = (reqId > 0) ? reqId : g_requests;
     rr.time = static_cast<int64_t>(std::time(nullptr));
     rr.templatePath = t_templatePath;
     rr.method = t_method;

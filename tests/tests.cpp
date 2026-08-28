@@ -23973,8 +23973,8 @@ TEST(ProfilerStoreTest, RecordAndPersistRequestTraces) {
     s1.path = "/test.cfm";
     s1.function = "MAIN";
     s1.line = 0;
-    s1.deltaMs = 0.5;
-    s1.elapsedMs = 0.5;
+    s1.durationMs = 0.5;
+    s1.timestampMs = 0.5;
     summary.steps.push_back(s1);
 
     TraceStep s2;
@@ -23982,8 +23982,8 @@ TEST(ProfilerStoreTest, RecordAndPersistRequestTraces) {
     s2.path = "/test.cfm";
     s2.function = "MAIN";
     s2.line = 10;
-    s2.deltaMs = 1.5;
-    s2.elapsedMs = 2.0;
+    s2.durationMs = 1.5;
+    s2.timestampMs = 2.0;
     summary.steps.push_back(s2);
 
     TraceStep s3;
@@ -23991,11 +23991,11 @@ TEST(ProfilerStoreTest, RecordAndPersistRequestTraces) {
     s3.path = "/test.cfm";
     s3.function = "MAIN";
     s3.line = 10;
-    s3.deltaMs = 0.2;
-    s3.elapsedMs = 2.2;
+    s3.durationMs = 0.2;
+    s3.timestampMs = 2.2;
     summary.steps.push_back(s3);
 
-    EXPECT_TRUE(store.recordRequest(summary));
+    EXPECT_GT(store.recordRequest(summary), 0);
     store.close();
     unlink(dbPath);
 }
@@ -24052,8 +24052,8 @@ TEST(ProfilerStoreTest, StackTraceColumnPersistence) {
     step1.function = "MAIN";
     step1.line = 1;
     step1.stackTrace = "/test.cfm:1:MAIN";
-    step1.deltaMs = 0.5;
-    step1.elapsedMs = 0.5;
+    step1.durationMs = 0.5;
+    step1.timestampMs = 0.5;
 
     TraceStep step2;
     step2.type = "DB_QUERY_START";
@@ -24061,13 +24061,13 @@ TEST(ProfilerStoreTest, StackTraceColumnPersistence) {
     step2.function = "q1";
     step2.line = 0;
     step2.stackTrace = "/test.cfm:1:MAIN|/components/User.cfc:10:GETUSER";
-    step2.deltaMs = 1.2;
-    step2.elapsedMs = 1.7;
+    step2.durationMs = 1.2;
+    step2.timestampMs = 1.7;
 
     summary.steps.push_back(step1);
     summary.steps.push_back(step2);
 
-    ASSERT_TRUE(store.recordRequest(summary));
+    ASSERT_GT(store.recordRequest(summary), 0);
     store.close();
     unlink(dbTemplate);
 }

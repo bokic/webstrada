@@ -68,12 +68,12 @@ static thread_local std::vector<webstrada::TraceStep> g_requestTraceSteps;
 static thread_local std::chrono::steady_clock::time_point g_requestTraceStartTime;
 static thread_local bool g_requestTraceActive = false;
 
-void trace_begin_request()
+void trace_begin_request(std::chrono::steady_clock::time_point acceptTime)
 {
     g_requestTraceSteps.clear();
     g_requestTraceSteps.reserve(2048);
-    g_requestTraceStartTime = std::chrono::steady_clock::now();
-    s_lastTraceTime = g_requestTraceStartTime;
+    g_requestTraceStartTime = acceptTime;
+    s_lastTraceTime = acceptTime;
     s_traceTimerStarted = true;
     g_requestTraceActive = true;
 }
@@ -118,8 +118,8 @@ void trace_record_event(const char *type, const char *path, const char *function
         step.function = function ? function : "";
         step.line = line;
         step.stackTrace = currentStackTraceString();
-        step.deltaMs = deltaMs;
-        step.elapsedMs = elapsedMs;
+        step.durationMs = deltaMs;
+        step.timestampMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));
     }
 }
@@ -148,8 +148,8 @@ void cf_stack_push(const char *path, const char *function)
         step.function = top.function;
         step.line = 0;
         step.stackTrace = currentStackTraceString();
-        step.deltaMs = deltaMs;
-        step.elapsedMs = elapsedMs;
+        step.durationMs = deltaMs;
+        step.timestampMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));
     }
 }
@@ -173,8 +173,8 @@ void cf_stack_set_line(int line)
         step.function = top.function;
         step.line = line;
         step.stackTrace = currentStackTraceString();
-        step.deltaMs = deltaMs;
-        step.elapsedMs = elapsedMs;
+        step.durationMs = deltaMs;
+        step.timestampMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));
     }
 }
@@ -194,8 +194,8 @@ void cf_stack_pop()
         step.function = top.function;
         step.line = top.line;
         step.stackTrace = currentStackTraceString();
-        step.deltaMs = deltaMs;
-        step.elapsedMs = elapsedMs;
+        step.durationMs = deltaMs;
+        step.timestampMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));
     }
     if (!g_callStack.empty()) g_callStack.pop_back();

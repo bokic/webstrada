@@ -147,6 +147,9 @@ void worker::process_request(FCGX_Request *request)
     auto t_req_start = std::chrono::steady_clock::now();
     try {
         g_currentWorker = this;
+        cfml::trace_begin_request(t_req_start);
+        cfml::trace_record_event("ENGINE", "[ENGINE]", "REQUEST_ACCEPT", 0);
+
         // Re-read the server config file when it changed on disk, so an
         // admin-panel update (written by any worker) becomes effective on the
         // next request in this prefork child (a single stat() when unchanged).
@@ -156,7 +159,6 @@ void worker::process_request(FCGX_Request *request)
             webstrada::db::closeAllConnections();
         }
 
-        cfml::trace_begin_request();
         g_reqProfiler.reset();
 
         // Reset the per-request HTTP request body (GetHttpRequestData reads it).
@@ -515,13 +517,7 @@ void worker::process_request(FCGX_Request *request)
     // The duration runs from request_begin (start of execution) to here — just
     // before the final output is dumped to the FastCGI stream below — so the
     // time spent encoding/writing the response is excluded.
-    webstrada::stats::request_end(cfml::response().statusCode);
-
-    cfml::response_send_remaining(&m_out);
-    g_response_stream = nullptr;
-
-    FCGX_Finish_r(request);
-
+    int64_t profilerReqId = 0;
     if (webstrada::config::lineExecutionTrace) {
         RequestTraceSummary summary;
         summary.timestamp = static_cast<double>(time(nullptr));
@@ -540,10 +536,17 @@ void worker::process_request(FCGX_Request *request)
         summary.cfcMethodsMs = g_reqProfiler.cfcMethodTime;
         summary.steps = cfml::trace_take_steps();
 
-        m_profilerStore.recordRequest(summary);
+        profilerReqId = m_profilerStore.recordRequest(summary);
     } else {
         cfml::trace_take_steps();
     }
+
+    webstrada::stats::request_end(cfml::response().statusCode, profilerReqId);
+
+    cfml::response_send_remaining(&m_out);
+    g_response_stream = nullptr;
+
+    FCGX_Finish_r(request);
 
     webstrada::db::requestCleanupConnections();
 

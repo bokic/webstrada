@@ -4,6 +4,7 @@
 #include <webstrada/string.h>
 #include <webstrada/profiler_store.h>
 #include <libxml/tree.h>
+#include <chrono>
 #include <deque>
 #include <map>
 #include <set>
@@ -203,7 +204,7 @@ std::string safe_to_std_string(const webstrada::cfvariant &v);
 std::string serialize_xml_node(const webstrada::cfvariant &node);
 
 // Request execution tracer helpers (core_stacktrace.cpp)
-void trace_begin_request();
+void trace_begin_request(std::chrono::steady_clock::time_point acceptTime = std::chrono::steady_clock::now());
 void trace_record_event(const char *type, const char *path, const char *function, int line = 0);
 std::vector<webstrada::TraceStep> trace_take_steps();
 }

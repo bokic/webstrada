@@ -275,6 +275,8 @@
 .color-tag { background: #d97706; }
 .color-inc { background: #0891b2; }
 .color-fn { background: #4f46e5; }
+.color-parse { background: #ea580c; }
+.color-compile { background: #c026d3; }
 .color-err { background: #dc2626; }
 
 .flame-container {
@@ -410,6 +412,14 @@
 
 .frame-error {
   background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
+.frame-parser {
+  background: linear-gradient(135deg, #ea580c, #c2410c);
+}
+
+.frame-compiler {
+  background: linear-gradient(135deg, #c026d3, #9333ea);
 }
 
 .frame-default {

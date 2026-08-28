@@ -1077,6 +1077,7 @@ cfvariant *cf___configreset(const cfvariant **args, int argc);
 cfvariant *cf___cacheinfo(const cfvariant **args, int argc);
 cfvariant *cf___cacheevict(const cfvariant **args, int argc);
 cfvariant *cf___cacheclear(const cfvariant **args, int argc);
+cfvariant *cf___requesttrace(const cfvariant **args, int argc);
 // Registry for the `__` extension family. cf_is_extension_name validates a
 // name (upper-cased) at compile time; cf_extension_call dispatches a call for
 // the #...# interpreter. Both return false/nullptr for unregistered names.

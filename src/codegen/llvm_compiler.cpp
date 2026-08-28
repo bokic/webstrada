@@ -253,6 +253,7 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cf___cacheinfo", reinterpret_cast<void*>(cfml::cf___cacheinfo));
     llvm::sys::DynamicLibrary::AddSymbol("cf___cacheevict", reinterpret_cast<void*>(cfml::cf___cacheevict));
     llvm::sys::DynamicLibrary::AddSymbol("cf___cacheclear", reinterpret_cast<void*>(cfml::cf___cacheclear));
+    llvm::sys::DynamicLibrary::AddSymbol("cf___requesttrace", reinterpret_cast<void*>(cfml::cf___requesttrace));
 
 
 

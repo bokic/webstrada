@@ -37,6 +37,7 @@ const std::map<std::string, ExtensionFn> &extensionRegistry()
         {"__CACHEINFO", cfml::cf___cacheinfo},
         {"__CACHEEVICT", cfml::cf___cacheevict},
         {"__CACHECLEAR", cfml::cf___cacheclear},
+        {"__REQUESTTRACE", cfml::cf___requesttrace},
     };
     return table;
 }

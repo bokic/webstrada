@@ -9,13 +9,14 @@ struct sqlite3;
 namespace webstrada {
 
 struct TraceStep {
+    int seq = 0;
     std::string type; // "ENTRY", "LINE", "EXIT", "DB_QUERY_START", etc.
     std::string path;
     std::string function;
     int line = 0;
     std::string stackTrace; // '|' separated call stack
-    double deltaMs = 0.0;
-    double elapsedMs = 0.0;
+    double durationMs = 0.0;
+    double timestampMs = 0.0;
 };
 
 struct RequestTraceSummary {
@@ -51,7 +52,8 @@ public:
     bool isOpen() const { return m_db != nullptr; }
     const std::string &lastError() const { return m_lastError; }
 
-    bool recordRequest(const RequestTraceSummary &summary);
+    int64_t recordRequest(const RequestTraceSummary &summary);
+    bool getRequestSteps(int64_t requestId, std::vector<TraceStep> &steps);
 
 private:
     bool exec(const char *sql);
@@ -59,5 +61,8 @@ private:
     sqlite3 *m_db = nullptr;
     std::string m_lastError;
 };
+
+ProfilerStore &profiler_store();
+void open_profiler_store();
 
 } // namespace webstrada

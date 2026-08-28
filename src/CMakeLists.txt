@@ -460,6 +460,7 @@ add_library(webstrada-core
     cffunctions/fn_serialize.cpp
     cffunctions/fn_serializejson.cpp
     cffunctions/fn_serverinfo.cpp
+    cffunctions/fn_requesttrace.cpp
     cffunctions/fn_setlocale.cpp
     cffunctions/fn_setprofilestring.cpp
     cffunctions/fn_setvariable.cpp

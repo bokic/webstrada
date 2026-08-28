@@ -75,6 +75,24 @@ export interface CacheInfo {
   compiledComponents: number;  // JIT-compiled .cfc held by this worker
 }
 
+export interface TraceStepDto {
+  seq: number;
+  type: string;
+  path: string;
+  function: string;
+  line: number;
+  stackTrace: string;
+  timestampMs: number;
+  durationMs: number;
+  deltaMs?: number;
+  elapsedMs?: number;
+}
+
+export interface RequestTraceDetails {
+  requestId: number;
+  steps: TraceStepDto[];
+}
+
 export interface ApiError {
   ok?: boolean;
   error?: string;
@@ -131,6 +149,12 @@ export class AdminApiService {
     if (beforeId > 0) params['beforeId'] = String(beforeId);
     if (sinceId > 0) params['sinceId'] = String(sinceId);
     return this.http.get<ServerInfo>(`${this.base}/tracing.cfm`, { params });
+  }
+
+  getRequestTrace(requestId: number): Observable<RequestTraceDetails> {
+    return this.http.get<RequestTraceDetails>(`${this.base}/tracing.cfm`, {
+      params: { requestId: String(requestId) },
+    });
   }
 
   getCacheInfo(): Observable<CacheInfo> {

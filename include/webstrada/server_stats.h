@@ -26,7 +26,7 @@ struct RecentRequest {
 void request_begin(const std::string &method, const std::string &templatePath);
 
 // Records the end of a request with its response status code.
-void request_end(int statusCode);
+void request_end(int statusCode, int64_t reqId = 0);
 
 // Seconds since the worker process started.
 int64_t uptime_seconds();
