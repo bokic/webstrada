@@ -39,6 +39,8 @@ bool ScopeStore::open(const std::string &dbPath)
     // task direction we rely on SQLite's own write serialization rather than
     // adding application-level locking.
     if (!exec("PRAGMA journal_mode=WAL;")) return false;
+    if (!exec("PRAGMA synchronous=NORMAL;")) return false;
+    if (!exec("PRAGMA temp_store=MEMORY;")) return false;
     if (!exec("PRAGMA busy_timeout=5000;")) return false;
 
     static const char *kSchema =
@@ -113,19 +115,7 @@ static bool loadRow(sqlite3 *db, std::string &lastError,
         return false;
     }
 
-    if (found) {
-        // Touch last_access so the most recent use is recorded.
-        sqlite3_stmt *upd = nullptr;
-        const char *updSql = "UPDATE cf_scope SET last_access=? WHERE scope_kind=? AND app_name=? AND scope_id=?;";
-        if (sqlite3_prepare_v2(db, updSql, -1, &upd, nullptr) == SQLITE_OK) {
-            sqlite3_bind_int64(upd, 1, now);
-            sqlite3_bind_text(upd, 2, kind, -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(upd, 3, appName.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(upd, 4, scopeId.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_step(upd);
-            sqlite3_finalize(upd);
-        }
-    } else {
+    if (!found) {
         // Lazy purge of the expired row.
         sqlite3_stmt *del = nullptr;
         const char *delSql = "DELETE FROM cf_scope WHERE scope_kind=? AND app_name=? AND scope_id=?"

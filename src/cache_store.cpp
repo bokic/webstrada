@@ -78,6 +78,8 @@ bool CacheStore::open(const std::string &dbPath)
     }
 
     if (!exec("PRAGMA journal_mode=WAL;")) return false;
+    if (!exec("PRAGMA synchronous=NORMAL;")) return false;
+    if (!exec("PRAGMA temp_store=MEMORY;")) return false;
     if (!exec("PRAGMA busy_timeout=5000;")) return false;
 
     static const char *kSchema =
