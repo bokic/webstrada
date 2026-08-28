@@ -47,7 +47,19 @@ export interface ServerInfo {
   uptimeSeconds: number;
   requestsServed: number;
   avgResponseMs: number;
+  lineExecutionTrace?: boolean;
+  hideAdminRequests?: boolean;
+  traceSessionCount?: number;
+  totalRecentRequests?: number;
   recentRequests: RecentRequest[];
+}
+
+export interface TraceControlResult {
+  ok: boolean;
+  lineExecutionTrace?: boolean;
+  hideAdminRequests?: boolean;
+  traceSessionCount?: number;
+  error?: string;
 }
 
 export interface DatasourceTestResult {
@@ -157,6 +169,26 @@ export class AdminApiService {
     return this.http.get<RequestTraceDetails>(`${this.base}/tracing.cfm`, {
       params,
     });
+  }
+
+  startTracing(): Observable<TraceControlResult> {
+    return this.http.post<TraceControlResult>(`${this.base}/tracing.cfm`, { action: 'start' });
+  }
+
+  stopTracing(): Observable<TraceControlResult> {
+    return this.http.post<TraceControlResult>(`${this.base}/tracing.cfm`, { action: 'stop' });
+  }
+
+  clearTracing(): Observable<TraceControlResult> {
+    return this.http.post<TraceControlResult>(`${this.base}/tracing.cfm`, { action: 'clear' });
+  }
+
+  getTraceControlStatus(): Observable<TraceControlResult> {
+    return this.http.post<TraceControlResult>(`${this.base}/tracing.cfm`, { action: 'status' });
+  }
+
+  setHideAdminRequests(hide: boolean): Observable<TraceControlResult> {
+    return this.http.post<TraceControlResult>(`${this.base}/tracing.cfm`, { action: 'setHideAdmin', value: hide });
   }
 
   getCacheInfo(): Observable<CacheInfo> {

@@ -123,7 +123,7 @@ static bool applyFile(json_object *root)
         enableQueryLogging           = jsonBoolField(settings, "enableQueryLogging", enableQueryLogging);
         debugEnabled                 = jsonBoolField(settings, "debugEnabled", debugEnabled);
         bool prevTrace               = lineExecutionTrace;
-        lineExecutionTrace           = jsonBoolField(settings, "lineExecutionTrace", lineExecutionTrace);
+        lineExecutionTrace           = false;
         if (lineExecutionTrace != prevTrace) {
             invalidateCompiledCaches();
         }
@@ -220,7 +220,7 @@ static json_object *globalsToJson()
     json_object_object_add(settings, "defaultSessionTimeoutSeconds", json_object_new_double(defaultSessionTimeoutSeconds));
     json_object_object_add(settings, "enableQueryLogging", json_object_new_boolean(enableQueryLogging));
     json_object_object_add(settings, "debugEnabled", json_object_new_boolean(debugEnabled));
-    json_object_object_add(settings, "lineExecutionTrace", json_object_new_boolean(lineExecutionTrace));
+    json_object_object_add(settings, "lineExecutionTrace", json_object_new_boolean(false));
     json_object_object_add(settings, "compileExtForInclude", json_object_new_string(compileExtForInclude.c_str()));
     json_object_object_add(root, "settings", settings);
 

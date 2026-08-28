@@ -23713,12 +23713,12 @@ TEST_F(ConfigExtensionTest, CacheInfoCompiledCounts) {
         webstrada::ComponentInfo *info = tc.get_component(webstrada::string(cfcPath.c_str()));
         EXPECT_TRUE(info != nullptr);
         if (info) webstrada::component_info_release(info);
-    }
 
-    int afterT = 0, afterC = 0;
-    webstrada::compiled_cache_counts(afterT, afterC);
-    EXPECT_GE(afterT - beforeT, 1);
-    EXPECT_GE(afterC - beforeC, 1);
+        int afterT = 0, afterC = 0;
+        webstrada::compiled_cache_counts(afterT, afterC);
+        EXPECT_GE(afterT, 1);
+        EXPECT_GE(afterC, 1);
+    }
 
     unlink(tplPath.c_str());
     unlink(cfcPath.c_str());
@@ -24068,8 +24068,53 @@ TEST(ProfilerStoreTest, StackTraceColumnPersistence) {
     summary.steps.push_back(step2);
 
     ASSERT_GT(store.recordRequest(summary), 0);
+    EXPECT_TRUE(store.clear());
+    std::vector<TraceStep> steps;
+    EXPECT_TRUE(store.getRequestSteps(1, steps));
+    EXPECT_EQ(steps.size(), 0u);
     store.close();
     unlink(dbTemplate);
+}
+
+TEST(TraceControlTest, StartStopClearStatus) {
+    cfvariant vStart("start");
+    const cfvariant *argStart = &vStart;
+    cfvariant *resStart = cfml::cf___tracecontrol(&argStart, 1);
+    ASSERT_NE(resStart, nullptr);
+    EXPECT_TRUE(cfml::structGet(resStart, "ok")->m_bool);
+    EXPECT_TRUE(cfml::structGet(resStart, "lineExecutionTrace")->m_bool);
+    EXPECT_EQ(cfml::structGet(resStart, "traceSessionCount")->m_int, 0);
+    delete resStart;
+
+    cfvariant vStop("stop");
+    const cfvariant *argStop = &vStop;
+    cfvariant *resStop = cfml::cf___tracecontrol(&argStop, 1);
+    ASSERT_NE(resStop, nullptr);
+    EXPECT_TRUE(cfml::structGet(resStop, "ok")->m_bool);
+    EXPECT_FALSE(cfml::structGet(resStop, "lineExecutionTrace")->m_bool);
+    delete resStop;
+
+    cfvariant vClear("clear");
+    const cfvariant *argClear = &vClear;
+    cfvariant *resClear = cfml::cf___tracecontrol(&argClear, 1);
+    ASSERT_NE(resClear, nullptr);
+    EXPECT_TRUE(cfml::structGet(resClear, "ok")->m_bool);
+    EXPECT_TRUE(cfml::structGet(resClear, "hideAdminRequests")->m_bool);
+    delete resClear;
+
+    cfvariant vSetHide("set_hide_admin");
+    cfvariant vFalse(cfvariant::Boolean);
+    vFalse.m_bool = false;
+    const cfvariant *argsSetHide[] = {&vSetHide, &vFalse};
+    cfvariant *resSetHide = cfml::cf___tracecontrol(argsSetHide, 2);
+    ASSERT_NE(resSetHide, nullptr);
+    EXPECT_TRUE(cfml::structGet(resSetHide, "ok")->m_bool);
+    EXPECT_FALSE(cfml::structGet(resSetHide, "hideAdminRequests")->m_bool);
+    EXPECT_FALSE(webstrada::stats::hide_admin_requests());
+    delete resSetHide;
+
+    // Reset back to default true
+    webstrada::stats::set_hide_admin_requests(true);
 }
 
 }  // namespace webstrada

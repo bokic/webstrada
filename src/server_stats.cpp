@@ -19,6 +19,7 @@ int64_t g_startTime = static_cast<int64_t>(std::time(nullptr));
 int64_t g_requests = 0;
 double g_totalMs = 0;
 std::vector<RecentRequest> g_recent;
+int g_traceSessionCount = 0;
 std::mutex g_mutex;
 
 // The request currently being handled (the worker processes one request at a
@@ -83,6 +84,44 @@ double avg_response_ms()
 const std::vector<RecentRequest> &recent_requests()
 {
     return g_recent;
+}
+
+void clear_recent_requests()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_recent.clear();
+}
+
+int increment_trace_session_count()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return ++g_traceSessionCount;
+}
+
+void reset_trace_session_count()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_traceSessionCount = 0;
+}
+
+int trace_session_count()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_traceSessionCount;
+}
+
+static bool g_hideAdminRequests = true;
+
+bool hide_admin_requests()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_hideAdminRequests;
+}
+
+void set_hide_admin_requests(bool hide)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_hideAdminRequests = hide;
 }
 
 } // namespace stats

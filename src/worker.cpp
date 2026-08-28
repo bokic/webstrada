@@ -91,6 +91,9 @@ worker::worker() {
 }
 
 worker::~worker() {
+    if (g_currentWorker == this) {
+        g_currentWorker = nullptr;
+    }
     webstrada::db::closeAllConnections();
 }
 
@@ -518,11 +521,15 @@ void worker::process_request(FCGX_Request *request)
     // before the final output is dumped to the FastCGI stream below — so the
     // time spent encoding/writing the response is excluded.
     int64_t profilerReqId = 0;
-    if (webstrada::config::lineExecutionTrace) {
+    std::string reqUri = m_cgi.has("REQUEST_URI") ? (m_cgi["REQUEST_URI"].toString().constData() ? m_cgi["REQUEST_URI"].toString().constData() : "/") : "/";
+    bool isAdminReq = (reqUri.rfind("/admin", 0) == 0);
+    bool shouldTrace = webstrada::config::lineExecutionTrace && (!webstrada::stats::hide_admin_requests() || !isAdminReq);
+
+    if (shouldTrace) {
         RequestTraceSummary summary;
         summary.timestamp = static_cast<double>(time(nullptr));
         summary.method = m_cgi.has("REQUEST_METHOD") ? (m_cgi["REQUEST_METHOD"].toString().constData() ? m_cgi["REQUEST_METHOD"].toString().constData() : "GET") : "GET";
-        summary.url = m_cgi.has("REQUEST_URI") ? (m_cgi["REQUEST_URI"].toString().constData() ? m_cgi["REQUEST_URI"].toString().constData() : "/") : "/";
+        summary.url = reqUri;
         summary.status = cfml::response().statusCode;
         summary.durationMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_req_start).count();
         summary.onRequestStartMs = g_reqProfiler.onRequestStartTime;
@@ -537,6 +544,9 @@ void worker::process_request(FCGX_Request *request)
         summary.steps = cfml::trace_take_steps();
 
         profilerReqId = m_profilerStore.recordRequest(summary);
+        if (webstrada::stats::increment_trace_session_count() >= 100) {
+            webstrada::config::lineExecutionTrace = false;
+        }
     } else {
         cfml::trace_take_steps();
     }

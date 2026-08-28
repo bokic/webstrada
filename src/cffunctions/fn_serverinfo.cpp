@@ -19,6 +19,7 @@
 
 #include <webstrada/cf8.h>
 #include <webstrada/server_stats.h>
+#include <webstrada/config.h>
 
 #include <cstdint>
 #include <string>
@@ -54,6 +55,18 @@ cfvariant *cf___serverinfo(const cfvariant **args, int argc)
     cfvariant state("Running");
     root.structSet("state", state);
     root.structSet("version", cfvariant("WebStrada v0.1.0"));
+
+    cfvariant let(cfvariant::Boolean);
+    let.m_bool = webstrada::config::lineExecutionTrace;
+    root.structSet("lineExecutionTrace", let);
+
+    cfvariant har(cfvariant::Boolean);
+    har.m_bool = webstrada::stats::hide_admin_requests();
+    root.structSet("hideAdminRequests", har);
+
+    cfvariant tsc(cfvariant::Number);
+    tsc.m_int = webstrada::stats::trace_session_count();
+    root.structSet("traceSessionCount", tsc);
 
     cfvariant uptime(cfvariant::Long);
     uptime.m_long = webstrada::stats::uptime_seconds();

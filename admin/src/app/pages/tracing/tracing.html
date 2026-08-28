@@ -8,13 +8,31 @@
     </div>
     <div class="page-actions trace-controls">
       <div class="live-indicator">
-        <span class="live-dot" [class.paused]="!isLive()"></span>
-        <span>{{ isLive() ? 'Live (1s refresh)' : 'Paused' }}</span>
+        <span
+          class="live-dot"
+          [class.green]="liveStatus() === 'active-ok'"
+          [class.red]="liveStatus() === 'active-error'"
+          [class.gray]="liveStatus() === 'stopped'"
+        ></span>
+        <span>
+          @if (liveStatus() === 'active-ok') {
+            Live (1s refresh &bull; {{ requests().length }}/100)
+          } @else if (liveStatus() === 'active-error') {
+            Connection Error (1s retry)
+          } @else {
+            {{ requests().length >= 100 ? 'Stopped (100 req limit)' : 'Tracing Stopped' }}
+          }
+        </span>
       </div>
-      <button class="btn-secondary" type="button" (click)="toggleLive()">
-        {{ isLive() ? 'Pause' : 'Resume' }}
-      </button>
-      <button class="btn-secondary" type="button" (click)="clearView()">Clear View</button>
+      @if (isLive()) {
+        <button class="btn-stop" type="button" (click)="stopTracing()">
+          Stop Tracing
+        </button>
+      } @else {
+        <button class="btn-start" type="button" (click)="startTracing()">
+          Start Tracing
+        </button>
+      }
     </div>
   </div>
 

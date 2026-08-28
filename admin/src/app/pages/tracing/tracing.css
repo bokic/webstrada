@@ -25,12 +25,22 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  background: #9a9a9a;
+}
+
+.live-dot.green {
   background: #6aab5c;
   box-shadow: 0 0 6px rgba(106, 171, 92, 0.6);
   animation: pulse-live 1.5s infinite;
 }
 
-.live-dot.paused {
+.live-dot.red {
+  background: #d9534f;
+  box-shadow: 0 0 6px rgba(217, 83, 79, 0.6);
+  animation: pulse-error 1.5s infinite;
+}
+
+.live-dot.gray {
   background: #9a9a9a;
   box-shadow: none;
   animation: none;
@@ -49,6 +59,61 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+@keyframes pulse-error {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.btn-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #ffffff;
+  background: #2e7d32;
+  border: 1px solid #1b5e20;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-start:hover {
+  background: #1b5e20;
+}
+
+.btn-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #ffffff;
+  background: #d32f2f;
+  border: 1px solid #b71c1c;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-stop:hover {
+  background: #b71c1c;
 }
 
 /* ---- Trace Table Section ---- */

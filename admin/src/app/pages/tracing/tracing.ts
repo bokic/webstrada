@@ -100,8 +100,9 @@ export class Tracing implements OnInit, OnDestroy {
   @ViewChild('scrollWindow') private scrollWindowRef?: ElementRef<HTMLDivElement>;
 
   protected readonly loaded = signal(false);
-  protected readonly isLive = signal(true);
-  protected readonly excludeAdmin = signal(false);
+  protected readonly liveStatus = signal<'active-ok' | 'active-error' | 'stopped'>('stopped');
+  protected readonly isLive = signal(false);
+  protected readonly excludeAdmin = signal(true);
   protected readonly excludeLineExecution = signal(true);
   protected readonly requests = signal<TraceRow[]>([]);
   protected readonly selectedId = signal<number | null>(null);
@@ -167,7 +168,6 @@ export class Tracing implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.initialFetch();
-    this.startPolling();
   }
 
   ngOnDestroy() {
@@ -178,20 +178,52 @@ export class Tracing implements OnInit, OnDestroy {
     }
   }
 
-  protected toggleLive() {
-    const nextState = !this.isLive();
-    this.isLive.set(nextState);
-    if (nextState) {
-      this.startPolling();
-    } else {
-      this.stopPolling();
+  protected startTracing() {
+    this.api.startTracing().subscribe({
+      next: () => {
+        this.requests.set([]);
+        this.selectedId.set(null);
+        this.selectedRequest.set(null);
+        this.flameFrames.set([]);
+        this.timeTicks.set([]);
+        this.currentOffset = 0;
+        this.newCountSinceScroll.set(0);
+        this.hasMoreOlder.set(false);
+        this.isLive.set(true);
+        this.liveStatus.set('active-ok');
+        this.startPolling();
+      },
+      error: () => {
+        this.liveStatus.set('active-error');
+      },
+    });
+  }
+
+  protected stopTracing(auto = false) {
+    this.isLive.set(false);
+    this.liveStatus.set('stopped');
+    this.stopPolling();
+    if (!auto) {
+      this.api.stopTracing().subscribe({
+        next: () => {},
+        error: () => {},
+      });
     }
   }
 
   protected toggleAdminFilter() {
-    this.excludeAdmin.update((v) => !v);
-    this.currentOffset = 0;
-    this.initialFetch();
+    const nextVal = !this.excludeAdmin();
+    this.excludeAdmin.set(nextVal);
+    this.api.setHideAdminRequests(nextVal).subscribe({
+      next: () => {
+        this.currentOffset = 0;
+        this.initialFetch();
+      },
+      error: () => {
+        this.currentOffset = 0;
+        this.initialFetch();
+      },
+    });
   }
 
   protected toggleExcludeLineExecution() {
@@ -213,17 +245,6 @@ export class Tracing implements OnInit, OnDestroy {
       this.selectedRequest.set(row);
       this.buildFlameGraph(row);
     }
-  }
-
-  protected clearView() {
-    this.requests.set([]);
-    this.selectedId.set(null);
-    this.selectedRequest.set(null);
-    this.flameFrames.set([]);
-    this.timeTicks.set([]);
-    this.currentOffset = 0;
-    this.newCountSinceScroll.set(0);
-    this.initialFetch();
   }
 
   protected scrollToTop() {
@@ -409,20 +430,27 @@ export class Tracing implements OnInit, OnDestroy {
         if (rows.length > 0 && !this.selectedRequest()) {
           this.selectRow(rows[0]);
         }
+        if (info.hideAdminRequests !== undefined) {
+          this.excludeAdmin.set(info.hideAdminRequests);
+        }
         this.loaded.set(true);
+
+        const total = info.totalRecentRequests ?? rows.length;
+        if (info.lineExecutionTrace && total < 100) {
+          this.isLive.set(true);
+          this.liveStatus.set('active-ok');
+          this.startPolling();
+        } else {
+          this.isLive.set(false);
+          this.liveStatus.set('stopped');
+          this.stopPolling();
+        }
       },
       error: () => {
-        if (this.allServerPool.length === 0) {
-          this.generateMockPool();
-        }
-        const initialBatch = this.allServerPool.slice(0, this.pageSize);
-        this.currentOffset = initialBatch.length;
-        this.hasMoreOlder.set(this.allServerPool.length > initialBatch.length);
-        this.requests.set(initialBatch);
-        if (initialBatch.length > 0 && !this.selectedRequest()) {
-          this.selectRow(initialBatch[0]);
-        }
         this.loaded.set(true);
+        this.isLive.set(false);
+        this.liveStatus.set('stopped');
+        this.stopPolling();
       },
     });
   }
@@ -433,13 +461,18 @@ export class Tracing implements OnInit, OnDestroy {
 
     this.api.getTracing(this.excludeAdmin(), this.pageSize, 0, newestId).subscribe({
       next: (info) => {
+        this.liveStatus.set('active-ok');
         const latestRows = this.mapRecentRequests(info.recentRequests);
         if (latestRows.length > 0) {
           this.processNewArrivals(latestRows);
         }
+        const total = info.totalRecentRequests ?? this.requests().length;
+        if (total >= 100 || info.lineExecutionTrace === false) {
+          this.stopTracing(true);
+        }
       },
       error: () => {
-        this.simulateIncomingMockRequest();
+        this.liveStatus.set('active-error');
       },
     });
   }

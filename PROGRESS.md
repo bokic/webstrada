@@ -592,13 +592,14 @@ catchable runtime error for unregistered names. Registered:
 * `__datasourceTest(name)` — real connection attempt through the DB layer →
   `{verified, error}`.
 * `__serverInfo(excludeAdmin)` — dashboard runtime stats `{state, version,
-  uptimeSeconds, requestsServed, avgResponseMs, recentRequests}` tracked per
+  uptimeSeconds, requestsServed, avgResponseMs, lineExecutionTrace, hideAdminRequests, traceSessionCount, recentRequests}` tracked per
   worker process by `webstrada::stats` (`src/server_stats.cpp`;
   `worker::process_request` records request begin/end with the response
   status). An optional truthy `excludeAdmin` argument drops recent requests
   whose template path starts with `/admin` — the dashboard's "Hide admin
   requests" switch passes it via `?excludeAdmin=true` so the filtering happens
   server-side.
+* `__traceControl(action, value)` — controls execution tracing session state. Action `"start"` clears the `WebStrada-profiler.sqlite` database and recent requests buffer, resets the session counter, and enables `lineExecutionTrace`. Action `"stop"` disables `lineExecutionTrace`. Action `"set_hide_admin"` dynamically updates the in-memory `hide_admin_requests` setting (default `true`, not persisted in `webstrada-config.json`). When `hide_admin_requests` is `true`, requests starting with `/admin` are skipped from SQLite tracing and do not increment the 100-request session limit.
 
 **SQLite Execution Profiler Store (`WebStrada-profiler.sqlite`)**.
 When `lineExecutionTrace` is enabled:

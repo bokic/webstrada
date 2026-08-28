@@ -39,7 +39,6 @@ const ROW_DEFS: { key: keyof AdminSettings; label: string; type: 'text' | 'numbe
   { key: 'defaultSessionTimeoutSeconds', label: 'Default Session Timeout', type: 'timespan', group: 'Timeouts' },
   { key: 'enableQueryLogging', label: 'Query Logging', type: 'bool', group: 'Diagnostics' },
   { key: 'debugEnabled', label: 'Debugging', type: 'bool', group: 'Diagnostics' },
-  { key: 'lineExecutionTrace', label: 'Line Execution Tracing', type: 'bool', group: 'Diagnostics' },
   { key: 'compileExtForInclude', label: 'Compile Extensions for Include', type: 'text', group: 'Basic Settings' },
 ];
 

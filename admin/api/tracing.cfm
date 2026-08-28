@@ -34,6 +34,31 @@
     </cfif>
     <cfoutput>#SerializeJSON(__serverInfo(excludeAdmin, limit, beforeId, sinceId))#</cfoutput>
   </cfif>
+<cfelseif reqMethod EQ "POST">
+  <cftry>
+    <cfset body = GetHttpRequestData().content>
+    <cfset payload = {}>
+    <cfif Len(body) GT 0>
+      <cfset payload = DeserializeJSON(body)>
+    </cfif>
+    <cfset action = "status">
+    <cfif StructKeyExists(payload, "action")>
+      <cfset action = payload.action>
+    <cfelseif StructKeyExists(URL, "action")>
+      <cfset action = URL.action>
+    </cfif>
+    <cfset val = true>
+    <cfif StructKeyExists(payload, "value")>
+      <cfset val = payload.value>
+    <cfelseif StructKeyExists(URL, "value")>
+      <cfset val = URL.value>
+    </cfif>
+    <cfoutput>#SerializeJSON(__traceControl(action, val))#</cfoutput>
+    <cfcatch type="any">
+      <cfheader statuscode="400">
+      <cfoutput>#SerializeJSON({ok: false, error: cfcatch.message})#</cfoutput>
+    </cfcatch>
+  </cftry>
 <cfelse>
   <cfheader statuscode="405">
   <cfoutput>{"ok":false,"error":"Method not supported"}</cfoutput>

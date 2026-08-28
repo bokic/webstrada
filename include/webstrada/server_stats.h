@@ -40,5 +40,17 @@ double avg_response_ms();
 // The most recent requests, oldest first (bounded).
 const std::vector<RecentRequest> &recent_requests();
 
+// Clear the recent requests list.
+void clear_recent_requests();
+
+// Trace session request tracking (auto-stop after 100 requests)
+int increment_trace_session_count();
+void reset_trace_session_count();
+int trace_session_count();
+
+// In-memory setting to exclude /admin requests from execution tracing and dashboard stats (default true)
+bool hide_admin_requests();
+void set_hide_admin_requests(bool hide);
+
 } // namespace stats
 } // namespace webstrada

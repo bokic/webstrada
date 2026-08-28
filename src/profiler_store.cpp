@@ -226,6 +226,21 @@ bool ProfilerStore::getRequestSteps(int64_t requestId, std::vector<TraceStep> &s
     return true;
 }
 
+bool ProfilerStore::clear()
+{
+    if (!m_db) return false;
+    if (!exec("BEGIN IMMEDIATE;")) return false;
+    exec("DELETE FROM request_traces;");
+    exec("DELETE FROM requests;");
+    exec("DELETE FROM sqlite_sequence WHERE name IN ('requests', 'request_traces');");
+    if (exec("COMMIT;")) {
+        exec("VACUUM;");
+        return true;
+    }
+    exec("ROLLBACK;");
+    return false;
+}
+
 namespace {
 ProfilerStore g_profilerStore;
 }
