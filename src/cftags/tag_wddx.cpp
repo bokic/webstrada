@@ -27,6 +27,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <libxml/xpath.h>
+#include <charconv>
 
 #include <algorithm>
 #include <cctype>
@@ -102,16 +103,17 @@ std::string javaDoubleToString(double d)
     if (std::isnan(d)) return "NaN";
     if (std::isinf(d)) return d > 0 ? "Infinity" : "-Infinity";
     if (d == 0.0) return "0.0";
-    int decExp = static_cast<int>(std::floor(std::log10(std::fabs(d))));
     char buf[128];
-    int n = std::snprintf(buf, sizeof(buf), "%.*g", std::numeric_limits<double>::max_digits10, d);
-    std::string s(buf, n);
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), d);
+    if (ec != std::errc()) return "0.0";
+    std::string s(buf, ptr - buf);
     auto epos = s.find_first_of("eE");
     if (epos == std::string::npos) {
         // fixed-point shortest repr.
         if (s.find('.') == std::string::npos) s += ".0";
         return s;
     }
+    int decExp = static_cast<int>(std::floor(std::log10(std::fabs(d))));
     std::string mant = s.substr(0, epos);
     int exp = std::atoi(s.c_str() + epos + 1);
     if (decExp < -3 || decExp >= 7) {

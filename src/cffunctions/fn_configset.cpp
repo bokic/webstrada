@@ -51,6 +51,7 @@ static const std::set<std::string> &knownSettings()
         "defaultsessiontimeoutseconds",
         "enablequerylogging",
         "debugenabled",
+        "lineexecutiontrace",
         "compileextforinclude",
     };
     return keys;
@@ -152,6 +153,12 @@ static void applySettings(const cfvariant *settings)
             webstrada::config::enableQueryLogging = asBoolValue(value, key.c_str());
         } else if (key == "debugenabled") {
             webstrada::config::debugEnabled = asBoolValue(value, key.c_str());
+        } else if (key == "lineexecutiontrace") {
+            bool prev = webstrada::config::lineExecutionTrace;
+            webstrada::config::lineExecutionTrace = asBoolValue(value, key.c_str());
+            if (webstrada::config::lineExecutionTrace != prev) {
+                webstrada::config::invalidateCompiledCaches();
+            }
         } else if (key == "compileextforinclude") {
             webstrada::config::compileExtForInclude = asStringValue(value, key.c_str());
         } else {

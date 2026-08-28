@@ -8,6 +8,7 @@
 #include <webstrada/cache_store.h>
 #include <webstrada/server_stats.h>
 #include "cftags/common.h"
+#include "core/core_internal.h"
 
 #include <functional>
 #include <cstring>
@@ -65,7 +66,20 @@ static webstrada::ComponentInfo *component_loader(const char *path, void *opaque
     return cache->get_component(webstrada::string(path));
 }
 
+static thread_local worker *g_currentWorker = nullptr;
+
+static void worker_cache_invalidator()
+{
+    if (g_currentWorker) {
+        g_currentWorker->clear_compiled_caches();
+    }
+    cfml::custom_tag_target_cache_clear();
+}
+
 worker::worker() {
+    g_currentWorker = this;
+    webstrada::config::setCacheInvalidator(worker_cache_invalidator);
+
     // Fill SERVER scope
     cfml::init_server_scope(m_server);
 
@@ -73,6 +87,28 @@ worker::worker() {
 
     open_scope_store();
     open_cache_store();
+    open_profiler_store();
+}
+
+void worker::open_profiler_store()
+{
+    char exe[4096];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    std::string dbPath;
+    if (n > 0) {
+        exe[n] = '\0';
+        std::string path(exe);
+        size_t slash = path.find_last_of('/');
+        dbPath = (slash != std::string::npos)
+            ? path.substr(0, slash + 1) + "WebStrada-profiler.sqlite"
+            : "WebStrada-profiler.sqlite";
+    } else {
+        dbPath = "WebStrada-profiler.sqlite";
+    }
+    if (!m_profilerStore.open(dbPath)) {
+        fprintf(stderr, "[WebStrada] Warning: could not open profiler database %s: %s\n",
+                dbPath.c_str(), m_profilerStore.lastError().c_str());
+    }
 }
 
 // Resolve the SQLite scope database path and open it. The default location is
@@ -104,11 +140,19 @@ void worker::open_scope_store()
 
 void worker::process_request(FCGX_Request *request)
 {
+    auto t_req_start = std::chrono::steady_clock::now();
     try {
+        g_currentWorker = this;
         // Re-read the server config file when it changed on disk, so an
         // admin-panel update (written by any worker) becomes effective on the
         // next request in this prefork child (a single stat() when unchanged).
-        webstrada::config::reloadIfChanged();
+        if (webstrada::config::reloadIfChanged()) {
+            m_templates.clear();
+            cfml::custom_tag_target_cache_clear();
+        }
+
+        cfml::trace_begin_request();
+        g_reqProfiler.reset();
 
         // Reset the per-request HTTP request body (GetHttpRequestData reads it).
         cfml::request_set_body(nullptr, 0);
@@ -469,6 +513,29 @@ void worker::process_request(FCGX_Request *request)
 
     FCGX_Finish_r(request);
 
+    if (webstrada::config::lineExecutionTrace) {
+        RequestTraceSummary summary;
+        summary.timestamp = static_cast<double>(time(nullptr));
+        summary.method = m_cgi.has("REQUEST_METHOD") ? (m_cgi["REQUEST_METHOD"].toString().constData() ? m_cgi["REQUEST_METHOD"].toString().constData() : "GET") : "GET";
+        summary.url = m_cgi.has("REQUEST_URI") ? (m_cgi["REQUEST_URI"].toString().constData() ? m_cgi["REQUEST_URI"].toString().constData() : "/") : "/";
+        summary.status = cfml::response().statusCode;
+        summary.durationMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_req_start).count();
+        summary.onRequestStartMs = g_reqProfiler.onRequestStartTime;
+        summary.pageExecutionMs = g_reqProfiler.templateExecTime;
+        summary.onRequestEndMs = g_reqProfiler.onRequestEndTime;
+        summary.dbQueriesCount = g_reqProfiler.queryCount;
+        summary.dbQueriesMs = g_reqProfiler.queryTime;
+        summary.customTagsCount = g_reqProfiler.customTagCount;
+        summary.customTagsMs = g_reqProfiler.customTagTime;
+        summary.cfcMethodsCount = g_reqProfiler.cfcMethodCount;
+        summary.cfcMethodsMs = g_reqProfiler.cfcMethodTime;
+        summary.steps = cfml::trace_take_steps();
+
+        m_profilerStore.recordRequest(summary);
+    } else {
+        cfml::trace_take_steps();
+    }
+
     m_form = cfvariant::Struct;
     m_cgi = cfvariant::Struct;
     m_url = cfvariant::Struct;
@@ -725,8 +792,14 @@ static cfvariant *appCfcInvoke(cfvariant *appCfc, const char *method,
                                void *application, void *session, void *url, void *form)
 {
     if (!appCfc || appCfc->m_type != cfvariant::Component || !appCfc->m_component) return nullptr;
-    return cfml::cf_component_invoke_instance(appCfc->m_component, method, args, argc,
+    auto t0 = std::chrono::steady_clock::now();
+    cfvariant *res = cfml::cf_component_invoke_instance(appCfc->m_component, method, args, argc,
                                               out, cgi, server, cookie, application, session, url, form);
+    auto t1 = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    fprintf(stderr, "[PROFILE appCfcInvoke] method '%s': %.3f ms\n", method ? method : "(null)", ms);
+    fflush(stderr);
+    return res;
 }
 
 bool worker::run_application_cfc(const string &app_cfc_path, const string &pathname,
@@ -827,14 +900,23 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
         targetPage = webstrada::string(p.c_str());
     }
 
+    g_reqProfiler.reset();
+    auto reqStart = std::chrono::steady_clock::now();
+    double onRequestStartMs = 0;
+    double pageMs = 0;
+    double onRequestEndMs = 0;
+
     try {
         // onRequestStart(targetPage): a false return stops the request.
         if (cfml::cf_component_has_method_on(m_appCfc.m_component, "ONREQUESTSTART")) {
+            auto t0 = std::chrono::steady_clock::now();
             cfvariant pageArg(targetPage);
             const cfvariant *args[] = {&pageArg};
             cfvariant *res = appCfcInvoke(compPtr, "onRequestStart", args, 1,
                                           m_out, &m_cgi, &m_server, &m_cookie,
                                           &m_application, &m_session, &m_url, &m_form);
+            auto t1 = std::chrono::steady_clock::now();
+            onRequestStartMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
             if (res && !cfml::cfmlBoolean(res, true)) {
                 return true;  // onRequestStart returned false: stop the request
             }
@@ -858,21 +940,30 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
             // itself.
             cfvariant pageArg(targetPage);
             const cfvariant *args[] = {&pageArg};
+            auto t0 = std::chrono::steady_clock::now();
             appCfcInvoke(compPtr, "onRequest", args, 1,
                          m_out, &m_cgi, &m_server, &m_cookie,
                          &m_application, &m_session, &m_url, &m_form);
+            auto t1 = std::chrono::steady_clock::now();
+            pageMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
         } else if (pageMissing) {
             throwTemplateNotFound(pathname);
         } else {
             if (inc) inc->currentPath = std::string(pathname.constData());
+            auto t0 = std::chrono::steady_clock::now();
             page(&m_out, &m_cgi, &m_server, &m_cookie, &m_application, &m_session, &m_url, &m_form, &m_variables);
+            auto t1 = std::chrono::steady_clock::now();
+            pageMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
         }
 
         // onRequestEnd runs after the page (only on the success path).
         if (cfml::cf_component_has_method_on(m_appCfc.m_component, "ONREQUESTEND")) {
+            auto t0 = std::chrono::steady_clock::now();
             appCfcInvoke(compPtr, "onRequestEnd", nullptr, 0,
                          m_out, &m_cgi, &m_server, &m_cookie,
                          &m_application, &m_session, &m_url, &m_form);
+            auto t1 = std::chrono::steady_clock::now();
+            onRequestEndMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
         }
     } catch (const webstrada::exception &ex) {
         // onError(exception, eventName) handles an uncaught page exception.
@@ -889,6 +980,26 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
                      m_out, &m_cgi, &m_server, &m_cookie,
                      &m_application, &m_session, &m_url, &m_form);
     }
+    auto reqEnd = std::chrono::steady_clock::now();
+    double totalReqMs = std::chrono::duration<double, std::milli>(reqEnd - reqStart).count();
+    fprintf(stderr,
+            "\n[WebStrada Performance Breakdown] Total: %.2f ms\n"
+            "  ├─ onRequestStart:        %6.2f ms\n"
+            "  ├─ Page Execution:        %6.2f ms\n"
+            "  │    ├─ Custom Tags:      %6.2f ms (%d invocations)\n"
+            "  │    ├─ CFC Method Calls: %6.2f ms (%d invocations)\n"
+            "  │    ├─ CFC Instantiates: %6.2f ms (%d instantiations)\n"
+            "  │    └─ DB Queries:       %6.2f ms (%d queries)\n"
+            "  └─ onRequestEnd:          %6.2f ms\n",
+            totalReqMs,
+            onRequestStartMs,
+            pageMs,
+            g_reqProfiler.customTagTime, g_reqProfiler.customTagCount,
+            g_reqProfiler.cfcMethodTime, g_reqProfiler.cfcMethodCount,
+            g_reqProfiler.cfcInstantiateTime, g_reqProfiler.cfcInstantiateCount,
+            g_reqProfiler.queryTime, g_reqProfiler.queryCount,
+            onRequestEndMs);
+    fflush(stderr);
     return true;
 }
 

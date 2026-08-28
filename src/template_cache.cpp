@@ -19,14 +19,20 @@ void webstrada::compiled_cache_counts(int &templates, int &components)
     components = g_compiledComponents;
 }
 
-TemplateCache::~TemplateCache()
+void TemplateCache::clear()
 {
-    // The cached component definitions are owned by the cache (get_component
-    // retains before returning); release them so the code they point into
-    // (m_codegen's engines) is not left dangling/leaked at cache destruction.
     for (auto &kv : m_components) component_info_release(kv.second);
     m_components.clear();
     m_componentTimestamps.clear();
+    m_templates.clear();
+    m_timestamps.clear();
+    g_compiledTemplates = 0;
+    g_compiledComponents = 0;
+}
+
+TemplateCache::~TemplateCache()
+{
+    clear();
 }
 
 time_t TemplateCache::getFileModTime(const string &pathname)

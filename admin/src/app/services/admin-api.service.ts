@@ -14,6 +14,7 @@ export interface AdminSettings {
   defaultSessionTimeoutSeconds: number;
   enableQueryLogging: boolean;
   debugEnabled: boolean;
+  lineExecutionTrace: boolean;
   compileExtForInclude: string;
 }
 

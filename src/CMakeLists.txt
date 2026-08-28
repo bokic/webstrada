@@ -53,6 +53,7 @@ add_library(webstrada-core
     cfvariant.cpp ../include/webstrada/cfvariant.h
     config.cpp    ../include/webstrada/config.h
     server_stats.cpp ../include/webstrada/server_stats.h
+    profiler_store.cpp ../include/webstrada/profiler_store.h
     db/db.cpp     ../include/webstrada/db.h
     db/db_sqlite.cpp
     db/db_qoq.cpp

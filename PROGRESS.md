@@ -583,6 +583,8 @@ catchable runtime error for unregistered names. Registered:
 * `__configSet({settings?, datasources?})` — merge-updates the globals and
   persists via `config::save()`. Unknown setting keys / non-numeric numerics /
   unsupported backends / named arguments are rejected with clear errors; a
+  change to `lineExecutionTrace` automatically invalidates and clears the in-memory
+  `TemplateCache` and `customTagTargetCache` so all templates recompile immediately.
   password of `****` keeps the existing secret; `{action: "delete"}` removes a
   datasource.
 * `__configReset()` — resets every config global to the built-in defaults and
@@ -597,6 +599,11 @@ catchable runtime error for unregistered names. Registered:
   whose template path starts with `/admin` — the dashboard's "Hide admin
   requests" switch passes it via `?excludeAdmin=true` so the filtering happens
   server-side.
+
+**SQLite Execution Profiler Store (`WebStrada-profiler.sqlite`)**.
+When `lineExecutionTrace` is enabled:
+* Each line/method transition (`cf_stack_push`, `cf_stack_set_line`, `cf_stack_pop`) appends a `TraceStep` into an in-memory thread-local buffer (`g_requestTraceSteps`) with zero I/O and sub-10ns overhead during template execution.
+* After the FastCGI response stream is completed and flushed to the client (`FCGX_Finish_r`), the worker persists the request metadata into the `requests` table and batch-inserts the entire step timeline into the `request_traces` table via a single SQLite transaction and prepared statement.
 
 **Admin panel API + live wiring.** The panel now reads/writes the real server
 config. CFML endpoints under `admin/api/` (`config.cfm`, `datasources.cfm`,

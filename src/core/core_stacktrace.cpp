@@ -61,6 +61,30 @@ using namespace cfml;
 namespace cfml {
 
 thread_local std::vector<webstrada::StackLevel> g_callStack;
+static thread_local std::chrono::steady_clock::time_point s_lastTraceTime;
+static thread_local bool s_traceTimerStarted = false;
+
+static thread_local std::vector<webstrada::TraceStep> g_requestTraceSteps;
+static thread_local std::chrono::steady_clock::time_point g_requestTraceStartTime;
+static thread_local bool g_requestTraceActive = false;
+
+void trace_begin_request()
+{
+    g_requestTraceSteps.clear();
+    g_requestTraceSteps.reserve(2048);
+    g_requestTraceStartTime = std::chrono::steady_clock::now();
+    s_lastTraceTime = g_requestTraceStartTime;
+    s_traceTimerStarted = true;
+    g_requestTraceActive = true;
+}
+
+std::vector<webstrada::TraceStep> trace_take_steps()
+{
+    std::vector<webstrada::TraceStep> res;
+    res.swap(g_requestTraceSteps);
+    g_requestTraceActive = false;
+    return res;
+}
 
 void cf_stack_push(const char *path, const char *function)
 {
@@ -72,15 +96,67 @@ void cf_stack_push(const char *path, const char *function)
         for (auto &c : lvl.function) c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
     }
     g_callStack.push_back(std::move(lvl));
+
+    if (__builtin_expect(webstrada::config::lineExecutionTrace && g_requestTraceActive, 0)) {
+        auto now = std::chrono::steady_clock::now();
+        double deltaMs = s_traceTimerStarted ? std::chrono::duration<double, std::milli>(now - s_lastTraceTime).count() : 0.0;
+        double elapsedMs = std::chrono::duration<double, std::milli>(now - g_requestTraceStartTime).count();
+        s_lastTraceTime = now;
+        s_traceTimerStarted = true;
+        const auto &top = g_callStack.back();
+        webstrada::TraceStep step;
+        step.type = "ENTRY";
+        step.path = top.path;
+        step.function = top.function;
+        step.line = 0;
+        step.deltaMs = deltaMs;
+        step.elapsedMs = elapsedMs;
+        g_requestTraceSteps.push_back(std::move(step));
+    }
 }
 
 void cf_stack_set_line(int line)
 {
-    if (!g_callStack.empty()) g_callStack.back().line = line;
+    if (g_callStack.empty()) return;
+    auto &top = g_callStack.back();
+    if (top.line == line) return;
+    top.line = line;
+
+    if (__builtin_expect(webstrada::config::lineExecutionTrace && g_requestTraceActive, 0)) {
+        auto now = std::chrono::steady_clock::now();
+        double deltaMs = s_traceTimerStarted ? std::chrono::duration<double, std::milli>(now - s_lastTraceTime).count() : 0.0;
+        double elapsedMs = std::chrono::duration<double, std::milli>(now - g_requestTraceStartTime).count();
+        s_lastTraceTime = now;
+        s_traceTimerStarted = true;
+        webstrada::TraceStep step;
+        step.type = "LINE";
+        step.path = top.path;
+        step.function = top.function;
+        step.line = line;
+        step.deltaMs = deltaMs;
+        step.elapsedMs = elapsedMs;
+        g_requestTraceSteps.push_back(std::move(step));
+    }
 }
 
 void cf_stack_pop()
 {
+    if (__builtin_expect(webstrada::config::lineExecutionTrace && g_requestTraceActive, 0) && !g_callStack.empty()) {
+        auto now = std::chrono::steady_clock::now();
+        double deltaMs = s_traceTimerStarted ? std::chrono::duration<double, std::milli>(now - s_lastTraceTime).count() : 0.0;
+        double elapsedMs = std::chrono::duration<double, std::milli>(now - g_requestTraceStartTime).count();
+        s_lastTraceTime = now;
+        s_traceTimerStarted = true;
+        const auto &top = g_callStack.back();
+        webstrada::TraceStep step;
+        step.type = "EXIT";
+        step.path = top.path;
+        step.function = top.function;
+        step.line = top.line;
+        step.deltaMs = deltaMs;
+        step.elapsedMs = elapsedMs;
+        g_requestTraceSteps.push_back(std::move(step));
+    }
     if (!g_callStack.empty()) g_callStack.pop_back();
 }
 

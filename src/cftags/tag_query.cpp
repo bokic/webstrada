@@ -11,6 +11,7 @@
  */
 
 #include "common.h"
+#include "../core/core_internal.h"
 
 #include <webstrada/cf8.h>
 #include <webstrada/cache_store.h>
@@ -306,6 +307,9 @@ cfvariant *cf_run_query(const std::string &sqlIn, const cfvariant *attrs,
     db::DBResult result;
     result = conn->execute(sql, maxrows);
     auto execEnd = std::chrono::steady_clock::now();
+    double queryMs = std::chrono::duration<double, std::milli>(execEnd - execStart).count();
+    g_reqProfiler.queryCount++;
+    g_reqProfiler.queryTime += queryMs;
     long long execTime = std::chrono::duration_cast<std::chrono::milliseconds>(execEnd - execStart).count();
 
     long long rowCount = result.rowCount;

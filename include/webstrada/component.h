@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace webstrada {
 
@@ -51,6 +52,7 @@ struct ComponentInfo {
     std::string extendsPath;     // raw `extends` attribute ("" when none)
     ComponentInfo *parent = nullptr;  // resolved parent (retained), null when none
     std::vector<ComponentMethod> methods;
+    std::unordered_map<std::string, int> methodMap;
     std::vector<ComponentProperty> properties;
     // Construction body entry: runs the component's top-level statements
     // (this.x = ..., variables.y = ..., property defaults) with the instance's

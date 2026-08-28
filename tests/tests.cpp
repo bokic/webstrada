@@ -23488,9 +23488,9 @@ TEST_F(ConfigExtensionTest, CfmlJitAndInterpreterDispatch) {
     // it while building IR, before the template can run).
     EXPECT_THROW(runJitTemplate("<cfset __bogus()>", variables), webstrada::exception);
 
-    // Unknown __name: a catchable runtime error on the #...# interpreter path.
+    // Unknown __name: a catchable runtime error on the interpreter path (Evaluate).
     EXPECT_EQ(runJitTemplate(
-        "<cftry><cfoutput>#__bogus()#</cfoutput><cfset m = \"no error\"><cfcatch><cfset m = cfcatch.message></cfcatch></cftry>"
+        "<cftry><cfset Evaluate(\"__bogus()\")><cfset m = \"no error\"><cfcatch><cfset m = cfcatch.message></cfcatch></cftry>"
         "<cfoutput>#m#</cfoutput>",
         variables).equals("Unknown compiler extension function __BOGUS."), true);
 
@@ -23943,6 +23943,62 @@ TEST(ToStringTest, ToStringXml) {
     EXPECT_EQ(out.contains("<child id=\"1\">text</child>"), true) << out.constData();
 }
 
+TEST(ProfilerStoreTest, RecordAndPersistRequestTraces) {
+    char dbPath[] = "/tmp/webstrada_profiler_test_XXXXXX";
+    int fd = mkstemp(dbPath);
+    ASSERT_NE(fd, -1);
+    close(fd);
+
+    ProfilerStore store;
+    ASSERT_TRUE(store.open(dbPath));
+
+    RequestTraceSummary summary;
+    summary.timestamp = 1700000000.0;
+    summary.method = "GET";
+    summary.url = "/test.cfm";
+    summary.status = 200;
+    summary.durationMs = 42.5;
+    summary.onRequestStartMs = 1.2;
+    summary.pageExecutionMs = 40.0;
+    summary.onRequestEndMs = 1.3;
+    summary.dbQueriesCount = 2;
+    summary.dbQueriesMs = 15.0;
+    summary.customTagsCount = 3;
+    summary.customTagsMs = 8.5;
+    summary.cfcMethodsCount = 5;
+    summary.cfcMethodsMs = 12.0;
+
+    TraceStep s1;
+    s1.type = "ENTRY";
+    s1.path = "/test.cfm";
+    s1.function = "MAIN";
+    s1.line = 0;
+    s1.deltaMs = 0.5;
+    s1.elapsedMs = 0.5;
+    summary.steps.push_back(s1);
+
+    TraceStep s2;
+    s2.type = "LINE";
+    s2.path = "/test.cfm";
+    s2.function = "MAIN";
+    s2.line = 10;
+    s2.deltaMs = 1.5;
+    s2.elapsedMs = 2.0;
+    summary.steps.push_back(s2);
+
+    TraceStep s3;
+    s3.type = "EXIT";
+    s3.path = "/test.cfm";
+    s3.function = "MAIN";
+    s3.line = 10;
+    s3.deltaMs = 0.2;
+    s3.elapsedMs = 2.2;
+    summary.steps.push_back(s3);
+
+    EXPECT_TRUE(store.recordRequest(summary));
+    store.close();
+    unlink(dbPath);
+}
 
 }  // namespace webstrada
 

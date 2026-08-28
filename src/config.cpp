@@ -25,6 +25,19 @@ namespace webstrada {
 namespace config {
 
 std::string configFilePath;
+bool lineExecutionTrace = false;
+
+static void (*s_cacheInvalidator)() = nullptr;
+
+void setCacheInvalidator(void (*fn)())
+{
+    s_cacheInvalidator = fn;
+}
+
+void invalidateCompiledCaches()
+{
+    if (s_cacheInvalidator) s_cacheInvalidator();
+}
 
 static fs::file_time_type s_lastLoadMtime{};
 static bool s_loaded = false;
@@ -109,6 +122,11 @@ static bool applyFile(json_object *root)
         defaultSessionTimeoutSeconds = jsonDoubleField(settings, "defaultSessionTimeoutSeconds", defaultSessionTimeoutSeconds);
         enableQueryLogging           = jsonBoolField(settings, "enableQueryLogging", enableQueryLogging);
         debugEnabled                 = jsonBoolField(settings, "debugEnabled", debugEnabled);
+        bool prevTrace               = lineExecutionTrace;
+        lineExecutionTrace           = jsonBoolField(settings, "lineExecutionTrace", lineExecutionTrace);
+        if (lineExecutionTrace != prevTrace) {
+            invalidateCompiledCaches();
+        }
         compileExtForInclude         = jsonStringField(settings, "compileExtForInclude", compileExtForInclude);
     }
 
@@ -202,6 +220,7 @@ static json_object *globalsToJson()
     json_object_object_add(settings, "defaultSessionTimeoutSeconds", json_object_new_double(defaultSessionTimeoutSeconds));
     json_object_object_add(settings, "enableQueryLogging", json_object_new_boolean(enableQueryLogging));
     json_object_object_add(settings, "debugEnabled", json_object_new_boolean(debugEnabled));
+    json_object_object_add(settings, "lineExecutionTrace", json_object_new_boolean(lineExecutionTrace));
     json_object_object_add(settings, "compileExtForInclude", json_object_new_string(compileExtForInclude.c_str()));
     json_object_object_add(root, "settings", settings);
 
@@ -270,6 +289,8 @@ void resetToDefaults()
     defaultSessionTimeoutSeconds = 20.0 * 60.0;                // 20 minutes
     enableQueryLogging = true;
     debugEnabled = false;
+    lineExecutionTrace = false;
+    invalidateCompiledCaches();
     compileExtForInclude = "*";
     save();
 }

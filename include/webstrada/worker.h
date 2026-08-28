@@ -4,6 +4,7 @@
 #include "cfvariant.h"
 #include "exceptions.h"
 #include "scope_store.h"
+#include "profiler_store.h"
 
 
 struct FCGX_Request;
@@ -18,6 +19,7 @@ public:
     worker();
     void process_request(FCGX_Request *request);
     void process_cli_request(const string &pathname, const string &web_root);
+    void clear_compiled_caches() { m_templates.clear(); }
 
     string &out();
     cfvariant &cgi();
@@ -41,6 +43,7 @@ private:
     bool run_application_cfc(const string &app_cfc_path, const string &pathname,
                              const string &web_root);
     void open_scope_store();
+    void open_profiler_store();
 
     string m_out;
     cfvariant m_cgi = cfvariant::Struct;         // read only scope
@@ -53,6 +56,7 @@ private:
     cfvariant m_variables = cfvariant::Struct;
     TemplateCache m_templates;
     ScopeStore m_scopeStore;                     // SQLite-backed APPLICATION/SESSION scopes
+    ProfilerStore m_profilerStore;               // SQLite-backed execution profiler traces
 
     // Cached Application.cfc instance (persists across requests in this worker,
     // matching ColdFusion's per-JVM application object).

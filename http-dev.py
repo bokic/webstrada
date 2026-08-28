@@ -325,11 +325,8 @@ class DevHandler(BaseHTTPRequestHandler):
         if candidate is None:
             return self._send_error(403, "Forbidden")
 
-        # The engine's own Angular admin panel lives under APP_ROOT/admin and is
-        # only special-cased when the default webroot (the repo itself) is used;
-        # a custom webroot may have its own /admin directory (e.g. a deployed
-        # app) that must not be hijacked.
-        if (rel == "/admin" or rel.startswith("/admin/")) and os.path.abspath(WEBROOT) == APP_ROOT:
+        # The engine's own Angular admin panel lives under APP_ROOT/admin.
+        if rel == "/admin" or rel.startswith("/admin/"):
             if os.path.splitext(candidate)[1].lower() in (".cfm", ".cfc"):
                 norm = os.path.normpath("/admin" + rel[len("/admin"):])
                 if norm.startswith("/admin/"):

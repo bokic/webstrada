@@ -200,6 +200,7 @@ cfvariant makeFunctionHandle(const string &name)
 // unless the name is a local (param / var / nested function / arguments).
 thread_local std::vector<UdfCallCtx> g_udfCtx;
 thread_local std::deque<CustomTagCallCtx> g_customTagStack;
+thread_local RequestProfiler g_reqProfiler;
 
 // ColdFusion's `searchimplicitscopes` toggle: when false (the default) an
 // unqualified name is only searched in the variables scope (and function-local
@@ -755,16 +756,18 @@ cfvariant *cfml::cf_udf_invoke(cfvariant *udfVal, const cfvariant **args, int ar
     std::vector<const cfvariant*> reordered;
     int effectiveArgc = argc;
     const cfvariant **effectiveArgs = args;
-    if (info->params.empty()) {
-        std::vector<const char*> emptyNames;
-        if (cf_named_args_reorder(args, argc, nullptr, 0, reordered, effectiveArgc)) {
-            effectiveArgs = reordered.data();
-        }
-    } else {
-        std::vector<const char*> names;
-        for (const auto &p : info->params) names.push_back(p.name.constData());
-        if (cf_named_args_reorder(args, argc, names.data(), static_cast<int>(names.size()), reordered, effectiveArgc)) {
-            effectiveArgs = reordered.data();
+    if (argc > 0 && args && args[0] && args[0]->m_type == cfvariant::Struct && args[0]->m_struct &&
+        args[0]->m_struct->find(CFML_NAMED_ARGS_KEY) != args[0]->m_struct->end()) {
+        if (info->params.empty()) {
+            if (cf_named_args_reorder(args, argc, nullptr, 0, reordered, effectiveArgc)) {
+                effectiveArgs = reordered.data();
+            }
+        } else {
+            std::vector<const char*> names;
+            for (const auto &p : info->params) names.push_back(p.name.constData());
+            if (cf_named_args_reorder(args, argc, names.data(), static_cast<int>(names.size()), reordered, effectiveArgc)) {
+                effectiveArgs = reordered.data();
+            }
         }
     }
     // The UDF body's prologue creates and registers the local scope and pushes

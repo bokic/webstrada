@@ -146,6 +146,7 @@ std::string safe_to_std_string(const webstrada::string *s);
 std::string safe_to_std_string(const webstrada::string &s);
 std::string safe_to_std_string(const webstrada::cfvariant &v);
 bool cfmlBoolean(const webstrada::cfvariant *v, bool defaultValue);
+void custom_tag_target_cache_clear();
 
 // Response-string helpers shared between the tag runtimes (common.cpp).
 webstrada::string stripCRLF(const webstrada::string &s);

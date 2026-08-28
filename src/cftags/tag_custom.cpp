@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstddef>
 #include <cstdlib>
@@ -24,8 +25,15 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace {
+
+struct CachedCustomTagTarget {
+    std::string resolved;
+    include_template_fn target = nullptr;
+};
+static thread_local std::unordered_map<std::string, CachedCustomTagTarget> g_customTagTargetCache;
 
 using webstrada::string;
 using webstrada::cfvariant;
@@ -81,12 +89,25 @@ void custom_tag_stack_clear()
     g_baseTagStack.clear();
 }
 
+void custom_tag_target_cache_clear()
+{
+    g_customTagTargetCache.clear();
+}
+
+static const string s_strStart("start");
+static const string s_strEnd("end");
+static const string s_strYes("YES");
+static const string s_strNo("NO");
+static const string s_strEmpty("");
+
 void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, cfvariant *callerVariables,
                          bool isModule, const char *templateNameHint)
 {
-    CustomTagCallCtx ctx;
+    g_customTagStack.emplace_back();
+    CustomTagCallCtx &ctx = g_customTagStack.back();
+
     std::string base = tagName ? tagName : "";
-    for (auto &c : base) c = toupper((unsigned char)c);
+    for (auto &c : base) c = (char)toupper((unsigned char)c);
 
     // Public name used by GetBaseTagList: CF_<NAME>.
     ctx.publicName = "CF_" + base;
@@ -96,7 +117,7 @@ void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, 
         ctx.templateName = ctx.publicName;
     } else {
         ctx.templateName = "cf_";
-        for (auto &c : base) c = tolower((unsigned char)c);
+        for (auto &c : base) c = (char)tolower((unsigned char)c);
         ctx.templateName += base;
     }
     if (templateNameHint) {
@@ -107,11 +128,11 @@ void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, 
             if (slash != std::string::npos) hint = hint.substr(slash + 1);
             size_t dot = hint.find_last_of('.');
             if (dot != std::string::npos) hint = hint.substr(0, dot);
-            for (auto &c : hint) c = toupper((unsigned char)c);
+            for (auto &c : hint) c = (char)toupper((unsigned char)c);
             ctx.publicName = "CF_" + hint;
             ctx.templateName = ctx.publicName;
         } else {
-            for (auto &c : hint) c = tolower((unsigned char)c);
+            for (auto &c : hint) c = (char)tolower((unsigned char)c);
             ctx.templateName = "cf_" + hint;
         }
     }
@@ -138,15 +159,12 @@ void cf_custom_tag_begin(const char *tagName, cfvariant *attrs, bool hasEndTag, 
     // scope is a plain case-insensitive struct, so lookups work regardless.
     ctx.thisTag.set_type(cfvariant::Struct);
 
-    ctx.thisTag.set("executionMode") = cfvariant(string("start"));
-    ctx.thisTag.set("hasendtag") = cfvariant(string(hasEndTag ? "YES" : "NO"));
-    ctx.thisTag.set("GeneratedContent") = cfvariant(string(""));
-
-    const std::string baseTagPubName = ctx.publicName;
-    g_customTagStack.push_back(std::move(ctx));
+    ctx.thisTag.set("executionMode") = cfvariant(s_strStart);
+    ctx.thisTag.set("hasendtag") = cfvariant(hasEndTag ? s_strYes : s_strNo);
+    ctx.thisTag.set("GeneratedContent") = cfvariant(s_strEmpty);
 
     // Mirror the custom tag on the base-tag stack (GetBaseTagList model).
-    g_baseTagStack.push_back(baseTagPubName);
+    g_baseTagStack.push_back(ctx.publicName);
 }
 
 // CF's base-tag stack entry for a <cfoutput> block: while a <cfoutput> executes
@@ -167,11 +185,11 @@ void cf_custom_tag_end_mode(const string *generatedContent)
 {
     if (g_customTagStack.empty()) return;
     CustomTagCallCtx &ctx = g_customTagStack.back();
-    ctx.thisTag.set("executionMode") = cfvariant(string("end"));
+    ctx.thisTag.set("executionMode") = cfvariant(s_strEnd);
     if (generatedContent) {
-        ctx.thisTag.set("GeneratedContent") = cfvariant(string(generatedContent->constData(), generatedContent->length()));
+        ctx.thisTag.set("GeneratedContent") = cfvariant(*generatedContent);
     } else {
-        ctx.thisTag.set("GeneratedContent") = cfvariant(string(""));
+        ctx.thisTag.set("GeneratedContent") = cfvariant(s_strEmpty);
     }
     ctx.loopRequested = false;
     ctx.contentChanged = false;
@@ -252,6 +270,16 @@ void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, vo
                           cfvariant *attrs, string *bodyContent, bool hasEndTag, bool isEndMode,
                           bool isModule, const char *templateNameHint)
 {
+    auto t0 = std::chrono::steady_clock::now();
+    struct CustomTagProfileGuard {
+        std::chrono::steady_clock::time_point t0;
+        ~CustomTagProfileGuard() {
+            auto t1 = std::chrono::steady_clock::now();
+            g_reqProfiler.customTagCount++;
+            g_reqProfiler.customTagTime += std::chrono::duration<double, std::milli>(t1 - t0).count();
+        }
+    } tagProfGuard{t0};
+
     cfml::IncludeRuntime *rt = cfml::include_context();
     if (!rt || !rt->loader) {
         throw webstrada::exception("customtag", "Custom tag runtime is not available in this context.");
@@ -267,27 +295,45 @@ void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, vo
         throw webstrada::exception("customtag", "The tagPath argument is required.");
     }
 
-    std::string resolved;
-    if (!resolveCustomTagPath(pathStr, rt, resolved)) {
-        throw webstrada::exception("customtag", ("Could not resolve the custom tag path " + pathStr + ".").c_str());
+    std::string cacheKey = pathStr;
+    if (pathStr.empty() || pathStr[0] != '/') {
+        cacheKey += '\n';
+        cacheKey += rt->currentPath;
+    } else {
+        cacheKey += '\n';
+        cacheKey += rt->webRoot;
     }
 
-    if (!customTagFileExists(resolved.c_str())) {
-        // CF resolves imported-prefix tags at parse time ("Unknown tag:
-        // prefix:tag."); here a missing template surfaces as a runtime error
-        // with the same message shape. The taglib directory is stripped so the
-        // reported name is the bare tag name.
-        std::string display = pathStr;
-        if (display.size() > 4 && display.compare(display.size() - 4, 4, ".cfm") == 0) {
-            display = display.substr(0, display.size() - 4);
+    std::string resolved;
+    include_template_fn target = nullptr;
+
+    auto it = g_customTagTargetCache.find(cacheKey);
+    if (it != g_customTagTargetCache.end()) {
+        resolved = it->second.resolved;
+        target = it->second.target;
+    } else {
+        if (!resolveCustomTagPath(pathStr, rt, resolved)) {
+            throw webstrada::exception("customtag", ("Could not resolve the custom tag path " + pathStr + ".").c_str());
         }
-        size_t slash = display.find_last_of('/');
-        if (slash != std::string::npos) display = display.substr(slash + 1);
-        throw webstrada::exception(("Unknown tag: " + display + ".").c_str());
-    }
-    include_template_fn target = rt->loader(resolved.c_str(), rt->loaderOpaque);
-    if (!target) {
-        throw webstrada::exception("customtag", ("Could not load custom tag template " + resolved + ".").c_str());
+
+        if (!customTagFileExists(resolved.c_str())) {
+            // CF resolves imported-prefix tags at parse time ("Unknown tag:
+            // prefix:tag."); here a missing template surfaces as a runtime error
+            // with the same message shape. The taglib directory is stripped so the
+            // reported name is the bare tag name.
+            std::string display = pathStr;
+            if (display.size() > 4 && display.compare(display.size() - 4, 4, ".cfm") == 0) {
+                display = display.substr(0, display.size() - 4);
+            }
+            size_t slash = display.find_last_of('/');
+            if (slash != std::string::npos) display = display.substr(slash + 1);
+            throw webstrada::exception(("Unknown tag: " + display + ".").c_str());
+        }
+        target = rt->loader(resolved.c_str(), rt->loaderOpaque);
+        if (!target) {
+            throw webstrada::exception("customtag", ("Could not load custom tag template " + resolved + ".").c_str());
+        }
+        g_customTagTargetCache[cacheKey] = {resolved, target};
     }
 
     if (!isEndMode) {

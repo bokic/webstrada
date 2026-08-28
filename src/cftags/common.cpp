@@ -157,6 +157,7 @@ namespace {
 using webstrada::string;
 
 static thread_local std::deque<string> g_silentBufs;
+static thread_local size_t g_silentBufDepth = 0;
 static thread_local std::deque<string*> g_silentRealBufs;
 
 

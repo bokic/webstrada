@@ -2,6 +2,7 @@
 
 #include <webstrada/cf8.h>
 #include <webstrada/string.h>
+#include <webstrada/profiler_store.h>
 #include <libxml/tree.h>
 #include <deque>
 #include <map>
@@ -30,6 +31,42 @@ struct UdfCallCtx {
 };
 extern thread_local std::vector<UdfCallCtx> g_udfCtx;
 extern thread_local std::string g_requestBody;
+
+struct RequestProfiler {
+    double onRequestStartTime = 0;
+    double templateExecTime = 0;
+    double onRequestEndTime = 0;
+
+    int cfcMethodCount = 0;
+    double cfcMethodTime = 0;
+
+    int cfcInstantiateCount = 0;
+    double cfcInstantiateTime = 0;
+
+    int customTagCount = 0;
+    double customTagTime = 0;
+
+    int queryCount = 0;
+    double queryTime = 0;
+
+    int includeCount = 0;
+    double includeTime = 0;
+
+    void reset() {
+        onRequestStartTime = templateExecTime = onRequestEndTime = 0;
+        cfcMethodCount = 0;
+        cfcMethodTime = 0;
+        cfcInstantiateCount = 0;
+        cfcInstantiateTime = 0;
+        customTagCount = 0;
+        customTagTime = 0;
+        queryCount = 0;
+        queryTime = 0;
+        includeCount = 0;
+        includeTime = 0;
+    }
+};
+extern thread_local RequestProfiler g_reqProfiler;
 
 struct CustomTagCallCtx {
     std::string tagName;                 // Base name uppercased, e.g. "OUTER" / "GD"
@@ -164,4 +201,8 @@ std::string safe_to_std_string(const webstrada::string *s);
 std::string safe_to_std_string(const webstrada::string &s);
 std::string safe_to_std_string(const webstrada::cfvariant &v);
 std::string serialize_xml_node(const webstrada::cfvariant &node);
+
+// Request execution tracer helpers (core_stacktrace.cpp)
+void trace_begin_request();
+std::vector<webstrada::TraceStep> trace_take_steps();
 }

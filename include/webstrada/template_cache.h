@@ -19,6 +19,9 @@ public:
     // Definitions are cached per path; recompiles when the file changes.
     ComponentInfo *get_component(const string &pathname);
 
+    // Clears all compiled templates and components from memory.
+    void clear();
+
     ~TemplateCache();
 
 private:

@@ -62,6 +62,7 @@ cfvariant *cf___configget(const cfvariant **args, int argc)
     putDouble(settings, "defaultSessionTimeoutSeconds", webstrada::config::defaultSessionTimeoutSeconds);
     putBool(settings, "enableQueryLogging", webstrada::config::enableQueryLogging);
     putBool(settings, "debugEnabled", webstrada::config::debugEnabled);
+    putBool(settings, "lineExecutionTrace", webstrada::config::lineExecutionTrace);
     putString(settings, "compileExtForInclude", webstrada::config::compileExtForInclude);
     root.structSet("settings", settings);
 

@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -59,18 +60,38 @@ void component_instance_release(ComponentInstance *inst)
     delete inst;
 }
 
+static inline std::string toUpperFast(const char *str, size_t len)
+{
+    std::string res;
+    res.resize(len);
+    for (size_t i = 0; i < len; i++) {
+        res[i] = (char)toupper((unsigned char)str[i]);
+    }
+    return res;
+}
+
+static inline std::string toUpperFast(const char *str)
+{
+    if (!str) return std::string();
+    return toUpperFast(str, strlen(str));
+}
+
+static inline std::string toUpperFast(const std::string &str)
+{
+    return toUpperFast(str.data(), str.size());
+}
+
 thread_local ComponentInfo *g_currentMethodOwnerInfo = nullptr;
 
 int findMethodInInfo(ComponentInfo *info, const std::string &upper, ComponentInfo *&owner)
 {
-    if (!info) return -1;
-    for (size_t i = 0; i < info->methods.size(); i++) {
-        if (info->methods[i].name == upper) {
-            owner = info;
-            return static_cast<int>(i);
+    for (ComponentInfo *cur = info; cur; cur = cur->parent) {
+        auto it = cur->methodMap.find(upper);
+        if (it != cur->methodMap.end()) {
+            owner = cur;
+            return it->second;
         }
     }
-    if (info->parent) return findMethodInInfo(info->parent, upper, owner);
     return -1;
 }
 
@@ -813,6 +834,7 @@ cfvariant *cf_component_instantiate(ComponentInfo *info, cfvariant *variables,
     inst->thisScope = new cfvariant(cfvariant::Struct);
     inst->variablesScope = new cfvariant(cfvariant::Struct);
 
+    auto t0 = std::chrono::steady_clock::now();
     try {
         // Extends: run the parent's construction bodies first (outermost
         // parent first) so the parent's this./variables. assignments land in
@@ -832,6 +854,10 @@ cfvariant *cf_component_instantiate(ComponentInfo *info, cfvariant *variables,
         component_instance_release(inst);
         throw;
     }
+
+    auto t1 = std::chrono::steady_clock::now();
+    g_reqProfiler.cfcInstantiateCount++;
+    g_reqProfiler.cfcInstantiateTime += std::chrono::duration<double, std::milli>(t1 - t0).count();
 
     return makeComponentVariant(inst, false);
 }
@@ -880,7 +906,8 @@ static cfvariant *invokeMethodEntry(ComponentInstance *inst, ComponentInfo *owne
     std::vector<const cfvariant*> reordered;
     int effectiveArgc = argc;
     const cfvariant **effectiveArgs = args;
-    {
+    if (argc > 0 && args && args[0] && args[0]->m_type == cfvariant::Struct && args[0]->m_struct &&
+        args[0]->m_struct->find(CFML_NAMED_ARGS_KEY) != args[0]->m_struct->end()) {
         std::vector<const char*> names;
         for (const auto &p : m.paramNames) names.push_back(p.c_str());
         if (cf_named_args_reorder(args, argc, names.empty() ? nullptr : names.data(),
@@ -902,13 +929,20 @@ static cfvariant *invokeMethodEntry(ComponentInstance *inst, ComponentInfo *owne
         }
     }
 
+    auto t0 = std::chrono::steady_clock::now();
     try {
         cfvariant *res = entry(&out, cgi, server, cookie, application, session, url, form,
                                inst->variablesScope, inst->thisScope, inst, effectiveArgs, effectiveArgc);
+        auto t1 = std::chrono::steady_clock::now();
+        g_reqProfiler.cfcMethodCount++;
+        g_reqProfiler.cfcMethodTime += std::chrono::duration<double, std::milli>(t1 - t0).count();
         if (rt) rt->currentPath = prevPath;
         while (g_udfCtx.size() > ctxSave) g_udfCtx.pop_back();
         return res;
     } catch (...) {
+        auto t1 = std::chrono::steady_clock::now();
+        g_reqProfiler.cfcMethodCount++;
+        g_reqProfiler.cfcMethodTime += std::chrono::duration<double, std::milli>(t1 - t0).count();
         if (rt) rt->currentPath = prevPath;
         while (g_udfCtx.size() > ctxSave) g_udfCtx.pop_back();
         throw;
@@ -929,8 +963,7 @@ static cfvariant *invokeComponentValue(cfvariant *compVal, const std::string &me
         throw webstrada::exception("Entity has incorrect type for being called as a function.");
     }
     ComponentInstance *inst = compVal->m_component;
-    std::string upper = methodName;
-    for (auto &c : upper) c = (char)toupper((unsigned char)c);
+    std::string upper = toUpperFast(methodName);
 
     ComponentInfo *startInfo = compVal->m_superTargetInfo ? compVal->m_superTargetInfo : inst->info;
     ComponentInfo *owner = nullptr;
@@ -960,8 +993,7 @@ cfvariant *cf_component_invoke_instance(ComponentInstance *inst, const char *met
                                         void *application, void *session, void *url, void *form)
 {
     if (!inst) throw webstrada::exception("component", "Attempt to invoke a method on an undefined component.");
-    std::string upper = methodName;
-    for (auto &c : upper) c = (char)toupper((unsigned char)c);
+    std::string upper = toUpperFast(methodName);
     ComponentInfo *owner = nullptr;
     int idx = findMethodInInstance(inst, upper, owner);
     if (idx < 0) {
@@ -983,8 +1015,7 @@ cfvariant *cf_component_method_handle_invoke(cfvariant *handleVal,
     }
     UDFInfo *info = handleVal->m_udf;
     ComponentInstance *inst = info->component;
-    std::string upper(info->name.constData() ? info->name.constData() : "");
-    for (auto &c : upper) c = (char)toupper((unsigned char)c);
+    std::string upper = toUpperFast(info->name.constData());
     ComponentInfo *startInfo = handleVal->m_superTargetInfo ? handleVal->m_superTargetInfo : inst->info;
     ComponentInfo *owner = nullptr;
     int idx = findMethodInInfo(startInfo, upper, owner);
@@ -1032,8 +1063,7 @@ cfvariant *cf_component_method_handle(cfvariant *compVal, int methodIndex)
 int cf_component_has_method(const cfvariant *compVal, const char *methodName)
 {
     if (!compVal || compVal->m_type != cfvariant::Component || !compVal->m_component) return 0;
-    std::string upper = methodName;
-    for (auto &c : upper) c = (char)toupper((unsigned char)c);
+    std::string upper = toUpperFast(methodName);
     ComponentInfo *owner = nullptr;
     int idx = findMethodInInstance(compVal->m_component, upper, owner);
     if (idx < 0) return 0;
@@ -1043,8 +1073,7 @@ int cf_component_has_method(const cfvariant *compVal, const char *methodName)
 int cf_component_has_method_on(ComponentInstance *inst, const char *methodName)
 {
     if (!inst || !inst->info) return 0;
-    std::string upper = methodName;
-    for (auto &c : upper) c = (char)toupper((unsigned char)c);
+    std::string upper = toUpperFast(methodName);
     ComponentInfo *owner = nullptr;
     return findMethodInInstance(inst, upper, owner) >= 0 ? 1 : 0;
 }

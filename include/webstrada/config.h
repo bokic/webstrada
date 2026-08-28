@@ -143,6 +143,10 @@ extern bool enableQueryLogging;
 // cftimer still evaluates its body and cftrace is a complete no-op).
 extern bool debugEnabled;
 
+// Whether real-time high-resolution execution tracing across templates/CFC lines
+// is enabled. When changed, all cached compiled templates are invalidated and recompiled.
+extern bool lineExecutionTrace;
+
 // The CF Administrator "compile extensions for include" setting
 // (`compileextforinclude`), a comma-delimited list of file extensions that
 // <cfinclude> compiles and executes as CFML in addition to `.cfm`/`.cfml`.
@@ -196,6 +200,12 @@ void save();
 // Used by the __configReset() compiler-extension function ("Restore Defaults"
 // in the admin panel).
 void resetToDefaults();
+
+// Registers a callback to invalidate in-memory compiled caches (TemplateCache, custom tags)
+void setCacheInvalidator(void (*fn)());
+
+// Invalidates in-memory compiled caches in the current worker.
+void invalidateCompiledCaches();
 
 } // namespace config
 } // namespace webstrada

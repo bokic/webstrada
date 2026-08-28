@@ -1567,6 +1567,7 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
                 m.params.push_back(pinfo);
                 m.paramRequired.push_back(pi < def.paramRequired.size() && def.paramRequired[pi]);
             }
+            info->methodMap[m.name] = static_cast<int>(info->methods.size());
             info->methods.push_back(m);
         }
     }
