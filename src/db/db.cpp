@@ -80,6 +80,11 @@ public:
         m_inner->rollbackTo(name);
     }
 
+    bool isAlive() override
+    {
+        return m_inner ? m_inner->isAlive() : false;
+    }
+
     std::vector<DBConnection::ColumnMeta> tableColumns(const std::string &table) override
     {
         logOp("tableColumns " + table);
@@ -228,6 +233,77 @@ DBConnection *openConnection(const std::string &dsn, long long timeoutMs)
         fflush(stdout);
     }
     return new LoggingConnection(conn, dsn, cfg.backend);
+}
+
+// Per-thread / per-worker live connection cache mapped by uppercased DSN name
+static thread_local std::map<std::string, DBConnection*> s_threadConnections;
+
+DBConnection *getConnection(const std::string &dsn, long long timeoutMs)
+{
+    std::string dsnUp = dsn;
+    for (auto &c : dsnUp) c = static_cast<char>(toupper((unsigned char)c));
+
+    auto it = s_threadConnections.find(dsnUp);
+    if (it != s_threadConnections.end() && it->second != nullptr) {
+        return it->second;
+    }
+
+    DBConnection *newConn = openConnection(dsn, timeoutMs);
+    s_threadConnections[dsnUp] = newConn;
+    return newConn;
+}
+
+DBConnection *reopenConnection(const std::string &dsn, long long timeoutMs)
+{
+    std::string dsnUp = dsn;
+    for (auto &c : dsnUp) c = static_cast<char>(toupper((unsigned char)c));
+
+    auto it = s_threadConnections.find(dsnUp);
+    if (it != s_threadConnections.end()) {
+        delete it->second;
+        s_threadConnections.erase(it);
+    }
+
+    DBConnection *newConn = openConnection(dsn, timeoutMs);
+    s_threadConnections[dsnUp] = newConn;
+    return newConn;
+}
+
+bool isConnectionLost(const std::string &detail)
+{
+    std::string up = detail;
+    for (auto &c : up) c = static_cast<char>(toupper((unsigned char)c));
+
+    return up.find("GONE AWAY") != std::string::npos ||
+           up.find("LOST CONNECTION") != std::string::npos ||
+           up.find("CLOSED THE CONNECTION") != std::string::npos ||
+           up.find("SERVER CLOSED") != std::string::npos ||
+           up.find("BROKEN PIPE") != std::string::npos ||
+           up.find("CONNECTION NOT OPEN") != std::string::npos ||
+           up.find("NOT CONNECTED") != std::string::npos;
+}
+
+void requestCleanupConnections()
+{
+    for (auto &kv : s_threadConnections) {
+        DBConnection *conn = kv.second;
+        if (conn) {
+            try {
+                // If a transaction was left open due to abort / error, roll it back.
+                conn->rollback();
+            } catch (...) {
+                // Ignore rollback failure on idle connections
+            }
+        }
+    }
+}
+
+void closeAllConnections()
+{
+    for (auto &kv : s_threadConnections) {
+        delete kv.second;
+    }
+    s_threadConnections.clear();
 }
 
 } // namespace db

@@ -257,6 +257,11 @@ public:
         if (m_conn) PQfinish(m_conn);
     }
 
+    bool isAlive() override
+    {
+        return m_conn && PQstatus(m_conn) == CONNECTION_OK;
+    }
+
     DBResult execute(const std::string &sql, long long maxrows) override
     {
         DBResult result;

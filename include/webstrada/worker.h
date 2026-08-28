@@ -17,6 +17,7 @@ class worker
 public:
     friend class WorkerTest;
     worker();
+    ~worker();
     void process_request(FCGX_Request *request);
     void process_cli_request(const string &pathname, const string &web_root);
     void clear_compiled_caches() { m_templates.clear(); }

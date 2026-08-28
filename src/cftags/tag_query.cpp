@@ -274,24 +274,21 @@ cfvariant *cf_run_query(const std::string &sqlIn, const cfvariant *attrs,
     }
 
     TxFrame *tx = transaction_get_active(dsn);
+    bool connOwnedByTx = tx && tx->conn;
 
     db::DBConnection *conn = nullptr;
-    if (tx && tx->conn) {
+    if (connOwnedByTx) {
         conn = tx->conn;
     } else {
         long long timeoutMs = timeout >= 0 ? timeout * 1000 : 0;
-        conn = db::openConnection(dsn, timeoutMs);
+        conn = db::getConnection(dsn, timeoutMs);
         if (tx) {
             tx->conn = conn;
             tx->inTransaction = true;
             conn->begin();
+            connOwnedByTx = true;
         }
     }
-
-    // The connection is owned by the transaction frame when one is active and
-    // opened it; otherwise cf_run_query owns it and must close it.
-    bool connOwnedByTx = tx && tx->conn == conn;
-    ConnectionGuard connGuard(conn, !connOwnedByTx);
 
     // Dev-server query log: each executed statement is printed to stdout before
     // it runs so a request's SQL (including a statement that then fails) is
@@ -303,9 +300,29 @@ cfvariant *cf_run_query(const std::string &sqlIn, const cfvariant *attrs,
         fflush(stdout);
     }
 
+    std::string dsnUp = dsn;
+    for (auto &c : dsnUp) c = static_cast<char>(toupper((unsigned char)c));
+
+    bool isFirstQueryForDsn = (g_requestQueriedDsns.find(dsnUp) == g_requestQueriedDsns.end());
+    bool canRetryOnDisconnect = (!connOwnedByTx && isFirstQueryForDsn && g_requestRetriedDsns.find(dsnUp) == g_requestRetriedDsns.end());
+
     auto execStart = std::chrono::steady_clock::now();
     db::DBResult result;
-    result = conn->execute(sql, maxrows);
+    try {
+        result = conn->execute(sql, maxrows);
+    } catch (const webstrada::exception &ex) {
+        std::string detail = ex.m_detail.constData() ? ex.m_detail.constData() : "";
+        if (canRetryOnDisconnect && db::isConnectionLost(detail)) {
+            g_requestRetriedDsns.insert(dsnUp);
+            long long timeoutMs = timeout >= 0 ? timeout * 1000 : 0;
+            conn = db::reopenConnection(dsn, timeoutMs);
+            result = conn->execute(sql, maxrows);
+        } else {
+            g_requestQueriedDsns.insert(dsnUp);
+            throw;
+        }
+    }
+    g_requestQueriedDsns.insert(dsnUp);
     auto execEnd = std::chrono::steady_clock::now();
     double queryMs = std::chrono::duration<double, std::milli>(execEnd - execStart).count();
     g_reqProfiler.queryCount++;

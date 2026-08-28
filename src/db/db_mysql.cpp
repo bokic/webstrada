@@ -207,6 +207,11 @@ public:
         if (m_conn) mysql_close(m_conn);
     }
 
+    bool isAlive() override
+    {
+        return m_conn && mysql_ping(m_conn) == 0;
+    }
+
     DBResult execute(const std::string &sql, long long maxrows) override
     {
         DBResult result;

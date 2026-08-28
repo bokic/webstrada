@@ -24000,6 +24000,35 @@ TEST(ProfilerStoreTest, RecordAndPersistRequestTraces) {
     unlink(dbPath);
 }
 
+TEST(DbConnectionPoolTest, PersistentConnectionReuseAndCleanup) {
+    db::closeAllConnections();
+
+    db::DBConnection *conn1 = db::getConnection("test_dsn");
+    ASSERT_NE(conn1, nullptr);
+    EXPECT_TRUE(conn1->isAlive());
+
+    // Calling getConnection again on same thread must return the exact same persistent pointer
+    db::DBConnection *conn2 = db::getConnection("test_dsn");
+    EXPECT_EQ(conn1, conn2);
+
+    // Case-insensitivity check
+    db::DBConnection *conn3 = db::getConnection("TEST_DSN");
+    EXPECT_EQ(conn1, conn3);
+
+    // Request cleanup rolls back transactions and preserves connections
+    db::requestCleanupConnections();
+    db::DBConnection *conn4 = db::getConnection("test_dsn");
+    EXPECT_EQ(conn1, conn4);
+
+    // closeAllConnections closes and purges
+    db::closeAllConnections();
+    db::DBConnection *conn5 = db::getConnection("test_dsn");
+    ASSERT_NE(conn5, nullptr);
+    EXPECT_NE(conn1, conn5);
+
+    db::closeAllConnections();
+}
+
 }  // namespace webstrada
 
 int main(int argc, char **argv) {

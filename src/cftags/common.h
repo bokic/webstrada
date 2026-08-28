@@ -12,10 +12,15 @@
 #include <deque>
 #include <vector>
 #include <string>
+#include <set>
 
 namespace cfml {
 
 // Shared state/helpers defined in common.cpp.
+
+// Tracks datasources queried/retried during the current request.
+extern thread_local std::set<std::string> g_requestQueriedDsns;
+extern thread_local std::set<std::string> g_requestRetriedDsns;
 
 // <cfhttp> request context: cf_http_begin pushes a fresh builder; cf_http_param
 // appends a parameter; cf_http_end pops it.

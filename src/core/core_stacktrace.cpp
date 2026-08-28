@@ -86,6 +86,25 @@ std::vector<webstrada::TraceStep> trace_take_steps()
     return res;
 }
 
+void trace_record_event(const char *type, const char *path, const char *function, int line)
+{
+    if (__builtin_expect(webstrada::config::lineExecutionTrace && g_requestTraceActive, 0)) {
+        auto now = std::chrono::steady_clock::now();
+        double deltaMs = s_traceTimerStarted ? std::chrono::duration<double, std::milli>(now - s_lastTraceTime).count() : 0.0;
+        double elapsedMs = std::chrono::duration<double, std::milli>(now - g_requestTraceStartTime).count();
+        s_lastTraceTime = now;
+        s_traceTimerStarted = true;
+        webstrada::TraceStep step;
+        step.type = type ? type : "EVENT";
+        step.path = path ? path : "[ENGINE]";
+        step.function = function ? function : "";
+        step.line = line;
+        step.deltaMs = deltaMs;
+        step.elapsedMs = elapsedMs;
+        g_requestTraceSteps.push_back(std::move(step));
+    }
+}
+
 void cf_stack_push(const char *path, const char *function)
 {
     webstrada::StackLevel lvl;

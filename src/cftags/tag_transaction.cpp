@@ -32,7 +32,7 @@ void cf_transaction_commit()
     TxFrame &f = g_txStack.back();
     if (f.conn) {
         if (f.inTransaction) f.conn->commit();
-        delete f.conn;
+        f.conn = nullptr;
     }
     g_txStack.pop_back();
 }
@@ -43,7 +43,7 @@ void cf_transaction_rollback()
     TxFrame &f = g_txStack.back();
     if (f.conn) {
         if (f.inTransaction) f.conn->rollback();
-        delete f.conn;
+        f.conn = nullptr;
     }
     g_txStack.pop_back();
 }

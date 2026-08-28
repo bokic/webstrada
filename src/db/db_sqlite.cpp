@@ -109,6 +109,11 @@ public:
         if (m_db) sqlite3_close(m_db);
     }
 
+    bool isAlive() override
+    {
+        return m_db != nullptr;
+    }
+
     DBResult execute(const std::string &sql, long long maxrows) override
     {
         DBResult result;

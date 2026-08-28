@@ -54,24 +54,17 @@ struct DbInfoResult {
 DbInfoResult runMeta(const std::string &dsn, const std::string &sql)
 {
     DbInfoResult out;
-    db::DBConnection *conn = nullptr;
-    try {
-        conn = db::openConnection(dsn, 0);
-        db::DBResult r = conn->execute(sql, -1);
-        for (size_t i = 0; i < r.columns.size(); i++) {
-            DbInfoCol c;
-            std::string n = r.columns[i].name;
-            for (auto &ch : n) ch = static_cast<char>(toupper((unsigned char)ch));
-            c.name = n;
-            c.values = std::move(r.columns[i].values);
-            out.cols.push_back(std::move(c));
-        }
-        out.rowCount = r.rowCount;
-        delete conn;
-    } catch (...) {
-        delete conn;
-        throw;
+    db::DBConnection *conn = db::getConnection(dsn, 0);
+    db::DBResult r = conn->execute(sql, -1);
+    for (size_t i = 0; i < r.columns.size(); i++) {
+        DbInfoCol c;
+        std::string n = r.columns[i].name;
+        for (auto &ch : n) ch = static_cast<char>(toupper((unsigned char)ch));
+        c.name = n;
+        c.values = std::move(r.columns[i].values);
+        out.cols.push_back(std::move(c));
     }
+    out.rowCount = r.rowCount;
     return out;
 }
 
@@ -102,18 +95,11 @@ std::string cellToString(const cfvariant &v)
 // string ("" when the result has no rows), used by the VERSION type.
 std::string runScalar(const std::string &dsn, const std::string &sql)
 {
-    db::DBConnection *conn = nullptr;
+    db::DBConnection *conn = db::getConnection(dsn, 0);
     std::string out;
-    try {
-        conn = db::openConnection(dsn, 0);
-        db::DBResult r = conn->execute(sql, -1);
-        if (!r.columns.empty() && !r.columns[0].values.empty()) {
-            out = cellToString(r.columns[0].values[0]);
-        }
-        delete conn;
-    } catch (...) {
-        delete conn;
-        throw;
+    db::DBResult r = conn->execute(sql, -1);
+    if (!r.columns.empty() && !r.columns[0].values.empty()) {
+        out = cellToString(r.columns[0].values[0]);
     }
     return out;
 }
@@ -345,11 +331,9 @@ DbInfoResult dbinfoColumns(const std::string &backend, const std::string &dsn,
             " ORDER BY c.ORDINAL_POSITION";
     }
 
-    db::DBConnection *conn = nullptr;
+    db::DBConnection *conn = db::getConnection(dsn, 0);
     DbInfoResult res;
-    try {
-        conn = db::openConnection(dsn, 0);
-        db::DBResult r = conn->execute(sql, -1);
+    db::DBResult r = conn->execute(sql, -1);
 
         if (sqlite) {
             // Map the PRAGMA rows (cid,name,type,notnull,dflt_value,pk) to CF's
@@ -442,11 +426,6 @@ DbInfoResult dbinfoColumns(const std::string &backend, const std::string &dsn,
             }
         }
         res.rowCount = r.rowCount;
-        delete conn;
-    } catch (...) {
-        delete conn;
-        throw;
-    }
     return res;
 }
 
@@ -621,69 +600,62 @@ DbInfoResult dbinfoForeignKeys(const std::string &backend, const std::string &ds
             "AND tc.TABLE_NAME = " + sqlQuote(table);
     }
 
-    db::DBConnection *conn = nullptr;
+    db::DBConnection *conn = db::getConnection(dsn, 0);
     DbInfoResult res;
-    try {
-        conn = db::openConnection(dsn, 0);
-        db::DBResult r = conn->execute(sql, -1);
-        if (backendIsSqlite(backend)) {
-            int fkNameIdx = -1, fkTableIdx = -1, fkFromIdx = -1, fkToIdx = -1,
-                fkUpdateIdx = -1, fkDeleteIdx = -1;
-            for (size_t i = 0; i < r.columns.size(); i++) {
-                std::string cn;
-                for (char c : r.columns[i].name) cn += static_cast<char>(tolower((unsigned char)c));
-                if (cn == "id") fkNameIdx = (int)i;
-                else if (cn == "table") fkTableIdx = (int)i;
-                else if (cn == "from") fkFromIdx = (int)i;
-                else if (cn == "to") fkToIdx = (int)i;
-                else if (cn == "on_update") fkUpdateIdx = (int)i;
-                else if (cn == "on_delete") fkDeleteIdx = (int)i;
-            }
-            for (int ci = 0; ci < 5; ci++) {
-                DbInfoCol c;
-                c.name = kCols[ci];
-                for (long long row = 0; row < r.rowCount; row++) {
-                    std::string cell;
-                    switch (ci) {
-                    case 0: cell = table; break; // FKTABLE_NAME = the table itself
-                    case 1: cell = (fkFromIdx >= 0) ? safe_to_std_string(r.columns[fkFromIdx].values[row]) : ""; break;
-                    case 2: cell = (fkToIdx >= 0) ? safe_to_std_string(r.columns[fkToIdx].values[row]) : ""; break;
-                    case 3: cell = (fkUpdateIdx >= 0) ? safe_to_std_string(r.columns[fkUpdateIdx].values[row]) : ""; break;
-                    case 4: cell = (fkDeleteIdx >= 0) ? safe_to_std_string(r.columns[fkDeleteIdx].values[row]) : ""; break;
-                    }
-                    c.values.push_back(cfvariant(cell.c_str()));
-                }
-                res.cols.push_back(std::move(c));
-            }
-        } else {
-            int fkTableIdx = findColIdx(r, "fktable_name");
-            int fkFromIdx = findColIdx(r, "fkcolumn_name");
-            int fkToIdx = findColIdx(r, "pkcolumn_name");
-            int fkUpdateIdx = findColIdx(r, "update_rule");
-            int fkDeleteIdx = findColIdx(r, "delete_rule");
-            for (int ci = 0; ci < 5; ci++) {
-                DbInfoCol c;
-                c.name = kCols[ci];
-                for (long long row = 0; row < r.rowCount; row++) {
-                    std::string cell;
-                    switch (ci) {
-                    case 0: cell = cellStr(r, fkTableIdx, row); break;
-                    case 1: cell = cellStr(r, fkFromIdx, row); break;
-                    case 2: cell = cellStr(r, fkToIdx, row); break;
-                    case 3: cell = cellStr(r, fkUpdateIdx, row); break;
-                    case 4: cell = cellStr(r, fkDeleteIdx, row); break;
-                    }
-                    c.values.push_back(cfvariant(cell.c_str()));
-                }
-                res.cols.push_back(std::move(c));
-            }
+    db::DBResult r = conn->execute(sql, -1);
+    if (backendIsSqlite(backend)) {
+        int fkNameIdx = -1, fkTableIdx = -1, fkFromIdx = -1, fkToIdx = -1,
+            fkUpdateIdx = -1, fkDeleteIdx = -1;
+        for (size_t i = 0; i < r.columns.size(); i++) {
+            std::string cn;
+            for (char c : r.columns[i].name) cn += static_cast<char>(tolower((unsigned char)c));
+            if (cn == "id") fkNameIdx = (int)i;
+            else if (cn == "table") fkTableIdx = (int)i;
+            else if (cn == "from") fkFromIdx = (int)i;
+            else if (cn == "to") fkToIdx = (int)i;
+            else if (cn == "on_update") fkUpdateIdx = (int)i;
+            else if (cn == "on_delete") fkDeleteIdx = (int)i;
         }
-        res.rowCount = r.rowCount;
-        delete conn;
-    } catch (...) {
-        delete conn;
-        throw;
+        for (int ci = 0; ci < 5; ci++) {
+            DbInfoCol c;
+            c.name = kCols[ci];
+            for (long long row = 0; row < r.rowCount; row++) {
+                std::string cell;
+                switch (ci) {
+                case 0: cell = table; break; // FKTABLE_NAME = the table itself
+                case 1: cell = (fkFromIdx >= 0) ? safe_to_std_string(r.columns[fkFromIdx].values[row]) : ""; break;
+                case 2: cell = (fkToIdx >= 0) ? safe_to_std_string(r.columns[fkToIdx].values[row]) : ""; break;
+                case 3: cell = (fkUpdateIdx >= 0) ? safe_to_std_string(r.columns[fkUpdateIdx].values[row]) : ""; break;
+                case 4: cell = (fkDeleteIdx >= 0) ? safe_to_std_string(r.columns[fkDeleteIdx].values[row]) : ""; break;
+                }
+                c.values.push_back(cfvariant(cell.c_str()));
+            }
+            res.cols.push_back(std::move(c));
+        }
+    } else {
+        int fkTableIdx = findColIdx(r, "fktable_name");
+        int fkFromIdx = findColIdx(r, "fkcolumn_name");
+        int fkToIdx = findColIdx(r, "pkcolumn_name");
+        int fkUpdateIdx = findColIdx(r, "update_rule");
+        int fkDeleteIdx = findColIdx(r, "delete_rule");
+        for (int ci = 0; ci < 5; ci++) {
+            DbInfoCol c;
+            c.name = kCols[ci];
+            for (long long row = 0; row < r.rowCount; row++) {
+                std::string cell;
+                switch (ci) {
+                case 0: cell = cellStr(r, fkTableIdx, row); break;
+                case 1: cell = cellStr(r, fkFromIdx, row); break;
+                case 2: cell = cellStr(r, fkToIdx, row); break;
+                case 3: cell = cellStr(r, fkUpdateIdx, row); break;
+                case 4: cell = cellStr(r, fkDeleteIdx, row); break;
+                }
+                c.values.push_back(cfvariant(cell.c_str()));
+            }
+            res.cols.push_back(std::move(c));
+        }
     }
+    res.rowCount = r.rowCount;
     return res;
 }
 
@@ -698,56 +670,49 @@ DbInfoResult dbinfoIndex(const std::string &backend, const std::string &dsn,
 
     if (backendIsSqlite(backend)) {
         // PRAGMA index_list(table) + index_info(index) -> CF's INDEX columns.
-        db::DBConnection *conn = nullptr;
+        db::DBConnection *conn = db::getConnection(dsn, 0);
         DbInfoResult res;
-        try {
-            conn = db::openConnection(dsn, 0);
-            db::DBResult list = conn->execute("PRAGMA index_list(" + table + ")", -1);
-            int seqIdx = -1, nameIdx = -1, uniqueIdx = -1;
-            for (size_t i = 0; i < list.columns.size(); i++) {
+        db::DBResult list = conn->execute("PRAGMA index_list(" + table + ")", -1);
+        int seqIdx = -1, nameIdx = -1, uniqueIdx = -1;
+        for (size_t i = 0; i < list.columns.size(); i++) {
+            std::string cn;
+            for (char c : list.columns[i].name) cn += static_cast<char>(tolower((unsigned char)c));
+            if (cn == "seq") seqIdx = (int)i;
+            else if (cn == "name") nameIdx = (int)i;
+            else if (cn == "unique") uniqueIdx = (int)i;
+        }
+        std::vector<cfvariant> colVals[7];
+        for (long long li = 0; li < list.rowCount; li++) {
+            std::string idxName = (nameIdx >= 0) ? safe_to_std_string(list.columns[nameIdx].values[li]) : "";
+            bool isUnique = (uniqueIdx >= 0 && list.columns[uniqueIdx].values[li].m_type == cfvariant::Number &&
+                             list.columns[uniqueIdx].values[li].m_int != 0);
+            db::DBResult info = conn->execute("PRAGMA index_info(" + sqlQuote(idxName) + ")", -1);
+            int cseqIdx = -1, cnameIdx = -1;
+            for (size_t i = 0; i < info.columns.size(); i++) {
                 std::string cn;
-                for (char c : list.columns[i].name) cn += static_cast<char>(tolower((unsigned char)c));
-                if (cn == "seq") seqIdx = (int)i;
-                else if (cn == "name") nameIdx = (int)i;
-                else if (cn == "unique") uniqueIdx = (int)i;
+                for (char c : info.columns[i].name) cn += static_cast<char>(tolower((unsigned char)c));
+                if (cn == "seqno") cseqIdx = (int)i;
+                else if (cn == "name") cnameIdx = (int)i;
             }
-            std::vector<cfvariant> colVals[7];
-            for (long long li = 0; li < list.rowCount; li++) {
-                std::string idxName = (nameIdx >= 0) ? safe_to_std_string(list.columns[nameIdx].values[li]) : "";
-                bool isUnique = (uniqueIdx >= 0 && list.columns[uniqueIdx].values[li].m_type == cfvariant::Number &&
-                                 list.columns[uniqueIdx].values[li].m_int != 0);
-                db::DBResult info = conn->execute("PRAGMA index_info(" + sqlQuote(idxName) + ")", -1);
-                int cseqIdx = -1, cnameIdx = -1;
-                for (size_t i = 0; i < info.columns.size(); i++) {
-                    std::string cn;
-                    for (char c : info.columns[i].name) cn += static_cast<char>(tolower((unsigned char)c));
-                    if (cn == "seqno") cseqIdx = (int)i;
-                    else if (cn == "name") cnameIdx = (int)i;
-                }
-                for (long long ri = 0; ri < info.rowCount; ri++) {
-                    std::string colName = (cnameIdx >= 0) ? safe_to_std_string(info.columns[cnameIdx].values[ri]) : "";
-                    long long ord = (cseqIdx >= 0 && info.columns[cseqIdx].values[ri].m_type == cfvariant::Number)
-                        ? info.columns[cseqIdx].values[ri].m_int + 1 : 1;
-                    colVals[0].push_back(cfvariant(idxName.c_str()));
-                    colVals[1].push_back(cfvariant(colName.c_str()));
-                    colVals[2].push_back(cfvariant(static_cast<int>(ord)));
-                    colVals[3].push_back(cfvariant(isUnique ? "NO" : "YES"));
-                    colVals[4].push_back(cfvariant("Other Index"));
-                    colVals[5].push_back(cfvariant("0")); // cardinality
-                    colVals[6].push_back(cfvariant("0")); // pages
-                }
+            for (long long ri = 0; ri < info.rowCount; ri++) {
+                std::string colName = (cnameIdx >= 0) ? safe_to_std_string(info.columns[cnameIdx].values[ri]) : "";
+                long long ord = (cseqIdx >= 0 && info.columns[cseqIdx].values[ri].m_type == cfvariant::Number)
+                    ? info.columns[cseqIdx].values[ri].m_int + 1 : 1;
+                colVals[0].push_back(cfvariant(idxName.c_str()));
+                colVals[1].push_back(cfvariant(colName.c_str()));
+                colVals[2].push_back(cfvariant(static_cast<int>(ord)));
+                colVals[3].push_back(cfvariant(isUnique ? "NO" : "YES"));
+                colVals[4].push_back(cfvariant("Other Index"));
+                colVals[5].push_back(cfvariant("0")); // cardinality
+                colVals[6].push_back(cfvariant("0")); // pages
             }
-            res.rowCount = (long long)colVals[0].size();
-            for (int ci = 0; ci < 7; ci++) {
-                DbInfoCol c;
-                c.name = kCols[ci];
-                c.values = std::move(colVals[ci]);
-                res.cols.push_back(std::move(c));
-            }
-            delete conn;
-        } catch (...) {
-            delete conn;
-            throw;
+        }
+        res.rowCount = (long long)colVals[0].size();
+        for (int ci = 0; ci < 7; ci++) {
+            DbInfoCol c;
+            c.name = kCols[ci];
+            c.values = std::move(colVals[ci]);
+            res.cols.push_back(std::move(c));
         }
         return res;
     }
@@ -778,42 +743,35 @@ DbInfoResult dbinfoIndex(const std::string &backend, const std::string &dsn,
             " ORDER BY INDEX_NAME, SEQ_IN_INDEX";
     }
 
-    db::DBConnection *conn = nullptr;
+    db::DBConnection *conn = db::getConnection(dsn, 0);
     DbInfoResult res;
-    try {
-        conn = db::openConnection(dsn, 0);
-        db::DBResult r = conn->execute(sql, -1);
-        int nameIdx = findColIdx(r, "index_name");
-        int colIdx = findColIdx(r, "column_name");
-        int ordIdx = findColIdx(r, "ordinal_position");
-        int nonUniqueIdx = findColIdx(r, "non_unique");
-        int typeIdx = findColIdx(r, "type");
-        int cardIdx = findColIdx(r, "cardinality");
-        int pagesIdx = findColIdx(r, "pages");
-        for (int ci = 0; ci < 7; ci++) {
-            DbInfoCol c;
-            c.name = kCols[ci];
-            for (long long row = 0; row < r.rowCount; row++) {
-                std::string cell;
-                switch (ci) {
-                case 0: cell = cellStr(r, nameIdx, row); break;
-                case 1: cell = cellStr(r, colIdx, row); break;
-                case 2: cell = cellStr(r, ordIdx, row); break;
-                case 3: cell = cellStr(r, nonUniqueIdx, row); break;
-                case 4: cell = cellStr(r, typeIdx, row); break;
-                case 5: cell = cellStr(r, cardIdx, row); break;
-                case 6: cell = cellStr(r, pagesIdx, row); break;
-                }
-                c.values.push_back(cfvariant(cell.c_str()));
+    db::DBResult r = conn->execute(sql, -1);
+    int nameIdx = findColIdx(r, "index_name");
+    int colIdx = findColIdx(r, "column_name");
+    int ordIdx = findColIdx(r, "ordinal_position");
+    int nonUniqueIdx = findColIdx(r, "non_unique");
+    int typeIdx = findColIdx(r, "type");
+    int cardIdx = findColIdx(r, "cardinality");
+    int pagesIdx = findColIdx(r, "pages");
+    for (int ci = 0; ci < 7; ci++) {
+        DbInfoCol c;
+        c.name = kCols[ci];
+        for (long long row = 0; row < r.rowCount; row++) {
+            std::string cell;
+            switch (ci) {
+            case 0: cell = cellStr(r, nameIdx, row); break;
+            case 1: cell = cellStr(r, colIdx, row); break;
+            case 2: cell = cellStr(r, ordIdx, row); break;
+            case 3: cell = cellStr(r, nonUniqueIdx, row); break;
+            case 4: cell = cellStr(r, typeIdx, row); break;
+            case 5: cell = cellStr(r, cardIdx, row); break;
+            case 6: cell = cellStr(r, pagesIdx, row); break;
             }
-            res.cols.push_back(std::move(c));
+            c.values.push_back(cfvariant(cell.c_str()));
         }
-        res.rowCount = r.rowCount;
-        delete conn;
-    } catch (...) {
-        delete conn;
-        throw;
+        res.cols.push_back(std::move(c));
     }
+    res.rowCount = r.rowCount;
     return res;
 }
 

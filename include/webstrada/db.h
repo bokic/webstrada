@@ -95,6 +95,9 @@ public:
     };
     virtual std::vector<ColumnMeta> tableColumns(const std::string &table) = 0;
 
+    // Returns true if the underlying socket / connection is still alive and usable.
+    virtual bool isAlive() { return true; }
+
     // Executes a stored procedure (`proc`) with the given parameters and
     // returns its result sets and out/inout values (used by <cfstoredproc>).
     // The default implementation throws: backends without stored procedures
@@ -145,13 +148,23 @@ struct DatasourceConfig {
 };
 DatasourceConfig datasourceConfig(const std::string &dsn);
 
-// Opens a connection to `dsn`. The datasource config (webstrada::config::
-// datasources) selects the backend: a datasource configured with
-// backend="mysql" connects via the MySQL driver, backend="postgres" (or
-// "postgresql"/"pg") via the PostgreSQL driver; anything else uses SQLite.
-// When no config entry exists, the datasource is treated as SQLite
-// (DNS_<name>.sqlite), preserving the pre-config behavior.
+// Opens a fresh connection to `dsn` without caching it.
 DBConnection *openConnection(const std::string &dsn, long long timeoutMs);
+
+// Retrieves or creates a persistent connection for `dsn` for the current worker thread without pinging.
+DBConnection *getConnection(const std::string &dsn, long long timeoutMs = 0);
+
+// Forces closing and reopening the persistent connection for `dsn` (used on stale socket retry).
+DBConnection *reopenConnection(const std::string &dsn, long long timeoutMs = 0);
+
+// Returns true if the database exception message indicates a dropped/stale socket.
+bool isConnectionLost(const std::string &detail);
+
+// Rolls back any uncommitted transactions on active connections at request end.
+void requestCleanupConnections();
+
+// Closes and clears all cached connections on the current worker thread (e.g. on reload).
+void closeAllConnections();
 
 // Resolver used by runQueryOfQueries: given a table name as it appears in the
 // SQL (e.g. "posts" in "SELECT * FROM posts"), returns the source CFML query

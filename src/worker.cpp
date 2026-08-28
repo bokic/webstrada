@@ -7,6 +7,7 @@
 #include <webstrada/config.h>
 #include <webstrada/cache_store.h>
 #include <webstrada/server_stats.h>
+#include <webstrada/db.h>
 #include "cftags/common.h"
 #include "core/core_internal.h"
 
@@ -74,6 +75,7 @@ static void worker_cache_invalidator()
         g_currentWorker->clear_compiled_caches();
     }
     cfml::custom_tag_target_cache_clear();
+    webstrada::db::closeAllConnections();
 }
 
 worker::worker() {
@@ -83,11 +85,13 @@ worker::worker() {
     // Fill SERVER scope
     cfml::init_server_scope(m_server);
 
-    // TODO: Init database connection pool.
-
     open_scope_store();
     open_cache_store();
     open_profiler_store();
+}
+
+worker::~worker() {
+    webstrada::db::closeAllConnections();
 }
 
 void worker::open_profiler_store()
@@ -149,6 +153,7 @@ void worker::process_request(FCGX_Request *request)
         if (webstrada::config::reloadIfChanged()) {
             m_templates.clear();
             cfml::custom_tag_target_cache_clear();
+            webstrada::db::closeAllConnections();
         }
 
         cfml::trace_begin_request();
@@ -407,9 +412,12 @@ void worker::process_request(FCGX_Request *request)
         m_application.setDisabled();
         m_session.setDisabled();
 
+        cfml::trace_record_event("ENGINE", "[ENGINE]", "REQUEST_SCOPES_INIT");
+
         // Bind the SQLite-backed APPLICATION/SESSION scopes for this request.
         // scope_end() persists them back (RAII so it also runs on exceptions).
         cfml::scope_begin(&m_scopeStore, &m_application, &m_session);
+        cfml::trace_record_event("ENGINE", "[ENGINE]", "SCOPE_STORE_BINDING");
         struct ScopeSaveGuard {
             ~ScopeSaveGuard() { cfml::scope_end(); }
         } scopeSaveGuard;
@@ -457,6 +465,7 @@ void worker::process_request(FCGX_Request *request)
         includeRuntime.componentLoader = &component_loader;
         includeRuntime.componentLoaderOpaque = &m_templates;
         cfml::include_begin(&includeRuntime);
+        cfml::trace_record_event("ENGINE", "[ENGINE]", "INCLUDE_RUNTIME_INIT");
         struct IncludeGuard {
             ~IncludeGuard() { cfml::include_end(); }
         } includeGuard;
@@ -535,6 +544,8 @@ void worker::process_request(FCGX_Request *request)
     } else {
         cfml::trace_take_steps();
     }
+
+    webstrada::db::requestCleanupConnections();
 
     m_form = cfvariant::Struct;
     m_cgi = cfvariant::Struct;
@@ -689,6 +700,7 @@ void worker::run_template(const string &pathname, const string &web_root)
     // A directory containing an Application.cfc shadows Application.cfm; the
     // CFC runs the whole request through its lifecycle methods.
     string app_cfc = find_application_cfc(pathname, web_root);
+    cfml::trace_record_event("ENGINE", "[ENGINE]", "FIND_APPLICATION_CFC");
     if (!app_cfc.isEmpty() && !app_cfc.equals(pathname)) {
         if (run_application_cfc(app_cfc, pathname, web_root)) {
             return;
@@ -812,6 +824,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
     }
     webstrada::ComponentInfo *info = inc->componentLoader(app_cfc_path.constData(), inc->componentLoaderOpaque);
     if (!info) return false;
+    cfml::trace_record_event("ENGINE", "[ENGINE]", "APPLICATION_CFC_LOAD");
 
     cfml::VariantCleanupGuard guard;
 
@@ -824,6 +837,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
         m_appCfc = *inst;
         m_appCfcPath = app_cfc_path.constData();
         m_appCfcStarted = false;
+        cfml::trace_record_event("ENGINE", "[ENGINE]", "APPLICATION_CFC_INSTANTIATE");
     }
     component_info_release(info);
 
@@ -855,6 +869,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
     if (sisV) {
         cfml::cf_set_search_implicit_scopes(sisV);
     }
+    cfml::trace_record_event("ENGINE", "[ENGINE]", "APPLICATION_ENABLE");
 
     // onApplicationStart runs once per worker (per app object).
     if (!m_appCfcStarted) {
@@ -884,6 +899,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
     bool pageMissing = (stat(pathname.constData(), &pageSt) != 0 || !S_ISREG(pageSt.st_mode));
     template_fn page;
     if (!pageMissing) page = m_templates.get(pathname);
+    cfml::trace_record_event("ENGINE", "[ENGINE]", "TARGET_PAGE_RESOLVE");
 
     // CF passes the request's web path (e.g. "/page.cfm") as targetPage to
     // onRequestStart / onRequest / onMissingTemplate. Derive it from the
@@ -909,6 +925,7 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
     try {
         // onRequestStart(targetPage): a false return stops the request.
         if (cfml::cf_component_has_method_on(m_appCfc.m_component, "ONREQUESTSTART")) {
+            cfml::trace_record_event("ENGINE", "[ENGINE]", "BEFORE_ONREQUESTSTART");
             auto t0 = std::chrono::steady_clock::now();
             cfvariant pageArg(targetPage);
             const cfvariant *args[] = {&pageArg};

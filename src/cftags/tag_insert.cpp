@@ -39,20 +39,13 @@ struct ColumnInfo {
 std::vector<ColumnInfo> tableColumns(const std::string &dsn, const std::string &table)
 {
     std::vector<ColumnInfo> cols;
-    db::DBConnection *conn = nullptr;
-    try {
-        conn = db::openConnection(dsn, 0);
-        for (auto &cm : conn->tableColumns(table)) {
-            ColumnInfo ci;
-            ci.name = cm.name;
-            ci.type = cm.type;
-            ci.isPk = cm.isPk;
-            cols.push_back(ci);
-        }
-        delete conn;
-    } catch (...) {
-        delete conn;
-        throw;
+    db::DBConnection *conn = db::getConnection(dsn, 0);
+    for (auto &cm : conn->tableColumns(table)) {
+        ColumnInfo ci;
+        ci.name = cm.name;
+        ci.type = cm.type;
+        ci.isPk = cm.isPk;
+        cols.push_back(ci);
     }
     return cols;
 }

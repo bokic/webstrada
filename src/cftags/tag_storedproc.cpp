@@ -189,18 +189,16 @@ void cf_storedproc_end(const cfvariant *attrs,
     // The connection is shared when an enclosing <cftransaction> opened one.
     TxFrame *tx = transaction_get_active(dsn);
     db::DBConnection *conn = nullptr;
-    bool connOwnedByTx = false;
     if (tx && tx->conn) {
         conn = tx->conn;
     } else {
-        conn = db::openConnection(dsn, 0);
+        conn = db::getConnection(dsn, 0);
         if (tx) {
             tx->conn = conn;
             tx->inTransaction = true;
             conn->begin();
         }
     }
-    connOwnedByTx = tx && tx->conn == conn;
 
     if (webstrada::config::enableQueryLogging) {
         printf("[cfstoredproc] dsn=%s proc=%s params=%zu\n", dsn.c_str(), procedure.c_str(), dbParams.size());
@@ -208,13 +206,7 @@ void cf_storedproc_end(const cfvariant *attrs,
     }
 
     auto execStart = std::chrono::steady_clock::now();
-    db::DBStoredProcResult sp;
-    try {
-        sp = conn->storedProc(procedure, dbParams);
-    } catch (...) {
-        if (!connOwnedByTx) delete conn;
-        throw;
-    }
+    db::DBStoredProcResult sp = conn->storedProc(procedure, dbParams);
     auto execEnd = std::chrono::steady_clock::now();
     long long execTime = std::chrono::duration_cast<std::chrono::milliseconds>(execEnd - execStart).count();
 
@@ -298,8 +290,6 @@ void cf_storedproc_end(const cfvariant *attrs,
                              "cfstoredproc.StatusCode", &codeVal);
         }
     }
-
-    if (!connOwnedByTx) delete conn;
 }
 
 } // namespace cfml

@@ -46,6 +46,10 @@ thread_local cfml::IncludeRuntime *g_includeRuntime = nullptr;
 // <cftransaction> frame stack (tag_transaction.cpp / tag_query.cpp).
 thread_local std::vector<cfml::TxFrame> g_txStack;
 
+// Tracks datasources queried/retried during the current request.
+thread_local std::set<std::string> g_requestQueriedDsns;
+thread_local std::set<std::string> g_requestRetriedDsns;
+
 // <cfstoredproc> call context stack (tag_storedproc.cpp). The StoredProcCtx
 // structs are declared in common.h.
 thread_local std::vector<StoredProcCtx*> g_spCtxs;
@@ -712,11 +716,15 @@ void transaction_clear_all()
     while (!g_txStack.empty()) {
         TxFrame &f = g_txStack.back();
         if (f.conn) {
-            if (f.inTransaction) f.conn->rollback();
-            delete f.conn;
+            if (f.inTransaction) {
+                try { f.conn->rollback(); } catch (...) {}
+            }
+            f.conn = nullptr;
         }
         g_txStack.pop_back();
     }
+    g_requestQueriedDsns.clear();
+    g_requestRetriedDsns.clear();
 }
 
 // Drops any stored-proc call contexts left open by an exception that unwound
