@@ -576,12 +576,9 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                        s == "EQ" || s == "NEQ" || s == "LT" || s == "LTE" || s == "LE" || s == "GT" || s == "GTE" || s == "GE" ||
                        s == "IS" || s == "EQUAL" || s == "CONTAINS" || s == "DOES NOT CONTAIN" || s == "IS NOT";
             };
-
             // An operator keyword used as a member method (`arr.contains(2)`)
-            // is not an operator: the previous token is the '.' ObjectMember,
-            // or mergeObjectMembers has left the base as a Variable ending
-            // with '.'. Either way the word is a member-method name, not the
-            // CFML CONTAINS/EQ/... operator.
+            // or a bare function call (`contains(key)`) where the operator is strictly binary
+            // and has no preceding left operand is a function call, not an operator.
             // NOTE: a '.' merely *pending on the operator stack* is NOT member
             // context — it stays there until a lower-precedence operator
             // flushes it, so `s.a AND (...)` (AND arriving as a Function token
@@ -593,7 +590,15 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                   !operandStack.back()->string_val.empty() &&
                   operandStack.back()->string_val.back() == '.'));
 
-            if (isOperatorWord(uname) && !operatorAsMember) {
+            bool isOperator = isOperatorWord(uname) && !operatorAsMember;
+            if (isOperator && nextCanBeUnary && uname != "NOT" && uname != "+" && uname != "-") {
+                // If the operator cannot be unary (e.g. CONTAINS, EQ, AND, OR, etc.)
+                // but appears where a unary expression / operand was expected (at start of expr or after another operator),
+                // it is a function call, not an operator.
+                isOperator = false;
+            }
+
+            if (isOperator) {
                 bool isUnary = nextCanBeUnary;
                 int prec = getOpPrecedence(uname, isUnary);
 

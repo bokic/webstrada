@@ -79,6 +79,19 @@ static const cfml::LocaleInfo *localeFindCaseInsensitive(const char *name)
         c.toLower();
         if (l.equals(lang) && (country.isEmpty() || c.equals(country))) return &loc;
     }
+    // Match by CF name language prefix (e.g. "english" -> "English (US)", "spanish" -> "Spanish (Standard)")
+    const cfml::LocaleInfo *prefixMatch = nullptr;
+    for (const auto &loc : kLocales) {
+        webstrada::string cn(loc.cfName);
+        cn.toLower();
+        int paren = cn.indexOf('(');
+        webstrada::string langPart = (paren > 0 ? cn.left(paren) : cn).trimmed();
+        if (langPart.equals(n)) {
+            if (cn.indexOf("(us)") > 0 || cn.indexOf("(standard)") > 0) return &loc;
+            if (!prefixMatch) prefixMatch = &loc;
+        }
+    }
+    if (prefixMatch) return prefixMatch;
     return nullptr;
 }
 

@@ -93,6 +93,11 @@ void cf_stack_capture_on_exception(void *exn)
     if (!e || !e->m_stackTrace.empty()) return;
     const_cast<webstrada::exception*>(e)->m_stackTrace = g_callStack;
 
+    // Control-flow signals like <cfexit> and <cfabort> are uncatchable
+    // exceptions (catchable() == false) used for normal flow control, not
+    // errors. Do not log them to stderr.
+    if (!e->catchable()) return;
+
     // Log the exception to stderr / dev server log. Never stdout: stdout
     // carries the template's response payload, and verify_with_coldfusion.py
     // compares it byte-for-byte against Adobe CF.

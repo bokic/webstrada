@@ -5609,6 +5609,8 @@ TEST_F(LocaleTest, SetLocaleByJavaCode) {
 TEST_F(LocaleTest, SetLocaleCaseInsensitive) {
     expectOutput("<cfoutput>#SetLocale(\"english (uk)\")#|#GetLocale()#</cfoutput>", "en_US|English (UK)");
     expectOutput("<cfoutput>#SetLocale(\"JAPANESE\")#|#GetLocale()#</cfoutput>", "en_US|Japanese");
+    expectOutput("<cfoutput>#SetLocale(\"english\")#|#GetLocale()#</cfoutput>", "en_US|English (US)");
+    expectOutput("<cfoutput>#SetLocale(\"spanish\")#|#GetLocale()#</cfoutput>", "en_US|Spanish (Standard)");
 }
 
 TEST_F(LocaleTest, SetLocaleInvalidThrows) {
@@ -16771,6 +16773,24 @@ TEST_F(UdfTest, TagFunctionArgumentsScope) {
         "<cffunction name=\"keys\" output=\"false\"><cfargument name=\"abc\"><cfreturn structKeyList(arguments) & \"|\" & structFind(arguments, \"ABC\")></cffunction>"
         "<cfoutput>#keys(1, 2, 3)#</cfoutput>", variables);
     EXPECT_EQ(out.equals("ABC,2,3|1"), true);
+}
+
+TEST_F(UdfTest, TagFunctionOptionalUnpassedNotInArgumentsScope) {
+    string out = runJitTemplate(
+        "<cffunction name=\"opt\" output=\"false\">"
+        "<cfargument name=\"id\" required=\"false\" type=\"string\" />"
+        "<cfargument name=\"hasDef\" required=\"false\" type=\"string\" default=\"DEF\" />"
+        "<cfreturn structKeyExists(arguments, \"id\") & \":\" & isDefined(\"arguments.id\") & \"|\" & structKeyExists(arguments, \"hasDef\") & \":\" & isDefined(\"arguments.hasDef\") & \"|\" & arguments.hasDef>"
+        "</cffunction>"
+        "<cfoutput>#opt()#</cfoutput>", variables);
+    EXPECT_EQ(out.equals("NO:NO|YES:YES|DEF"), true);
+}
+
+TEST_F(UdfTest, TagFunctionNamedContainsCallInCfif) {
+    string out = runJitTemplate(
+        "<cffunction name=\"contains\" output=\"false\"><cfargument name=\"k\"><cfreturn true></cffunction>"
+        "<cfif contains(\"x\")>YES<cfelse>NO</cfif>", variables);
+    EXPECT_EQ(out.equals("YES"), true);
 }
 
 TEST_F(UdfTest, TagFunctionDefaultsLiteralAndExpr) {

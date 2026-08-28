@@ -625,10 +625,10 @@ void cfml::cf_udf_build_arguments(cfvariant *localScope, const char **paramNames
     for (int i = 0; i < paramCount; i++) {
         webstrada::string key(paramNames[i] ? paramNames[i] : "");
         key.toUpper();
-        cfvariant *slot = nullptr;
         auto it = localScope->m_struct->find(key);
-        if (it != localScope->m_struct->end()) slot = &it->second;
-        cf_udf_args_set_or_null(arguments, key.constData(), slot);
+        if (it != localScope->m_struct->end()) {
+            arguments->structSet(key.constData(), it->second);
+        }
     }
     for (int i = 0; i < argc; i++) {
         // A trailing extra-named-args marker (named arguments that matched no
