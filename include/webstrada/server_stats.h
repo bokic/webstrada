@@ -14,6 +14,7 @@ namespace webstrada {
 namespace stats {
 
 struct RecentRequest {
+    int64_t id = 0;            // sequential request ID
     int64_t time = 0;          // unix epoch seconds when the request finished
     std::string templatePath;  // REQUEST_URI of the served template
     std::string method;        // GET / POST / ...

@@ -306,6 +306,7 @@ cfvariant *cf_run_query(const std::string &sqlIn, const cfvariant *attrs,
     bool isFirstQueryForDsn = (g_requestQueriedDsns.find(dsnUp) == g_requestQueriedDsns.end());
     bool canRetryOnDisconnect = (!connOwnedByTx && isFirstQueryForDsn && g_requestRetriedDsns.find(dsnUp) == g_requestRetriedDsns.end());
 
+    cfml::trace_record_event("DB_QUERY_START", dsn.c_str(), qname.c_str(), 0);
     auto execStart = std::chrono::steady_clock::now();
     db::DBResult result;
     try {
@@ -318,10 +319,12 @@ cfvariant *cf_run_query(const std::string &sqlIn, const cfvariant *attrs,
             conn = db::reopenConnection(dsn, timeoutMs);
             result = conn->execute(sql, maxrows);
         } else {
+            cfml::trace_record_event("DB_QUERY_END", dsn.c_str(), qname.c_str(), 0);
             g_requestQueriedDsns.insert(dsnUp);
             throw;
         }
     }
+    cfml::trace_record_event("DB_QUERY_END", dsn.c_str(), qname.c_str(), 0);
     g_requestQueriedDsns.insert(dsnUp);
     auto execEnd = std::chrono::steady_clock::now();
     double queryMs = std::chrono::duration<double, std::milli>(execEnd - execStart).count();

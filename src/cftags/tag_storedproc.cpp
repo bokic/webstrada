@@ -205,9 +205,11 @@ void cf_storedproc_end(const cfvariant *attrs,
         fflush(stdout);
     }
 
+    cfml::trace_record_event("DB_STOREDPROC_START", dsn.c_str(), procedure.c_str(), 0);
     auto execStart = std::chrono::steady_clock::now();
     db::DBStoredProcResult sp = conn->storedProc(procedure, dbParams);
     auto execEnd = std::chrono::steady_clock::now();
+    cfml::trace_record_event("DB_STOREDPROC_END", dsn.c_str(), procedure.c_str(), 0);
     long long execTime = std::chrono::duration_cast<std::chrono::milliseconds>(execEnd - execStart).count();
 
     if (webstrada::config::enableQueryLogging) {

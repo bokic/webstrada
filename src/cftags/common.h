@@ -22,6 +22,9 @@ namespace cfml {
 extern thread_local std::set<std::string> g_requestQueriedDsns;
 extern thread_local std::set<std::string> g_requestRetriedDsns;
 
+// Request execution tracer helper (core_stacktrace.cpp)
+void trace_record_event(const char *type, const char *path, const char *function, int line);
+
 // <cfhttp> request context: cf_http_begin pushes a fresh builder; cf_http_param
 // appends a parameter; cf_http_end pops it.
 struct HttpParam {

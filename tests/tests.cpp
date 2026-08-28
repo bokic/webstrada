@@ -24029,6 +24029,49 @@ TEST(DbConnectionPoolTest, PersistentConnectionReuseAndCleanup) {
     db::closeAllConnections();
 }
 
+TEST(ProfilerStoreTest, StackTraceColumnPersistence) {
+    char dbTemplate[] = "/tmp/test_profiler_XXXXXX";
+    int fd = mkstemp(dbTemplate);
+    ASSERT_NE(fd, -1);
+    close(fd);
+    unlink(dbTemplate);
+
+    ProfilerStore store;
+    ASSERT_TRUE(store.open(dbTemplate));
+
+    RequestTraceSummary summary;
+    summary.timestamp = 1700000000.0;
+    summary.method = "GET";
+    summary.url = "/test.cfm";
+    summary.status = 200;
+    summary.durationMs = 15.5;
+
+    TraceStep step1;
+    step1.type = "ENTRY";
+    step1.path = "/test.cfm";
+    step1.function = "MAIN";
+    step1.line = 1;
+    step1.stackTrace = "/test.cfm:1:MAIN";
+    step1.deltaMs = 0.5;
+    step1.elapsedMs = 0.5;
+
+    TraceStep step2;
+    step2.type = "DB_QUERY_START";
+    step2.path = "dsn1";
+    step2.function = "q1";
+    step2.line = 0;
+    step2.stackTrace = "/test.cfm:1:MAIN|/components/User.cfc:10:GETUSER";
+    step2.deltaMs = 1.2;
+    step2.elapsedMs = 1.7;
+
+    summary.steps.push_back(step1);
+    summary.steps.push_back(step2);
+
+    ASSERT_TRUE(store.recordRequest(summary));
+    store.close();
+    unlink(dbTemplate);
+}
+
 }  // namespace webstrada
 
 int main(int argc, char **argv) {

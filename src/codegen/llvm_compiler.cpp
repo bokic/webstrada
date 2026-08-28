@@ -870,15 +870,20 @@ template_fn llvm_codegen::compile(const string &pathname, bool print_ast)
     // Read + decode the source following ColdFusion's input-encoding order
     // (BOM -> pageEncoding -> ICU detection -> default charset), producing the
     // internal UTF-8 representation that the textparser expects.
+    cfml::trace_record_event("PARSE_START", pathname.constData(), "", 0);
     TemplateReadResult src = readTemplateFile(std::string(pathname.constData(), pathname.length()));
     parser parse;
     static const char emptyStr = '\0';
     const char *text = src.utf8Text.empty() ? &emptyStr : src.utf8Text.data();
     parse.parse(text, static_cast<int>(src.utf8Text.size()), TEXTPARSER_ENCODING_UTF_8,
                 pathname.constData());
+    cfml::trace_record_event("PARSE_END", pathname.constData(), "", 0);
+
+    cfml::trace_record_event("COMPILE_START", pathname.constData(), "", 0);
     auto t0 = std::chrono::steady_clock::now();
     template_fn result = compile_parsed(parse, pathname.constData(), print_ast);
     auto t1 = std::chrono::steady_clock::now();
+    cfml::trace_record_event("COMPILE_END", pathname.constData(), "", 0);
     long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
     // stderr: stdout carries the template's response payload (verify_with_coldfusion.py
     // compares it byte-for-byte against Adobe CF).
@@ -1333,12 +1338,16 @@ static bool parseScriptFormComponent(
 
 ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
 {
+    cfml::trace_record_event("PARSE_START", pathname.constData(), "", 0);
     TemplateReadResult src = readTemplateFile(std::string(pathname.constData(), pathname.length()));
     parser parse;
     static const char emptyStr = '\0';
     const char *text = src.utf8Text.empty() ? &emptyStr : src.utf8Text.data();
     parse.parse(text, static_cast<int>(src.utf8Text.size()), TEXTPARSER_ENCODING_UTF_8,
                 pathname.constData());
+    cfml::trace_record_event("PARSE_END", pathname.constData(), "", 0);
+
+    cfml::trace_record_event("COMPILE_START", pathname.constData(), "", 0);
     auto t0 = std::chrono::steady_clock::now();
 
     // Resolve line numbers against this parser's line map for the whole compile.
@@ -1694,6 +1703,7 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
 
     m_engines.push_back(std::move(engine));
     auto t1 = std::chrono::steady_clock::now();
+    cfml::trace_record_event("COMPILE_END", pathname.constData(), "", 0);
     long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
     fprintf(stderr, "[WebStrada] compiled %s (%lldms)\n", pathname.constData(), ms);
     return info;

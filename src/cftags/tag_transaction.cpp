@@ -23,6 +23,7 @@ namespace cfml {
 void cf_transaction_begin(const cfvariant *attrs)
 {
     (void)attrs;
+    cfml::trace_record_event("DB_TRANSACTION_START", "", "", 0);
     g_txStack.emplace_back();
 }
 
@@ -35,6 +36,7 @@ void cf_transaction_commit()
         f.conn = nullptr;
     }
     g_txStack.pop_back();
+    cfml::trace_record_event("DB_TRANSACTION_COMMIT", "", "", 0);
 }
 
 void cf_transaction_rollback()
@@ -46,6 +48,7 @@ void cf_transaction_rollback()
         f.conn = nullptr;
     }
     g_txStack.pop_back();
+    cfml::trace_record_event("DB_TRANSACTION_ROLLBACK", "", "", 0);
 }
 
 // TransactionSetSavePoint: name a point within the active transaction so a later

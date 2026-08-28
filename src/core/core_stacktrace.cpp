@@ -86,6 +86,24 @@ std::vector<webstrada::TraceStep> trace_take_steps()
     return res;
 }
 
+static std::string currentStackTraceString()
+{
+    if (g_callStack.empty()) return "";
+    std::string s;
+    for (size_t i = 0; i < g_callStack.size(); ++i) {
+        if (i > 0) s += "|";
+        const auto &lvl = g_callStack[i];
+        s += lvl.path;
+        s += ":";
+        s += std::to_string(lvl.line);
+        if (!lvl.function.empty()) {
+            s += ":";
+            s += lvl.function;
+        }
+    }
+    return s;
+}
+
 void trace_record_event(const char *type, const char *path, const char *function, int line)
 {
     if (__builtin_expect(webstrada::config::lineExecutionTrace && g_requestTraceActive, 0)) {
@@ -99,6 +117,7 @@ void trace_record_event(const char *type, const char *path, const char *function
         step.path = path ? path : "[ENGINE]";
         step.function = function ? function : "";
         step.line = line;
+        step.stackTrace = currentStackTraceString();
         step.deltaMs = deltaMs;
         step.elapsedMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));
@@ -128,6 +147,7 @@ void cf_stack_push(const char *path, const char *function)
         step.path = top.path;
         step.function = top.function;
         step.line = 0;
+        step.stackTrace = currentStackTraceString();
         step.deltaMs = deltaMs;
         step.elapsedMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));
@@ -152,6 +172,7 @@ void cf_stack_set_line(int line)
         step.path = top.path;
         step.function = top.function;
         step.line = line;
+        step.stackTrace = currentStackTraceString();
         step.deltaMs = deltaMs;
         step.elapsedMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));
@@ -172,6 +193,7 @@ void cf_stack_pop()
         step.path = top.path;
         step.function = top.function;
         step.line = top.line;
+        step.stackTrace = currentStackTraceString();
         step.deltaMs = deltaMs;
         step.elapsedMs = elapsedMs;
         g_requestTraceSteps.push_back(std::move(step));

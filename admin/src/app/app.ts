@@ -40,6 +40,7 @@ export class App {
       items: [
         { label: 'General Settings', route: '/settings', icon: 'settings' },
         { label: 'Debugging & Logging', route: '/logs', icon: 'logs' },
+        { label: 'Execution Tracing', route: '/tracing', icon: 'tracing' },
         { label: 'Memory & Runtime', route: '/runtime', icon: 'runtime' },
       ],
     },

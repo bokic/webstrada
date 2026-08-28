@@ -42,8 +42,8 @@ WEBROOT = os.environ.get("WEBROOT") or APP_ROOT
 SPA_FALLBACK_PREFIXES = []
 
 # Built Angular admin panel (webstrada-admin), served at /admin/ with an SPA
-# fallback to index.html. Build it with `--base-href=/admin/`:
-#   (cd admin && npm run build -- --base-href=/admin/)
+# fallback to index.html. Build it with:
+#   (cd admin && npm run build)
 ADMIN_DIST = os.path.join(APP_ROOT, "admin", "dist", "webstrada-admin", "browser")
 
 # --- FastCGI protocol constants ---------------------------------------------

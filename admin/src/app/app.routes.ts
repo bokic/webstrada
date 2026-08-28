@@ -32,6 +32,12 @@ export const routes: Routes = [
       import('./pages/logs/logs').then((m) => m.Logs),
   },
   {
+    path: 'tracing',
+    title: 'Execution Tracing - WebStrada Administrator',
+    loadComponent: () =>
+      import('./pages/tracing/tracing').then((m) => m.Tracing),
+  },
+  {
     path: 'runtime',
     title: 'Memory & Runtime - WebStrada Administrator',
     loadComponent: () =>

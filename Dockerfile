@@ -66,7 +66,7 @@ FROM node:22-alpine AS admin-builder
 
 COPY admin /admin
 WORKDIR /admin
-RUN npm ci && npm run build -- --base-href=/admin/
+RUN npm ci && npm run build
 
 # ----------------------------------------------------------------
 # Stage 2: runtime - lean image with just what the server needs.

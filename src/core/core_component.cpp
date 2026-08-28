@@ -802,6 +802,7 @@ static void runConstructionBody(ComponentInfo *info, ComponentInstance *inst,
         }
     }
 
+    cfml::trace_record_event("CFC_CONSTRUCTOR_START", info->cfcPath.c_str(), info->name.c_str(), 0);
     try {
         bodyFn(&out, cgi, server, cookie, application, session, url, form,
                inst->variablesScope, inst->thisScope);
@@ -810,10 +811,12 @@ static void runConstructionBody(ComponentInfo *info, ComponentInstance *inst,
         // still completes (verified on CF: `new C()` with an `exit;` in the
         // body returns the instance and the page continues).
     } catch (...) {
+        cfml::trace_record_event("CFC_CONSTRUCTOR_END", info->cfcPath.c_str(), info->name.c_str(), 0);
         if (rt) rt->currentPath = prevPath;
         g_udfCtx.pop_back();
         throw;
     }
+    cfml::trace_record_event("CFC_CONSTRUCTOR_END", info->cfcPath.c_str(), info->name.c_str(), 0);
     if (rt) rt->currentPath = prevPath;
     g_udfCtx.pop_back();
 }

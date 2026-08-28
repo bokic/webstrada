@@ -822,6 +822,7 @@ void cf_dbinfo(const cfvariant *attrs,
 
     std::string backend = dsnBackend(dsn);
 
+    cfml::trace_record_event("DB_DBINFO_START", dsn.c_str(), typeUp.c_str(), 0);
     DbInfoResult res;
     if (typeUp == "TABLES") {
         res = dbinfoTables(backend, dsn, pattern);
@@ -842,6 +843,7 @@ void cf_dbinfo(const cfvariant *attrs,
         // tracking in this engine).
         res.rowCount = 0;
     }
+    cfml::trace_record_event("DB_DBINFO_END", dsn.c_str(), typeUp.c_str(), 0);
 
     storeResult(cgi, server, cookie, application, session, url, form, variables, name, res);
 }

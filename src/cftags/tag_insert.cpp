@@ -215,13 +215,16 @@ void cf_insert_tag(const cfvariant *attrs,
                void *cgi, void *server, void *cookie, void *application,
                void *session, void *url, void *form, void *variables)
 {
+    cfml::trace_record_event("DB_INSERT_START", "", "", 0);
     runInsert(attrs, cgi, server, cookie, application, session, url, form, variables);
+    cfml::trace_record_event("DB_INSERT_END", "", "", 0);
 }
 
 void cf_update(const cfvariant *attrs,
                void *cgi, void *server, void *cookie, void *application,
                void *session, void *url, void *form, void *variables)
 {
+    cfml::trace_record_event("DB_UPDATE_START", "", "", 0);
     auto attr = [&](const char *key) -> const cfvariant * {
         if (!attrs || attrs->m_type != cfvariant::Struct || !attrs->m_struct) return nullptr;
         string k(key);
@@ -310,6 +313,7 @@ void cf_update(const cfvariant *attrs,
     // cf_run_query already registers the returned query as a temp; we only
     // need the statement to execute (the result is discarded).
     (void)cf_run_query(sql, &attrs2, cgi, server, cookie, application, session, url, form, variables);
+    cfml::trace_record_event("DB_UPDATE_END", dsn.c_str(), table.c_str(), 0);
 }
 
 } // namespace cfml

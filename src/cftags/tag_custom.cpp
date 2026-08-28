@@ -369,6 +369,7 @@ void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, vo
 
     if (!isEndMode) {
         // Start template output goes straight to the caller's output buffer.
+        cfml::trace_record_event("CUSTOM_TAG_START", resolved.c_str(), tagName ? tagName : "", 0);
         try {
             target(out, cgi, server, cookie, application, session, url, form, &ctx.variables);
         } catch (const webstrada::exit_exception &ex) {
@@ -379,10 +380,12 @@ void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, vo
                 ctx.skipBody = true;
             }
         } catch (...) {
+            cfml::trace_record_event("CUSTOM_TAG_START_END", resolved.c_str(), tagName ? tagName : "", 0);
             rt->currentPath = savedPath;
             rt->includeDepth--;
             throw;
         }
+        cfml::trace_record_event("CUSTOM_TAG_START_END", resolved.c_str(), tagName ? tagName : "", 0);
         rt->currentPath = savedPath;
         rt->includeDepth--;
         return;
@@ -393,6 +396,7 @@ void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, vo
     // the end template assigned thisTag.generatedContent) followed by the end
     // template's own output — exactly CF's ModuleTag.doAfterBody.
     string *endOut = silent_buf_push();
+    cfml::trace_record_event("CUSTOM_TAG_END_START", resolved.c_str(), tagName ? tagName : "", 0);
     try {
         target(endOut, cgi, server, cookie, application, session, url, form, &ctx.variables);
     } catch (const webstrada::exit_exception &) {
@@ -400,11 +404,13 @@ void cf_custom_tag_invoke(string *out, void *cgi, void *server, void *cookie, vo
         // normal exit too; cf_exit_loop set loopRequested on the ctx before
         // throwing, which the caller checks).
     } catch (...) {
+        cfml::trace_record_event("CUSTOM_TAG_END", resolved.c_str(), tagName ? tagName : "", 0);
         silent_buf_pop();
         rt->currentPath = savedPath;
         rt->includeDepth--;
         throw;
     }
+    cfml::trace_record_event("CUSTOM_TAG_END", resolved.c_str(), tagName ? tagName : "", 0);
 
     if (ctx.contentChanged) {
         const string gen = variantToString(ctx.thisTag["GeneratedContent"]);

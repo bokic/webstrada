@@ -19,6 +19,10 @@
 #include <string>
 #include <vector>
 
+namespace cfml {
+void trace_record_event(const char *type, const char *path, const char *function, int line = 0);
+}
+
 namespace webstrada {
 
 inline bool isOperatorToken(int token_id) {

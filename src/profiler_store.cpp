@@ -66,6 +66,7 @@ bool ProfilerStore::open(const std::string &dbPath)
         " path TEXT,"
         " function_name TEXT,"
         " line_number INTEGER,"
+        " stack_trace TEXT,"
         " delta_ms REAL,"
         " elapsed_ms REAL,"
         " FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE"
@@ -73,6 +74,8 @@ bool ProfilerStore::open(const std::string &dbPath)
         "CREATE INDEX IF NOT EXISTS idx_traces_req ON request_traces(request_id);";
 
     if (!exec(kSchema)) return false;
+
+    exec("ALTER TABLE request_traces ADD COLUMN stack_trace TEXT;");
 
     return true;
 }
@@ -135,8 +138,8 @@ bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
     if (!summary.steps.empty()) {
         static const char *kInsertTrace =
             "INSERT INTO request_traces ("
-            " request_id, seq, event_type, path, function_name, line_number, delta_ms, elapsed_ms"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+            " request_id, seq, event_type, path, function_name, line_number, stack_trace, delta_ms, elapsed_ms"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
         sqlite3_stmt *stmtTrace = nullptr;
         if (sqlite3_prepare_v2(m_db, kInsertTrace, -1, &stmtTrace, nullptr) != SQLITE_OK) {
@@ -153,8 +156,9 @@ bool ProfilerStore::recordRequest(const RequestTraceSummary &summary)
             sqlite3_bind_text(stmtTrace, 4, step.path.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(stmtTrace, 5, step.function.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_int(stmtTrace, 6, step.line);
-            sqlite3_bind_double(stmtTrace, 7, step.deltaMs);
-            sqlite3_bind_double(stmtTrace, 8, step.elapsedMs);
+            sqlite3_bind_text(stmtTrace, 7, step.stackTrace.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_double(stmtTrace, 8, step.deltaMs);
+            sqlite3_bind_double(stmtTrace, 9, step.elapsedMs);
 
             sqlite3_step(stmtTrace);
             sqlite3_reset(stmtTrace);

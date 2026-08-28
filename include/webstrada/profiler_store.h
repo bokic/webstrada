@@ -9,10 +9,11 @@ struct sqlite3;
 namespace webstrada {
 
 struct TraceStep {
-    std::string type; // "ENTRY", "LINE", "EXIT"
+    std::string type; // "ENTRY", "LINE", "EXIT", "DB_QUERY_START", etc.
     std::string path;
     std::string function;
     int line = 0;
+    std::string stackTrace; // '|' separated call stack
     double deltaMs = 0.0;
     double elapsedMs = 0.0;
 };

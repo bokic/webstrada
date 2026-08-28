@@ -59,6 +59,9 @@ import { Component, input } from '@angular/core';
           <path d="M16 4.5a4 4 0 0 1 0 7" />
           <path d="M18.5 21a6.5 6.5 0 0 0-3.3-5.7" />
         }
+        @case ('tracing') {
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        }
         @default {
           <circle cx="12" cy="12" r="9" />
         }

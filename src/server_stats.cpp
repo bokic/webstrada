@@ -13,7 +13,7 @@ namespace stats {
 
 namespace {
 
-constexpr size_t kMaxRecent = 25;
+constexpr size_t kMaxRecent = 1000;
 
 int64_t g_startTime = static_cast<int64_t>(std::time(nullptr));
 int64_t g_requests = 0;
@@ -51,6 +51,7 @@ void request_end(int statusCode)
     ++g_requests;
     g_totalMs += durationMs;
     RecentRequest rr;
+    rr.id = g_requests;
     rr.time = static_cast<int64_t>(std::time(nullptr));
     rr.templatePath = t_templatePath;
     rr.method = t_method;

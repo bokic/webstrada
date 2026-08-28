@@ -1,0 +1,105 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Execution Tracing</h1>
+      <p class="page-desc">
+        Real-time execution trace of requests processed by WebStrada. Auto-refreshes every second with infinite history scroll.
+      </p>
+    </div>
+    <div class="page-actions trace-controls">
+      <div class="live-indicator">
+        <span class="live-dot" [class.paused]="!isLive()"></span>
+        <span>{{ isLive() ? 'Live (1s refresh)' : 'Paused' }}</span>
+      </div>
+      <button class="btn-secondary" type="button" (click)="toggleLive()">
+        {{ isLive() ? 'Pause' : 'Resume' }}
+      </button>
+      <button class="btn-secondary" type="button" (click)="clearView()">Clear View</button>
+    </div>
+  </div>
+
+  <div class="trace-container-box">
+    <div class="trace-box-header">
+      <div class="trace-box-title">
+        <span>Request Trace Log</span>
+        <span class="badge">{{ requests().length }} rows</span>
+      </div>
+      <label class="switch-row">
+        <span class="switch-label">Hide admin requests</span>
+        <span class="switch" [class.on]="excludeAdmin()" (click)="toggleAdminFilter()">
+          <span class="switch-knob"></span>
+        </span>
+      </label>
+    </div>
+
+    @if (newCountSinceScroll() > 0) {
+      <div class="new-requests-banner" (click)="scrollToTop()">
+        &uarr; {{ newCountSinceScroll() }} new request{{ newCountSinceScroll() > 1 ? 's' : '' }} arrived &bull; Jump to top
+      </div>
+    }
+
+    <div
+      #scrollWindow
+      class="trace-scroll-window"
+      (scroll)="onScroll($event)"
+    >
+      @if (!loaded()) {
+        <div class="empty-state">Loading execution trace&hellip;</div>
+      } @else if (requests().length === 0) {
+        <div class="empty-state">No requests recorded yet.</div>
+      } @else {
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th style="width: 70px;">#</th>
+              <th style="width: 100px;">Time</th>
+              <th style="width: 80px;">Method</th>
+              <th>Template / Path</th>
+              <th style="width: 160px;">Status</th>
+              <th style="width: 100px;">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of requests(); track r.id) {
+              <tr>
+                <td class="muted mono">#{{ r.id }}</td>
+                <td class="muted mono">{{ r.time }}</td>
+                <td>
+                  <span class="method-tag" [class]="getMethodClass(r.method)">
+                    {{ r.method }}
+                  </span>
+                </td>
+                <td class="template-path">{{ r.template }}</td>
+                <td>
+                  <span
+                    class="status-dot"
+                    [class.ok]="r.status >= 200 && r.status < 300"
+                    [class.bad]="r.status >= 400"
+                  ></span>
+                  {{ r.statusText }}
+                </td>
+                <td class="mono" [class]="getDurationClass(r.durationMs)">
+                  {{ r.durationText }}
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        @if (loadingOlder()) {
+          <div class="scroll-footer">
+            Loading older requests (10 rows)&hellip;
+          </div>
+        } @else if (hasMoreOlder()) {
+          <div class="scroll-footer">
+            Scroll down to fetch more requests
+          </div>
+        } @else {
+          <div class="scroll-footer muted">
+            End of request history (all {{ requests().length }} requests loaded)
+          </div>
+        }
+      }
+    </div>
+  </div>
+</div>

@@ -57,6 +57,9 @@ cfvariant *cf___serverinfo(const cfvariant **args, int argc)
             continue;
         }
         cfvariant row(cfvariant::Struct);
+        cfvariant rid(cfvariant::Long);
+        rid.m_long = r.id;
+        row.structSet("id", rid);
         cfvariant t(cfvariant::Long);
         t.m_long = r.time;
         row.structSet("time", t);

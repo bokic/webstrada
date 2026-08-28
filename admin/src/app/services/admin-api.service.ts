@@ -33,6 +33,7 @@ export interface AdminConfig {
 }
 
 export interface RecentRequest {
+  id?: number;
   time: number;
   template: string;
   method: string;
@@ -114,6 +115,12 @@ export class AdminApiService {
 
   getServerInfo(excludeAdmin = true): Observable<ServerInfo> {
     return this.http.get<ServerInfo>(`${this.base}/serverinfo.cfm`, {
+      params: { excludeAdmin: excludeAdmin ? 'true' : 'false' },
+    });
+  }
+
+  getTracing(excludeAdmin = false): Observable<ServerInfo> {
+    return this.http.get<ServerInfo>(`${this.base}/tracing.cfm`, {
       params: { excludeAdmin: excludeAdmin ? 'true' : 'false' },
     });
   }
