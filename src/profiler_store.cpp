@@ -179,13 +179,19 @@ int64_t ProfilerStore::recordRequest(const RequestTraceSummary &summary)
     return 0;
 }
 
-bool ProfilerStore::getRequestSteps(int64_t requestId, std::vector<TraceStep> &steps)
+bool ProfilerStore::getRequestSteps(int64_t requestId, std::vector<TraceStep> &steps, bool excludeLine)
 {
     if (!m_db) return false;
 
-    static const char *kQuery =
+    static const char *kQueryAll =
         "SELECT seq, event_type, path, function_name, line_number, stack_trace, delta_ms, elapsed_ms "
         "FROM request_traces WHERE request_id = ? ORDER BY seq ASC;";
+
+    static const char *kQueryExcludeLine =
+        "SELECT seq, event_type, path, function_name, line_number, stack_trace, delta_ms, elapsed_ms "
+        "FROM request_traces WHERE request_id = ? AND event_type != 'LINE' ORDER BY seq ASC;";
+
+    const char *kQuery = excludeLine ? kQueryExcludeLine : kQueryAll;
 
     sqlite3_stmt *stmt = nullptr;
     if (sqlite3_prepare_v2(m_db, kQuery, -1, &stmt, nullptr) != SQLITE_OK) {

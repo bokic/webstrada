@@ -10,7 +10,11 @@
 <cfif reqMethod EQ "GET">
   <cfif StructKeyExists(URL, "requestId") AND IsNumeric(URL.requestId)>
     <cfset reqId = Val(URL.requestId)>
-    <cfoutput>#SerializeJSON(__requestTrace(reqId))#</cfoutput>
+    <cfset excludeLine = false>
+    <cfif StructKeyExists(URL, "excludeLine") AND (URL.excludeLine EQ "true" OR URL.excludeLine EQ "1")>
+      <cfset excludeLine = true>
+    </cfif>
+    <cfoutput>#SerializeJSON(__requestTrace(reqId, excludeLine))#</cfoutput>
   <cfelse>
     <cfset excludeAdmin = false>
     <cfif StructKeyExists(URL, "excludeAdmin") AND URL.excludeAdmin EQ "true">

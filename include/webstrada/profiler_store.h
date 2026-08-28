@@ -53,7 +53,7 @@ public:
     const std::string &lastError() const { return m_lastError; }
 
     int64_t recordRequest(const RequestTraceSummary &summary);
-    bool getRequestSteps(int64_t requestId, std::vector<TraceStep> &steps);
+    bool getRequestSteps(int64_t requestId, std::vector<TraceStep> &steps, bool excludeLine = false);
 
 private:
     bool exec(const char *sql);

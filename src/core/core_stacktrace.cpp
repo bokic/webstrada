@@ -90,8 +90,10 @@ static std::string currentStackTraceString()
 {
     if (g_callStack.empty()) return "";
     std::string s;
-    for (size_t i = 0; i < g_callStack.size(); ++i) {
-        if (i > 0) s += "|";
+    bool first = true;
+    for (int i = static_cast<int>(g_callStack.size()) - 1; i >= 0; --i) {
+        if (!first) s += "\n";
+        first = false;
         const auto &lvl = g_callStack[i];
         s += lvl.path;
         s += ":";

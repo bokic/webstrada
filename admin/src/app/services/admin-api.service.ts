@@ -151,9 +151,11 @@ export class AdminApiService {
     return this.http.get<ServerInfo>(`${this.base}/tracing.cfm`, { params });
   }
 
-  getRequestTrace(requestId: number): Observable<RequestTraceDetails> {
+  getRequestTrace(requestId: number, excludeLine = false): Observable<RequestTraceDetails> {
+    const params: Record<string, string> = { requestId: String(requestId) };
+    if (excludeLine) params['excludeLine'] = 'true';
     return this.http.get<RequestTraceDetails>(`${this.base}/tracing.cfm`, {
-      params: { requestId: String(requestId) },
+      params,
     });
   }
 

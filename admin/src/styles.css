@@ -319,3 +319,48 @@ table.admin-table {
   background: var(--ws-light);
   color: var(--ws-text-muted);
 }
+
+/* ---- Toggle Switches ---- */
+.switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch-label {
+  font-size: 12px;
+  color: var(--ws-text-muted);
+  font-weight: 500;
+}
+
+.switch {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--ws-border);
+  display: inline-block;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch.on {
+  background: var(--ws-blue);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.switch.on .switch-knob {
+  left: 18px;
+}
+

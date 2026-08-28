@@ -178,6 +178,7 @@ void cf_include(string *out, void *cgi, void *server, void *cookie, void *applic
     rt->currentPath = resolved;
     rt->includeLocalScope = const_cast<cfvariant*>(localScope);
     rt->includeDepth++;
+    cfml::trace_record_event("INCLUDE_START", resolved.c_str(), "", 0);
     try {
         target(out, cgi, server, cookie, application, session, url, form, variables);
     } catch (const webstrada::exit_exception &) {
@@ -185,11 +186,13 @@ void cf_include(string *out, void *cgi, void *server, void *cookie, void *applic
         // caller continues (verified on CF: BEFORE<include>AFTER with a
         // <cfexit> in the include outputs BEFORE...AFTER).
     } catch (...) {
+        cfml::trace_record_event("INCLUDE_END", resolved.c_str(), "", 0);
         rt->currentPath = savedPath;
         rt->includeLocalScope = savedLocalScope;
         rt->includeDepth--;
         throw;
     }
+    cfml::trace_record_event("INCLUDE_END", resolved.c_str(), "", 0);
     rt->currentPath = savedPath;
     rt->includeLocalScope = savedLocalScope;
     rt->includeDepth--;

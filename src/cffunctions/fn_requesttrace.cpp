@@ -19,8 +19,12 @@ namespace cfml {
 cfvariant *cf___requesttrace(const cfvariant **args, int argc)
 {
     int64_t reqId = 0;
+    bool excludeLine = false;
     if (argc >= 1 && args && args[0]) {
         reqId = toInt(args[0]);
+    }
+    if (argc >= 2 && args && args[1]) {
+        excludeLine = cfml::cfvariant_is_truthy(args[1]);
     }
 
     cfvariant root(cfvariant::Struct);
@@ -33,7 +37,7 @@ cfvariant *cf___requesttrace(const cfvariant **args, int argc)
     webstrada::open_profiler_store();
     std::vector<webstrada::TraceStep> steps;
     if (webstrada::profiler_store().isOpen() && reqId > 0) {
-        webstrada::profiler_store().getRequestSteps(reqId, steps);
+        webstrada::profiler_store().getRequestSteps(reqId, steps, excludeLine);
     }
 
     for (const auto &step : steps) {

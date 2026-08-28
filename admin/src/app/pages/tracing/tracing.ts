@@ -1,9 +1,11 @@
 import {
+  ChangeDetectionStrategy,
   Component,
   ElementRef,
   OnDestroy,
   OnInit,
   ViewChild,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -27,6 +29,7 @@ export interface FlameFrame {
   name: string;
   type: FlameEventType;
   typeLabel: string;
+  colorClass?: string;
   startMs: number;
   durationMs: number;
   depth: number; // 0 = lowest (root / no stack trace), higher = nested call stack
@@ -36,6 +39,12 @@ export interface FlameFrame {
   details?: string;
   leftPercent: number;
   widthPercent: number;
+}
+
+export interface DepthRow {
+  depth: number;
+  label: string;
+  frames: FlameFrame[];
 }
 
 export interface TraceRow {
@@ -83,6 +92,7 @@ function getStatusText(code: number): string {
   imports: [],
   templateUrl: './tracing.html',
   styleUrl: './tracing.css',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Tracing implements OnInit, OnDestroy {
   private api = inject(AdminApiService);
@@ -92,6 +102,7 @@ export class Tracing implements OnInit, OnDestroy {
   protected readonly loaded = signal(false);
   protected readonly isLive = signal(true);
   protected readonly excludeAdmin = signal(false);
+  protected readonly excludeLineExecution = signal(true);
   protected readonly requests = signal<TraceRow[]>([]);
   protected readonly selectedId = signal<number | null>(null);
   protected readonly selectedRequest = signal<TraceRow | null>(null);
@@ -103,12 +114,56 @@ export class Tracing implements OnInit, OnDestroy {
   protected readonly hasMoreOlder = signal(true);
   protected readonly newCountSinceScroll = signal(0);
 
+  protected readonly totalDurationMs = signal(0);
+  protected readonly viewStartMs = signal(0);
+  protected readonly viewEndMs = signal(0);
+  protected readonly isPanning = signal(false);
+  protected readonly zoomRatio = computed(() => {
+    const total = this.totalDurationMs();
+    const cur = this.viewEndMs() - this.viewStartMs();
+    if (cur <= 0 || total <= 0) return 1.0;
+    return total / cur;
+  });
+
+  private readonly frameMap = new Map<string, FlameFrame>();
+
+  protected readonly depthRows = computed<DepthRow[]>(() => {
+    const frames = this.flameFrames();
+    const max = this.maxDepth();
+    const vStart = this.viewStartMs();
+    const vEnd = this.viewEndMs();
+    const vDur = Math.max(vEnd - vStart, 0.001);
+
+    const map = new Map<number, FlameFrame[]>();
+    for (let d = 0; d <= max; d++) {
+      map.set(d, []);
+    }
+    for (const f of frames) {
+      f.leftPercent = ((f.startMs - vStart) / vDur) * 100;
+      f.widthPercent = Math.max((f.durationMs / vDur) * 100, 0.2);
+      const arr = map.get(f.depth);
+      if (arr) arr.push(f);
+      else map.set(f.depth, [f]);
+    }
+    const rows: DepthRow[] = [];
+    for (let d = max; d >= 0; d--) {
+      rows.push({
+        depth: d,
+        label: d === 0 ? 'Root (0 stack)' : `Depth ${d}`,
+        frames: map.get(d) || [],
+      });
+    }
+    return rows;
+  });
+
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private allServerPool: TraceRow[] = [];
   private currentOffset = 0;
   private readonly pageSize = 10;
   protected readonly maxRows = 1000;
   private nextId = 1000;
+  private hoverRafId: number | null = null;
+  private pendingHoverFrame: FlameFrame | null = null;
 
   ngOnInit() {
     this.initialFetch();
@@ -117,6 +172,10 @@ export class Tracing implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.stopPolling();
+    if (this.hoverRafId !== null) {
+      cancelAnimationFrame(this.hoverRafId);
+      this.hoverRafId = null;
+    }
   }
 
   protected toggleLive() {
@@ -133,6 +192,14 @@ export class Tracing implements OnInit, OnDestroy {
     this.excludeAdmin.update((v) => !v);
     this.currentOffset = 0;
     this.initialFetch();
+  }
+
+  protected toggleExcludeLineExecution() {
+    this.excludeLineExecution.update((v) => !v);
+    const sel = this.selectedRequest();
+    if (sel) {
+      this.buildFlameGraph(sel);
+    }
   }
 
   protected selectRow(row: TraceRow) {
@@ -181,8 +248,137 @@ export class Tracing implements OnInit, OnDestroy {
     }
   }
 
-  protected onFrameHover(frame: FlameFrame | null) {
-    this.hoveredFrame.set(frame);
+  protected onFlameStackMouseOver(event: MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const bar = target.closest<HTMLElement>('.flame-bar');
+    if (!bar) {
+      this.scheduleHoverUpdate(null);
+      return;
+    }
+    const id = bar.getAttribute('data-frame-id');
+    if (!id) return;
+    if (this.hoveredFrame()?.id === id && this.pendingHoverFrame?.id === id) return;
+    const frame = this.frameMap.get(id) || null;
+    this.scheduleHoverUpdate(frame);
+  }
+
+  protected onFlameStackMouseLeave() {
+    this.scheduleHoverUpdate(null);
+  }
+
+  private scheduleHoverUpdate(frame: FlameFrame | null) {
+    this.pendingHoverFrame = frame;
+    if (this.hoverRafId !== null) return;
+    this.hoverRafId = requestAnimationFrame(() => {
+      this.hoverRafId = null;
+      if (this.hoveredFrame()?.id !== this.pendingHoverFrame?.id) {
+        this.hoveredFrame.set(this.pendingHoverFrame);
+      }
+    });
+  }
+
+  private panStartX = 0;
+  private panStartViewStart = 0;
+  private panStartViewEnd = 0;
+
+  protected onFlameWheel(event: WheelEvent) {
+    event.preventDefault();
+    const total = this.totalDurationMs();
+    if (total <= 0) return;
+
+    const container = event.currentTarget as HTMLElement | null;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const labelWidth = 90;
+    const trackWidth = Math.max(1, rect.width - labelWidth - 16);
+    const mouseX = Math.max(0, Math.min(trackWidth, event.clientX - rect.left - labelWidth));
+    const ratio = mouseX / trackWidth;
+
+    const curStart = this.viewStartMs();
+    const curEnd = this.viewEndMs();
+    const curDur = Math.max(curEnd - curStart, 0.001);
+    const tCursor = curStart + ratio * curDur;
+
+    // Zoom factor: wheel up zooms in (0.8), wheel down zooms out (1.25)
+    const zoomFactor = event.deltaY < 0 ? 0.8 : 1.25;
+    const minDur = Math.min(total, Math.max(0.01, total * 0.001));
+    const newDur = Math.max(minDur, Math.min(total, curDur * zoomFactor));
+
+    let newStart = tCursor - ratio * newDur;
+    let newEnd = newStart + newDur;
+
+    if (newStart < 0) {
+      newStart = 0;
+      newEnd = Math.min(total, newDur);
+    }
+    if (newEnd > total) {
+      newEnd = total;
+      newStart = Math.max(0, total - newDur);
+    }
+
+    this.viewStartMs.set(newStart);
+    this.viewEndMs.set(newEnd);
+    this.updateTimeTicks(newStart, newEnd);
+  }
+
+  protected onFlameMouseDown(event: MouseEvent) {
+    if (event.button !== 0) return; // Primary mouse button only
+    if (this.zoomRatio() <= 1.01) return; // Only pan when zoomed
+
+    const target = event.target as HTMLElement | null;
+    if (target?.tagName === 'BUTTON') return;
+
+    this.isPanning.set(true);
+    this.panStartX = event.clientX;
+    this.panStartViewStart = this.viewStartMs();
+    this.panStartViewEnd = this.viewEndMs();
+  }
+
+  protected onFlameMouseMove(event: MouseEvent) {
+    if (!this.isPanning()) return;
+
+    const total = this.totalDurationMs();
+    const container = event.currentTarget as HTMLElement | null;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const labelWidth = 90;
+    const trackWidth = Math.max(1, rect.width - labelWidth - 16);
+    const deltaPx = event.clientX - this.panStartX;
+
+    const curDur = this.panStartViewEnd - this.panStartViewStart;
+    const dt = -(deltaPx / trackWidth) * curDur;
+
+    let newStart = this.panStartViewStart + dt;
+    let newEnd = this.panStartViewEnd + dt;
+
+    if (newStart < 0) {
+      newStart = 0;
+      newEnd = curDur;
+    }
+    if (newEnd > total) {
+      newEnd = total;
+      newStart = total - curDur;
+    }
+
+    this.viewStartMs.set(newStart);
+    this.viewEndMs.set(newEnd);
+    this.updateTimeTicks(newStart, newEnd);
+  }
+
+  protected onFlameMouseUp() {
+    if (this.isPanning()) {
+      this.isPanning.set(false);
+    }
+  }
+
+  protected resetZoom() {
+    const total = this.totalDurationMs();
+    this.viewStartMs.set(0);
+    this.viewEndMs.set(total);
+    this.updateTimeTicks(0, total);
   }
 
   private startPolling() {
@@ -380,10 +576,10 @@ export class Tracing implements OnInit, OnDestroy {
 
   private buildFlameGraph(row: TraceRow) {
     const totalDur = Math.max(row.durationMs, 0.1);
-    this.updateTimeTicks(totalDur);
+    this.updateTimeTicks(0, totalDur);
 
     // Fetch real SQLite line execution steps from backend profiler store
-    this.api.getRequestTrace(row.id).subscribe({
+    this.api.getRequestTrace(row.id, this.excludeLineExecution()).subscribe({
       next: (details) => {
         if (details.steps && details.steps.length > 0) {
           const realFrames = this.mapSqliteStepsToFlameFrames(row, details.steps);
@@ -401,12 +597,13 @@ export class Tracing implements OnInit, OnDestroy {
     });
   }
 
-  private updateTimeTicks(totalDur: number) {
+  private updateTimeTicks(startMs: number, endMs: number) {
     const ticks: TimeTick[] = [];
     const count = 5;
+    const dur = Math.max(endMs - startMs, 0.001);
     for (let i = 0; i <= count; i++) {
       const frac = i / count;
-      const ms = frac * totalDur;
+      const ms = startMs + frac * dur;
       ticks.push({
         label: `${ms.toFixed(1)} ms`,
         percent: frac * 100,
@@ -418,13 +615,18 @@ export class Tracing implements OnInit, OnDestroy {
   private applyFlameFrames(row: TraceRow, frames: FlameFrame[]) {
     const totalDur = Math.max(row.durationMs, 0.1);
     let highestDepth = 0;
+    this.frameMap.clear();
 
     for (const f of frames) {
       if (f.depth > highestDepth) highestDepth = f.depth;
-      f.leftPercent = (f.startMs / totalDur) * 100;
-      f.widthPercent = Math.max((f.durationMs / totalDur) * 100, 0.4);
+      f.colorClass = this.getFrameColorClass(f.type);
+      this.frameMap.set(f.id, f);
     }
 
+    this.totalDurationMs.set(totalDur);
+    this.viewStartMs.set(0);
+    this.viewEndMs.set(totalDur);
+    this.updateTimeTicks(0, totalDur);
     this.flameFrames.set(frames);
     this.maxDepth.set(highestDepth);
   }
@@ -453,8 +655,10 @@ export class Tracing implements OnInit, OnDestroy {
 
     let index = 0;
     const entryStack: { id: string; type: string; path: string; function: string; startMs: number; depth: number; stackTrace: string }[] = [];
-    const parseStack: { id: string; path: string; startMs: number; depth: number }[] = [];
-    const compileStack: { id: string; path: string; startMs: number; depth: number }[] = [];
+    const parseStack: { id: string; path: string; startMs: number; depth: number; stackTrace: string }[] = [];
+    const compileStack: { id: string; path: string; startMs: number; depth: number; stackTrace: string }[] = [];
+    const includeStack: { id: string; path: string; startMs: number; depth: number; stackTrace: string }[] = [];
+    const customTagStack: { id: string; path: string; startMs: number; depth: number; stackTrace: string }[] = [];
 
     for (const s of steps) {
       const ts = s.timestampMs ?? s.elapsedMs ?? 0;
@@ -465,31 +669,35 @@ export class Tracing implements OnInit, OnDestroy {
       // Determine base depth from stack trace hierarchy
       let stackDepth = 1;
       if (s.stackTrace && s.stackTrace.length > 0) {
+        const countNewlines = (s.stackTrace.match(/\n/g) || []).length;
         const countPipes = (s.stackTrace.match(/\|/g) || []).length;
         const countArrows = (s.stackTrace.match(/>/g) || []).length;
-        stackDepth = 1 + Math.max(countPipes, countArrows);
+        stackDepth = 1 + Math.max(countNewlines, countPipes, countArrows);
       }
 
       const fileName = s.path ? s.path.split('/').pop() || s.path : tmpl;
 
       if (s.type === 'PARSE_START') {
+        const pDepth = s.path && s.path !== tmpl ? Math.max(stackDepth, 2) : 1;
         parseStack.push({
           id: `parse-${row.id}-${index++}`,
           path: s.path,
           startMs: ts,
-          depth: stackDepth,
+          depth: pDepth,
+          stackTrace: s.stackTrace,
         });
       } else if (s.type === 'PARSE_END') {
         let matched = -1;
         for (let i = parseStack.length - 1; i >= 0; i--) {
-          if (parseStack[i].path === s.path) {
+          if (parseStack[i].path === s.path || (!parseStack[i].path && !s.path)) {
             matched = i;
             break;
           }
         }
-        const openParse = matched >= 0 ? parseStack.splice(matched, 1)[0] : null;
+        const openParse = matched >= 0 ? parseStack.splice(matched, 1)[0] : (parseStack.pop() || null);
         const parseStart = openParse ? openParse.startMs : stepStartMs;
         const spanDur = Math.max(0.001, ts - parseStart);
+        const parseDepth = openParse ? openParse.depth : (s.path && s.path !== tmpl ? Math.max(stackDepth, 2) : 1);
 
         frames.push({
           id: openParse ? openParse.id : `parse-${row.id}-${index++}`,
@@ -498,32 +706,35 @@ export class Tracing implements OnInit, OnDestroy {
           typeLabel: 'Parser',
           startMs: parseStart,
           durationMs: spanDur,
-          depth: openParse ? openParse.depth : stackDepth,
+          depth: parseDepth,
           file: s.path || tmpl,
           line: 0,
-          stackTrace: 'TextParser Engine',
-          details: `Parse: ${parseStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
+          stackTrace: s.stackTrace || (openParse ? openParse.stackTrace : (s.path ? `${s.path}:1` : 'TextParser Engine')),
+          details: `Parse (${fileName}): ${parseStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
           leftPercent: (parseStart / totalDur) * 100,
           widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
         });
       } else if (s.type === 'COMPILE_START') {
+        const cDepth = s.path && s.path !== tmpl ? Math.max(stackDepth, 2) : 1;
         compileStack.push({
           id: `compile-${row.id}-${index++}`,
           path: s.path,
           startMs: ts,
-          depth: stackDepth,
+          depth: cDepth,
+          stackTrace: s.stackTrace,
         });
       } else if (s.type === 'COMPILE_END') {
         let matched = -1;
         for (let i = compileStack.length - 1; i >= 0; i--) {
-          if (compileStack[i].path === s.path) {
+          if (compileStack[i].path === s.path || (!compileStack[i].path && !s.path)) {
             matched = i;
             break;
           }
         }
-        const openCompile = matched >= 0 ? compileStack.splice(matched, 1)[0] : null;
+        const openCompile = matched >= 0 ? compileStack.splice(matched, 1)[0] : (compileStack.pop() || null);
         const compileStart = openCompile ? openCompile.startMs : stepStartMs;
         const spanDur = Math.max(0.001, ts - compileStart);
+        const compileDepth = openCompile ? openCompile.depth : (s.path && s.path !== tmpl ? Math.max(stackDepth, 2) : 1);
 
         frames.push({
           id: openCompile ? openCompile.id : `compile-${row.id}-${index++}`,
@@ -532,12 +743,80 @@ export class Tracing implements OnInit, OnDestroy {
           typeLabel: 'JIT Compiler',
           startMs: compileStart,
           durationMs: spanDur,
-          depth: openCompile ? openCompile.depth : stackDepth,
+          depth: compileDepth,
           file: s.path || tmpl,
           line: 0,
-          stackTrace: 'LLVM JIT Compiler',
-          details: `JIT Compile: ${compileStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
+          stackTrace: s.stackTrace || (openCompile ? openCompile.stackTrace : (s.path ? `${s.path}:1` : 'LLVM JIT Compiler')),
+          details: `JIT Compile (${fileName}): ${compileStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms (${spanDur.toFixed(3)} ms)`,
           leftPercent: (compileStart / totalDur) * 100,
+          widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
+        });
+      } else if (s.type === 'INCLUDE_START') {
+        includeStack.push({
+          id: `include-${row.id}-${index++}`,
+          path: s.path,
+          startMs: ts,
+          depth: stackDepth,
+          stackTrace: s.stackTrace,
+        });
+      } else if (s.type === 'INCLUDE_END') {
+        let matched = -1;
+        for (let i = includeStack.length - 1; i >= 0; i--) {
+          if (includeStack[i].path === s.path) {
+            matched = i;
+            break;
+          }
+        }
+        const openInc = matched >= 0 ? includeStack.splice(matched, 1)[0] : (includeStack.pop() || null);
+        const incStart = openInc ? openInc.startMs : stepStartMs;
+        const spanDur = Math.max(0.001, ts - incStart);
+        frames.push({
+          id: openInc ? openInc.id : `include-${row.id}-${index++}`,
+          name: `<cfinclude: ${fileName}>`,
+          type: 'include',
+          typeLabel: 'CFINCLUDE',
+          startMs: incStart,
+          durationMs: spanDur,
+          depth: openInc ? openInc.depth : stackDepth,
+          file: s.path || tmpl,
+          line: 0,
+          stackTrace: s.stackTrace || (openInc ? openInc.stackTrace : ''),
+          details: `Include: ${fileName} (${incStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms)`,
+          leftPercent: (incStart / totalDur) * 100,
+          widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
+        });
+      } else if (s.type === 'CUSTOM_TAG_START' || s.type === 'CUSTOM_TAG_START_END') {
+        customTagStack.push({
+          id: `ctag-${row.id}-${index++}`,
+          path: s.path,
+          startMs: ts,
+          depth: stackDepth,
+          stackTrace: s.stackTrace,
+        });
+      } else if (s.type === 'CUSTOM_TAG_END') {
+        let matched = -1;
+        for (let i = customTagStack.length - 1; i >= 0; i--) {
+          if (customTagStack[i].path === s.path) {
+            matched = i;
+            break;
+          }
+        }
+        const openTag = matched >= 0 ? customTagStack.splice(matched, 1)[0] : (customTagStack.pop() || null);
+        const tagStart = openTag ? openTag.startMs : stepStartMs;
+        const spanDur = Math.max(0.001, ts - tagStart);
+        frames.push({
+          id: openTag ? openTag.id : `ctag-${row.id}-${index++}`,
+          name: `<cf_${fileName}>`,
+          type: 'custom_tag',
+          typeLabel: 'CFTAG',
+          startMs: tagStart,
+          durationMs: spanDur,
+          depth: openTag ? openTag.depth : stackDepth,
+          file: s.path || tmpl,
+          line: 0,
+          stackTrace: s.stackTrace || (openTag ? openTag.stackTrace : ''),
+          details: `Custom Tag: ${fileName} (${tagStart.toFixed(3)} ms &ndash; ${ts.toFixed(3)} ms)`,
+          leftPercent: (tagStart / totalDur) * 100,
           widthPercent: Math.max((spanDur / totalDur) * 100, 0.4),
         });
       } else if (s.type === 'ENTRY') {
