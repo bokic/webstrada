@@ -145,9 +145,21 @@ void worker::open_scope_store()
     }
 }
 
-void worker::process_request(FCGX_Request *request)
-{
+void worker::process_request(FCGX_Request *request) {
     auto t_req_start = std::chrono::steady_clock::now();
+    struct ScopeSaveGuard {
+        bool active = false;
+        void flush() {
+            if (active) {
+                active = false;
+                cfml::scope_end();
+            }
+        }
+        ~ScopeSaveGuard() {
+            flush();
+        }
+    } scopeSaveGuard;
+
     try {
         g_currentWorker = this;
         cfml::trace_begin_request(t_req_start);
@@ -423,9 +435,7 @@ void worker::process_request(FCGX_Request *request)
         // scope_end() persists them back (RAII so it also runs on exceptions).
         cfml::scope_begin(&m_scopeStore, &m_application, &m_session);
         cfml::trace_record_event("ENGINE", "[ENGINE]", "SCOPE_STORE_BINDING");
-        struct ScopeSaveGuard {
-            ~ScopeSaveGuard() { cfml::scope_end(); }
-        } scopeSaveGuard;
+        scopeSaveGuard.active = true;
 
         string pathname = m_cgi["DOCUMENT_ROOT"].toString() + m_cgi["REQUEST_URI"].toString();
 
@@ -516,10 +526,19 @@ void worker::process_request(FCGX_Request *request)
     // final response now that the page has completed (CachingFilter).
     cfml::cf_cache_store_page(&m_out);
 
-    // Record the finished request (status + duration) for the dashboard stats.
-    // The duration runs from request_begin (start of execution) to here — just
-    // before the final output is dumped to the FastCGI stream below — so the
-    // time spent encoding/writing the response is excluded.
+    // Send the completed HTTP response (headers and remaining body) and finish
+    // the FastCGI request immediately so the client receives the response with
+    // minimum latency before background SQLite persistence and scope cleanup.
+    cfml::response_send_remaining(&m_out);
+    g_response_stream = nullptr;
+    FCGX_Finish_r(request);
+
+    double reqDurationMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_req_start).count();
+
+    // Persist APPLICATION and SESSION scopes to SQLite now that the client response is finished.
+    scopeSaveGuard.flush();
+
+    // Record the finished request (status + duration) for the dashboard stats and profiler.
     int64_t profilerReqId = 0;
     std::string reqUri = m_cgi.has("REQUEST_URI") ? (m_cgi["REQUEST_URI"].toString().constData() ? m_cgi["REQUEST_URI"].toString().constData() : "/") : "/";
     bool isAdminReq = (reqUri.rfind("/admin", 0) == 0);
@@ -531,7 +550,7 @@ void worker::process_request(FCGX_Request *request)
         summary.method = m_cgi.has("REQUEST_METHOD") ? (m_cgi["REQUEST_METHOD"].toString().constData() ? m_cgi["REQUEST_METHOD"].toString().constData() : "GET") : "GET";
         summary.url = reqUri;
         summary.status = cfml::response().statusCode;
-        summary.durationMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_req_start).count();
+        summary.durationMs = reqDurationMs;
         summary.onRequestStartMs = g_reqProfiler.onRequestStartTime;
         summary.pageExecutionMs = g_reqProfiler.templateExecTime;
         summary.onRequestEndMs = g_reqProfiler.onRequestEndTime;
@@ -552,11 +571,6 @@ void worker::process_request(FCGX_Request *request)
     }
 
     webstrada::stats::request_end(cfml::response().statusCode, profilerReqId);
-
-    cfml::response_send_remaining(&m_out);
-    g_response_stream = nullptr;
-
-    FCGX_Finish_r(request);
 
     webstrada::db::requestCleanupConnections();
 
