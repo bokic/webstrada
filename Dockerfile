@@ -108,6 +108,8 @@ COPY --from=builder /usr/lib/libtextparser.so* /usr/lib/
 
 # s6-overlay service definitions (webstrada + nginx longrun services).
 COPY deploy/s6-rc.d         /etc/s6-overlay/s6-rc.d
+# Development-oriented nginx: single worker (see nginx.conf header comment).
+COPY deploy/nginx.conf      /etc/nginx/nginx.conf
 COPY deploy/nginx-site.conf /etc/nginx/conf.d/default.conf
 # run scripts must be executable (--chmod not available without BuildKit).
 RUN chmod +x /etc/s6-overlay/s6-rc.d/webstrada/run \
