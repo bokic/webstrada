@@ -1281,7 +1281,7 @@ export class Tracing implements OnInit, OnDestroy {
       '/auth/login.cfm',
       '/api/orders.cfm',
       '/reports/monthly.cfm',
-      '/admin/config.cfm',
+      '/webstrada/config.cfm',
       '/services/inventory.cfm',
       '/checkout/pay.cfm',
       '/api/health.cfm',

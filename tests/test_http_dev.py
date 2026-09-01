@@ -2,7 +2,7 @@
 """Unit tests for http-dev.py request routing.
 
 Covers the web root selection (WEBROOT / --webroot), static vs CFML dispatch,
-directory index resolution and the /admin routing that always resolves the
+directory index resolution and the /webstrada routing that always resolves the
 admin SPA and its CFML API against APP_ROOT regardless of the web root.
 """
 
@@ -70,7 +70,7 @@ class HttpDevRoutingTest(unittest.TestCase):
         with open(os.path.join(self.webroot, "sub", "index.cfm"), "w") as fh:
             fh.write("subindex")
         with open(os.path.join(self.app_root, "admin", "dist", "webstrada-admin", "browser", "index.html"), "w") as fh:
-            fh.write("<base href='/admin/'>admin-spa")
+            fh.write("<base href='/webstrada/'>admin-spa")
         with open(os.path.join(self.app_root, "admin", "api", "serverinfo.cfm"), "w") as fh:
             fh.write("serverinfo")
 
@@ -129,25 +129,25 @@ class HttpDevRoutingTest(unittest.TestCase):
 
     def test_admin_spa_served_from_app_root(self):
         with self._patch_globals():
-            h = _dispatch("/admin/")
+            h = _dispatch("/webstrada/")
         self.assertEqual(h._status_code, 200)
         self.assertIn(b"admin-spa", h.wfile.getvalue())
 
     def test_admin_spa_route_falls_back_to_index(self):
         with self._patch_globals():
-            h = _dispatch("/admin/datasources")
+            h = _dispatch("/webstrada/datasources")
         self.assertEqual(h._status_code, 200)
         self.assertIn(b"admin-spa", h.wfile.getvalue())
 
     def test_admin_api_cfml_uses_app_root_document_root(self):
         with self._patch_globals(), mock.patch.object(http_dev, "fcgi_request",
                                                       return_value=_fcgi_response(b"serverinfo")) as fcgi:
-            h = _dispatch("/admin/api/serverinfo.cfm")
+            h = _dispatch("/webstrada/api/serverinfo.cfm")
         self.assertEqual(h._status_code, 200)
         self.assertEqual(h.wfile.getvalue().split(b"\r\n\r\n", 1)[1], b"serverinfo")
         params = dict(fcgi.call_args[0][0])
         self.assertEqual(params["DOCUMENT_ROOT"], self.app_root)
-        self.assertEqual(params["REQUEST_URI"], "/admin/api/serverinfo.cfm")
+        self.assertEqual(params["REQUEST_URI"], "/webstrada/api/serverinfo.cfm")
 
     def test_traversal_is_forbidden(self):
         # "/../../etc/passwd" normalizes to "/etc/passwd", which stays inside
@@ -159,7 +159,7 @@ class HttpDevRoutingTest(unittest.TestCase):
 
     def test_admin_cfml_traversal_is_forbidden(self):
         with self._patch_globals():
-            h = _dispatch("/admin/..%2f..%2fetc%2fpasswd")
+            h = _dispatch("/webstrada/..%2f..%2fetc%2fpasswd")
         self.assertEqual(h._status_code, 403)
 
     def test_post_reaches_engine_with_body(self):

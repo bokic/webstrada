@@ -88,8 +88,8 @@ serving everything else as a static file.
 By default the web root is the directory containing the script, but it can be
 pointed at any directory (e.g. a mounted host volume) with `--webroot` or the
 `WEBROOT` environment variable. The built admin panel (`admin/dist/...`) and
-its `/admin/api/*.cfm` endpoints are always served from the app root at
-`/admin/`, independent of the web root.
+its `/webstrada/api/*.cfm` endpoints are always served from the app root at
+`/webstrada/`, independent of the web root.
 
 ```bash
 python3 http-dev.py [--host 0.0.0.0] [--port 8501] [--workers 4] [--webroot DIR]
@@ -109,7 +109,7 @@ cd {to root of your CFML application}
 # Serve a host directory as the web root (port 8501):
 docker run --rm -p 8501:8501 -v .:/app/webroot -e WEBROOT=/app/webroot bokic78/webstrada:latest
 
-# then visit http://localhost:8501/ (your pages) and http://localhost:8501/admin/ (admin panel)
+# then visit http://localhost:8501/ (your pages) and http://localhost:8501/webstrada/ (admin panel)
 ```
 
 ## License

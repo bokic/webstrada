@@ -23506,7 +23506,7 @@ TEST_F(ConfigExtensionTest, ServerInfoReportsRuntimeStats) {
     // daemon worker records per request), then read them back via __serverInfo.
     webstrada::stats::request_begin("GET", "/index.cfm");
     webstrada::stats::request_end(200);
-    webstrada::stats::request_begin("POST", "/admin/api/config.cfm");
+    webstrada::stats::request_begin("POST", "/webstrada/api/config.cfm");
     webstrada::stats::request_end(400);
 
     cfvariant *res = cfml::cf___serverinfo(nullptr, 0);
@@ -23557,17 +23557,17 @@ TEST_F(ConfigExtensionTest, ConfigResetRestoresDefaultsAndPersists) {
 
 TEST_F(ConfigExtensionTest, ServerInfoExcludeAdminFilter) {
     // The stats module is shared across tests (some of which already added
-    // /admin rows), so assert relative behavior, not absolute counts.
+    // /webstrada rows), so assert relative behavior, not absolute counts.
     webstrada::stats::request_begin("GET", "/index.cfm");
     webstrada::stats::request_end(200);
-    webstrada::stats::request_begin("GET", "/admin/api/serverinfo.cfm");
+    webstrada::stats::request_begin("GET", "/webstrada/api/serverinfo.cfm");
     webstrada::stats::request_end(200);
 
     cfvariant *all = cfml::cf___serverinfo(nullptr, 0);
     const cfvariant *recentAll = member(*all, "recentRequests");
     ASSERT_GE(recentAll->m_array->size(), 2u);
 
-    // excludeAdmin: the /admin row(s) are dropped, my non-admin row stays
+    // excludeAdmin: the /webstrada row(s) are dropped, my non-admin row stays
     // last.
     cfvariant truthy(1);
     const cfvariant *args[] = { &truthy };
@@ -23577,10 +23577,10 @@ TEST_F(ConfigExtensionTest, ServerInfoExcludeAdminFilter) {
     const cfvariant &lastRow = recentFiltered->m_array->at(recentFiltered->m_array->size() - 1);
     EXPECT_EQ(cfml::toStdString(member(lastRow, "template")), "/index.cfm");
 
-    // Every remaining row is a non-/admin request.
+    // Every remaining row is a non-/webstrada request.
     for (const auto &row : *recentFiltered->m_array) {
         std::string tpl = cfml::toStdString(member(row, "template"));
-        EXPECT_TRUE(tpl.rfind("/admin", 0) != 0) << tpl;
+        EXPECT_TRUE(tpl.rfind("/webstrada", 0) != 0) << tpl;
     }
 }
 

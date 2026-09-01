@@ -596,10 +596,10 @@ catchable runtime error for unregistered names. Registered:
   worker process by `webstrada::stats` (`src/server_stats.cpp`;
   `worker::process_request` records request begin/end with the response
   status). An optional truthy `excludeAdmin` argument drops recent requests
-  whose template path starts with `/admin` — the dashboard's "Hide admin
+  whose template path starts with `/webstrada` — the dashboard's "Hide admin
   requests" switch passes it via `?excludeAdmin=true` so the filtering happens
   server-side.
-* `__traceControl(action, value)` — controls execution tracing session state. Action `"start"` clears the `WebStrada-profiler.sqlite` database and recent requests buffer, resets the session counter, and enables `lineExecutionTrace`. Action `"stop"` disables `lineExecutionTrace`. Action `"set_hide_admin"` dynamically updates the in-memory `hide_admin_requests` setting (default `true`, not persisted in `webstrada-config.json`). When `hide_admin_requests` is `true`, requests starting with `/admin` are skipped from SQLite tracing and do not increment the 100-request session limit.
+* `__traceControl(action, value)` — controls execution tracing session state. Action `"start"` clears the `WebStrada-profiler.sqlite` database and recent requests buffer, resets the session counter, and enables `lineExecutionTrace`. Action `"stop"` disables `lineExecutionTrace`. Action `"set_hide_admin"` dynamically updates the in-memory `hide_admin_requests` setting (default `true`, not persisted in `webstrada-config.json`). When `hide_admin_requests` is `true`, requests starting with `/webstrada` are skipped from SQLite tracing and do not increment the 100-request session limit.
 
 **SQLite Execution Profiler Store (`WebStrada-profiler.sqlite`)**.
 When `lineExecutionTrace` is enabled:
@@ -609,11 +609,14 @@ When `lineExecutionTrace` is enabled:
 **Admin panel API + live wiring.** The panel now reads/writes the real server
 config. CFML endpoints under `admin/api/` (`config.cfm`, `datasources.cfm`,
 `serverinfo.cfm`) wrap the extension functions over JSON; `http-dev.py` serves
-the built Angular app (`admin/dist/webstrada-admin/browser`, built with
-`--base-href=/admin/`) at `/admin/` with an SPA fallback and routes
-`/admin/api/*.cfm` to the engine. The Angular app (`AdminApiService` +
+the built Angular app (`admin/dist/webstrada-admin/browser`, built with the
+relative `baseHref: ./` from `angular.json`) at `/webstrada/` with an SPA
+fallback and routes
+`/webstrada/api/*.cfm` to the engine; the frontend reaches the API through
+relative URLs (`./api/...`) so it resolves against the serving base. The
+Angular app (`AdminApiService` +
 `HttpClient`) wires the **Dashboard** (live uptime/requests/avg/recent-request
-list, "Hide admin requests" switch that filters `/admin` rows server-side via
+list, "Hide admin requests" switch that filters `/webstrada` rows server-side via
 `?excludeAdmin=`), **Settings** (editable config with Save + Restore Defaults;
 Default Encoding / Default Template Charset are charset **comboboxes**, the
 `charsetDetectionMinConfidence` default is 80, the two timeouts are rendered as
@@ -650,15 +653,16 @@ running them on CF gives "Variable __CONFIGGET is undefined").
 configurable via `--webroot DIR` or the `WEBROOT` env var (default: the
 directory containing the script), so a mounted host volume can be served at
 `/` while the binaries, socket/logs and admin panel stay in the app root.
-The admin SPA (`ADMIN_DIST`) and its `/admin/api/*.cfm` endpoints always
+The admin SPA (`ADMIN_DIST`) and its `/webstrada/api/*.cfm` endpoints always
 resolve against `APP_ROOT`, independent of the web root (the CFML API gets
 `DOCUMENT_ROOT=APP_ROOT`). Directory requests now correctly dispatch
 `index.cfm` through the engine (the extension was previously computed before
 index resolution, so `/` on a dir with only `index.cfm` was served as static).
 The Docker image (`build_docker.sh`) builds the admin panel in a
-`node:22-alpine` stage (`npm ci && npm run build -- --base-href=/admin/`) and
-bundles it at `/app/admin/dist/webstrada-admin/browser` plus `admin/api` at
-`/app/admin/api`, so `webstrada:latest` serves `/admin/` out of the box.
+`node:22-alpine` stage (`npm ci && npm run build`; the relative `baseHref: ./`
+from `angular.json` resolves correctly under `/webstrada/`)
+and bundles it at `/app/admin/dist/webstrada-admin/browser` plus `admin/api` at
+`/app/admin/api`, so `webstrada:latest` serves `/webstrada/` out of the box.
 `build_docker.sh` default textparser bumped 1.0.7 → 1.0.8 (adds
 `textparser_set_filename`, required by `parser.cpp`/`template_reader.cpp`);
 Covered by `tests/test_http_dev.py` (11 routing tests: static/CFML/index resolution/

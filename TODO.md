@@ -3,7 +3,7 @@ Next areas to work on:
 * Final check for sensitive informations before opensourcing the project
 * Run all tests with asan
   * Done 2026-08-10 — see the item above. The request-wide temp-variant leaks are fixed.
-* Admin/config page(mostly done 2026-08-11: server config file webstrada-config.json + config::initialize/save/reloadIfChanged; __configGet/__configSet/__configReset/__datasourceTest/__serverInfo compiler extensions; admin/api/*.cfm JSON endpoints; http-dev.py serves the built Angular app at /admin/ with SPA fallback; Dashboard + General Settings + Data Sources pages wired live. Still to do: Cache, Logs, Runtime, Users pages live data; API login/auth; request-stats shared across prefork workers; verify_with_coldfusion.py skip-list note for admin_extension_test.cfm)
+* Admin/config page(mostly done 2026-08-11: server config file webstrada-config.json + config::initialize/save/reloadIfChanged; __configGet/__configSet/__configReset/__datasourceTest/__serverInfo compiler extensions; admin/api/*.cfm JSON endpoints; http-dev.py serves the built Angular app at /webstrada/ with SPA fallback; Dashboard + General Settings + Data Sources pages wired live. Still to do: Cache, Logs, Runtime, Users pages live data; API login/auth; request-stats shared across prefork workers; verify_with_coldfusion.py skip-list note for admin_extension_test.cfm)
 
 * git tag 0.8
 * open source the project

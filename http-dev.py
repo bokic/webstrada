@@ -36,13 +36,13 @@ BACKLOG = 100
 
 WEBROOT = os.environ.get("WEBROOT") or APP_ROOT
 
-# URL path prefixes (e.g. "/" or "/app,/admin") that fall back to the SPA shell
-# (<webroot>/index.html) for extension-less GETs that resolve to no file.
+# URL path prefixes (e.g. "/" or "/app,/webstrada") that fall back to the SPA
+# shell (<webroot>/index.html) for extension-less GETs that resolve to no file.
 # Empty by default, so the stock behavior is unchanged.
 SPA_FALLBACK_PREFIXES = []
 
-# Built Angular admin panel (webstrada-admin), served at /admin/ with an SPA
-# fallback to index.html. Build it with:
+# Built Angular admin panel (webstrada-admin), served at /webstrada/ with an
+# SPA fallback to index.html. Build it with:
 #   (cd admin && npm run build)
 ADMIN_DIST = os.path.join(APP_ROOT, "admin", "dist", "webstrada-admin", "browser")
 
@@ -325,10 +325,11 @@ class DevHandler(BaseHTTPRequestHandler):
         if candidate is None:
             return self._send_error(403, "Forbidden")
 
-        # The engine's own Angular admin panel lives under APP_ROOT/admin.
-        if rel == "/admin" or rel.startswith("/admin/"):
+        # The engine's own Angular admin panel lives under APP_ROOT/admin, served
+        # at the /webstrada/ URL path.
+        if rel == "/webstrada" or rel.startswith("/webstrada/"):
             if os.path.splitext(candidate)[1].lower() in (".cfm", ".cfc"):
-                norm = os.path.normpath("/admin" + rel[len("/admin"):])
+                norm = os.path.normpath("/admin" + rel[len("/webstrada"):])
                 if norm.startswith("/admin/"):
                     candidate = APP_ROOT + norm
                     return self._serve_cfml(candidate, rel, query, document_root=APP_ROOT)
@@ -398,10 +399,11 @@ class DevHandler(BaseHTTPRequestHandler):
     def _serve_admin(self, rel):
         """Serve the built Angular admin panel (SPA) from ADMIN_DIST.
 
-        `/admin` and `/admin/...` map into the admin browser build; asset files
-        are served directly and any other path (an SPA route) falls back to
-        index.html so client-side navigation survives a browser refresh."""
-        sub = rel[len("/admin"):].lstrip("/") if rel != "/admin" else ""
+        `/webstrada` and `/webstrada/...` map into the admin browser build;
+        asset files are served directly and any other path (an SPA route) falls
+        back to index.html so client-side navigation survives a browser
+        refresh."""
+        sub = rel[len("/webstrada"):].lstrip("/") if rel != "/webstrada" else ""
         fs = os.path.normpath(os.path.join(ADMIN_DIST, sub))
         if not fs.startswith(ADMIN_DIST + os.sep) and fs != ADMIN_DIST:
             return self._send_error(403, "Forbidden")
@@ -503,7 +505,7 @@ def main():
                     help="directory to serve as the site root "
                          "(default: WEBROOT env var, else this script's directory)")
     ap.add_argument("--spa-fallback", default="",
-                    help="comma-separated URL prefixes (e.g. '/' or '/app,/admin') that "
+                    help="comma-separated URL prefixes (e.g. '/' or '/app,/webstrada') that "
                          "serve <webroot>/index.html for extension-less paths without a file; "
                          "empty by default")
     args = ap.parse_args()

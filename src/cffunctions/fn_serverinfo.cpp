@@ -11,8 +11,8 @@
  * The values come from webstrada::stats (per worker process, "since last
  * restart"), tracked by worker::process_request. An optional truthy first
  * argument (excludeAdmin) drops recent requests whose template path starts
- * with /admin — used by the dashboard's "hide admin requests" switch, so the
- * filtering happens server-side.
+ * with /webstrada — used by the dashboard's "hide admin requests" switch, so
+ * the filtering happens server-side.
  */
 
 #include "common.h"
@@ -84,7 +84,7 @@ cfvariant *cf___serverinfo(const cfvariant **args, int argc)
     std::vector<const webstrada::stats::RecentRequest *> filtered;
     filtered.reserve(allRecent.size());
     for (const auto &r : allRecent) {
-        if (excludeAdmin && r.templatePath.rfind("/admin", 0) == 0) {
+        if (excludeAdmin && r.templatePath.rfind("/webstrada", 0) == 0) {
             continue;
         }
         filtered.push_back(&r);

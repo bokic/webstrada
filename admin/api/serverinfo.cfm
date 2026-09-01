@@ -2,7 +2,7 @@
   Admin API: dashboard runtime statistics (GET JSON).
   Backed by the __serverInfo() compiler-extension function.
   Query param ?excludeAdmin=true|false (default false): drops recent requests
-  whose template path starts with /admin (the dashboard's admin-requests
+  whose template path starts with /webstrada (the dashboard's admin-requests
   switch; filtering happens server-side).
 --->
 <cfsetting enablecfoutputonly="yes">

@@ -113,7 +113,7 @@ export interface ApiError {
 @Injectable({ providedIn: 'root' })
 export class AdminApiService {
   private http = inject(HttpClient);
-  private base = '/admin/api';
+  private base = './api';
 
   getConfig(): Observable<AdminConfig> {
     return this.http.get<AdminConfig>(`${this.base}/config.cfm`);

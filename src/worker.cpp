@@ -541,7 +541,7 @@ void worker::process_request(FCGX_Request *request) {
     // Record the finished request (status + duration) for the dashboard stats and profiler.
     int64_t profilerReqId = 0;
     std::string reqUri = m_cgi.has("REQUEST_URI") ? (m_cgi["REQUEST_URI"].toString().constData() ? m_cgi["REQUEST_URI"].toString().constData() : "/") : "/";
-    bool isAdminReq = (reqUri.rfind("/admin", 0) == 0);
+    bool isAdminReq = (reqUri.rfind("/webstrada", 0) == 0);
     bool shouldTrace = webstrada::config::lineExecutionTrace && (!webstrada::stats::hide_admin_requests() || !isAdminReq);
 
     if (shouldTrace) {

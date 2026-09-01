@@ -137,8 +137,8 @@ RUN usermod -aG webstrada www-data
 COPY --from=builder --chown=webstrada:webstrada /src/bin/WebStrada     /app/bin/WebStrada
 COPY --from=builder --chown=webstrada:webstrada /src/bin/WebStrada-cli /app/bin/WebStrada-cli
 
-# Admin panel (webstrada-admin SPA) served at /admin/ plus its CFML API
-# endpoints (/admin/api/*.cfm), both resolved against APP_ROOT at runtime.
+# Admin panel (webstrada-admin SPA) served at /webstrada/ plus its CFML API
+# endpoints (/webstrada/api/*.cfm), both resolved against APP_ROOT at runtime.
 COPY --from=admin-builder --chown=webstrada:webstrada /admin/dist/webstrada-admin/browser /app/admin/dist/webstrada-admin/browser
 COPY --chown=webstrada:webstrada admin/api /app/admin/api
 

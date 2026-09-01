@@ -50,10 +50,10 @@ docker build \
 echo ">> Done."
 echo
 echo "Serve your own CFML files by mounting them as the web root (the admin"
-echo "panel stays available at /admin/ regardless):"
+echo "panel stays available at /webstrada/ regardless):"
 echo "    docker run --rm -p 80:80 \\"
 echo "        -v /path/to/webroot:/webroot ${IMAGE}"
-echo "then visit http://localhost/ and http://localhost/admin/"
+echo "then visit http://localhost/ and http://localhost/webstrada/"
 echo
 echo "Or just run the stock image (empty /webroot, admin panel only):"
 echo "    docker run --rm -p 80:80 ${IMAGE}"

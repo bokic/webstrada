@@ -48,7 +48,7 @@ int increment_trace_session_count();
 void reset_trace_session_count();
 int trace_session_count();
 
-// In-memory setting to exclude /admin requests from execution tracing and dashboard stats (default true)
+// In-memory setting to exclude /webstrada requests from execution tracing and dashboard stats (default true)
 bool hide_admin_requests();
 void set_hide_admin_requests(bool hide);
 
