@@ -344,3 +344,21 @@ CF 2025 byte-for-byte. The following deliberate limitations/divergences remain:
   the RDS host): table aliases (`FROM q u`), `JOIN` keywords, and subqueries all
   throw `Database: Error Executing Database Query.` on CF but work here. Being a
   superset is intended.
+
+## Full unit-test suite has 14 pre-existing failures (not from the sqlite shared-mode work)
+
+On HEAD (2026-09-02), before and after the scope/cache/profiler store changes,
+the following unit tests fail (reproduced with `./bin/webstrada-tests`); they
+are unrelated to the SQLite store work and pre-date it:
+
+- `ArrayStructLiteralTest.UnsupportedArrayOutputThrows`
+- `CfHttpTest.GetAsBinaryNoStoresByteArrayOutputStream` / `GetAsBinaryYesStoresBinary`
+- `CfQueryTest.DbLayerDumpsOperationsToStdout` / `DsnFileCreatedNextToConfiguredDir`
+  (the latter is order/flake dependent: it passed and failed across runs)
+- `ComponentTest.ScriptFormConstructorCallsAndWriteOutput`
+- `JitExpressionTest.CreateUuidIsUniquePerCall` / `MemberChainAfterBracketIndex`
+  / `Tier2NumberFormat` / `UnimplementedAndUnknownTags` (the `<cfmail>` one
+  expects a thrown error but `<cfmail>` is now a non-throwing logging stub)
+- `LocaleTest.LSIsDateUsesLocale`
+- `StructScopeFunctionsTest.ScopePassedDirectly` / `UdfRegisteredInVariables`
+- `UdfTest.ArgumentsVisibleKeysMatchCf`

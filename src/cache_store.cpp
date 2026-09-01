@@ -1,5 +1,6 @@
 #include <webstrada/cache_store.h>
 #include <webstrada/config.h>
+#include <webstrada/sqlite_util.h>
 
 #include <sqlite3.h>
 
@@ -70,17 +71,25 @@ bool CacheStore::open(const std::string &dbPath)
 {
     if (m_db) close();
 
-    if (sqlite3_open(dbPath.c_str(), &m_db) != SQLITE_OK) {
+    if (sqlite3_open_v2(dbPath.c_str(), &m_db,
+                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_SHAREDCACHE,
+                        nullptr) != SQLITE_OK) {
         m_lastError = m_db ? sqlite3_errmsg(m_db) : "sqlite3_open failed";
         if (m_db) sqlite3_close(m_db);
         m_db = nullptr;
         return false;
     }
 
-    if (!exec("PRAGMA journal_mode=WAL;")) return false;
+    // WAL so prefork workers can read while another writes; busy_timeout so a
+    // transient single-writer lock just queues instead of erroring. busy_timeout
+    // must be set before the WAL switch and the switch itself retried: the
+    // one-time conversion of a fresh database file races across workers starting
+    // at the same time and would otherwise make a losing worker open its store
+    // with no database at all.
+    if (!exec("PRAGMA busy_timeout=5000;")) return false;
+    if (!sqlite_enable_wal(m_db, m_lastError)) return false;
     if (!exec("PRAGMA synchronous=NORMAL;")) return false;
     if (!exec("PRAGMA temp_store=MEMORY;")) return false;
-    if (!exec("PRAGMA busy_timeout=5000;")) return false;
 
     static const char *kSchema =
         "CREATE TABLE IF NOT EXISTS cf_cache_region ("

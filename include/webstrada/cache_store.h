@@ -9,10 +9,13 @@ struct sqlite3;
 namespace webstrada {
 
 // SQLite-backed persistent cache for the CacheGet/CachePut/CacheRegion* family
-// (mirrors the ScopeStore pattern). The daemon opens one database file in WAL
-// mode at startup (default: next to the WebStrada binary, configurable via
-// webstrada::config::cacheDbPath), so every prefork worker process shares the
-// same store safely.
+// (mirrors the ScopeStore pattern). The daemon opens one database file at
+// startup (default: next to the WebStrada binary, configurable via
+// webstrada::config::cacheDbPath) in shared-cache mode (SQLITE_OPEN_SHAREDCACHE)
+// with `PRAGMA journal_mode=WAL`, so every prefork worker process shares the
+// same store safely (WAL is what serializes writers across processes; the
+// shared-cache flag only pools the page cache between connections in the same
+// process).
 //
 // Each cached object is one row keyed by (region, id) holding a SerializeJSON
 // blob plus the timeToLive / timeToIdle intervals in seconds and access

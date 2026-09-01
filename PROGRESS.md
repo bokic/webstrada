@@ -2,6 +2,19 @@
 
 Get all technical info from: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusion-tags/tag-summary.html
 
+Compatibility note (2026-09-02): the system SQLite stores (`ScopeStore`,
+`CacheStore`, `ProfilerStore`) are opened in SQLite shared-cache mode
+(`sqlite3_open_v2` with `SQLITE_OPEN_SHAREDCACHE`) with `PRAGMA journal_mode=WAL`
+for multi-process access. The one-time WAL switch on a brand-new database is
+retried with a bounded busy loop and `busy_timeout=5000` is set *before* the
+switch, because several prefork workers opening the database for the first time
+at the same moment would otherwise hit `PRAGMA journal_mode`'s `database is
+locked` (it does not honor `busy_timeout`) and a losing worker would silently
+run the whole process without a scope/cache/profiler store. Cross-process
+coordination remains SQLite's own WAL locking (`SQLITE_OPEN_SHAREDCACHE` only
+shares the page cache between connections in the SAME process). Regression
+coverage: `CacheTest.ConcurrentFirstOpenFromMultipleProcesses`.
+
 Compatibility note (2026-08-27): `<cfmail>` is accepted as a non-delivering
 stub that logs all evaluated attributes and consumes its body, including
 nested `<cfmailpart>` content. No SMTP operation is performed.

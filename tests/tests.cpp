@@ -35,6 +35,7 @@
 #include <cctype>
 #include <ctime>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 
 namespace webstrada {
@@ -21550,6 +21551,48 @@ TEST_F(CacheTest, RegionNewTwiceThrowsWithThrowOnError) {
 
 TEST_F(CacheTest, DefaultRegionExists) {
     expectOutput("<cfoutput>#cacheRegionExists(\"OBJECT\")#</cfoutput>", "YES");
+}
+
+// Every prefork worker opens the process cache store at startup. When the
+// database file does not exist yet, the one-time switch to WAL mode briefly
+// needs the write lock; several workers starting simultaneously must not make
+// any of them fail with "database is locked" and silently run without a store.
+TEST_F(CacheTest, ConcurrentFirstOpenFromMultipleProcesses) {
+    char db[] = "/tmp/webstrada_cache_race_XXXXXX";
+    int fd = mkstemp(db);
+    ASSERT_NE(fd, -1);
+    close(fd);
+    unlink(db); // no file yet: the workers race the first WAL switch
+
+    const int kRounds = 4;
+    const int kChildren = 8;
+    for (int round = 0; round < kRounds; ++round) {
+        unlink(db);
+        unlink((std::string(db) + "-wal").c_str());
+        unlink((std::string(db) + "-shm").c_str());
+
+        pid_t pids[kChildren];
+        for (int i = 0; i < kChildren; ++i) {
+            pid_t pid = fork();
+            ASSERT_GE(pid, 0);
+            if (pid == 0) {
+                webstrada::CacheStore store;
+                store.open(db);
+                _exit(store.isOpen() ? 0 : 1);
+            }
+            pids[i] = pid;
+        }
+        for (int i = 0; i < kChildren; ++i) {
+            int status = 0;
+            EXPECT_EQ(waitpid(pids[i], &status, 0), pids[i]);
+            EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0)
+                << "round " << round << " worker " << i << " could not open the cache store";
+        }
+    }
+
+    unlink(db);
+    unlink((std::string(db) + "-wal").c_str());
+    unlink((std::string(db) + "-shm").c_str());
 }
 
 TEST_F(CacheTest, GetMetadataKeys) {
