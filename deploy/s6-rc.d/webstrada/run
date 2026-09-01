@@ -1,0 +1,9 @@
+#!/bin/sh
+# WebStrada FastCGI daemon.
+#
+# umask 0007 → socket created as mode 0660 (owner+group rw, others none).
+# nginx workers run as www-data which is added to the webstrada group in the
+# Dockerfile, so they can connect to the socket.
+umask 0007
+exec s6-setuidgid webstrada \
+    /app/bin/WebStrada -n /app/tmp/webstrada.sock -b 100 -w 1

@@ -1,0 +1,13 @@
+#!/bin/sh
+# nginx HTTP server.
+#
+# Even though s6 enforces the dependency on webstrada, s6 considers a longrun
+# service "up" as soon as the process is spawned — before WebStrada has had a
+# chance to create its socket.  Poll until the socket appears so nginx does not
+# log a flood of "connect() to unix:/app/tmp/webstrada.sock failed" errors on
+# startup.
+until [ -S /app/tmp/webstrada.sock ]; do
+    sleep 0.1
+done
+
+exec nginx -g 'daemon off;'

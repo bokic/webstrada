@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 
 # ----------------------------------------------------------------
 # Stage 1: builder - compile toolchain and all sources.
@@ -91,33 +90,62 @@ RUN apt-get update && \
         libfcgi0t64 \
         libminizip1t64 \
         libicu78 \
-        python3 \
+        nginx \
+        curl \
+        xz-utils \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
+
+# s6-overlay: lightweight C init + service supervisor (no Python needed).
+ARG S6_VERSION=3.2.0.2
+RUN curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_VERSION}/s6-overlay-noarch.tar.xz" \
+        | tar -C / -Jxp && \
+    curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_VERSION}/s6-overlay-x86_64.tar.xz" \
+        | tar -C / -Jxp
 
 # textparser shared library built in the builder stage.
 COPY --from=builder /usr/lib/libtextparser.so* /usr/lib/
 
-# Web root: http-dev.py (HTTP front end) plus the FastCGI server binaries.
+# s6-overlay service definitions (webstrada + nginx longrun services).
+COPY deploy/s6-rc.d         /etc/s6-overlay/s6-rc.d
+COPY deploy/nginx-site.conf /etc/nginx/conf.d/default.conf
+# run scripts must be executable (--chmod not available without BuildKit).
+RUN chmod +x /etc/s6-overlay/s6-rc.d/webstrada/run \
+             /etc/s6-overlay/s6-rc.d/nginx/run
+
+# Remove the nginx package's default site so only our config is active.
+RUN rm -f /etc/nginx/sites-enabled/default
+
+# WebStrada loads PCRE2 via dlopen("libpcre2-8.so"); the runtime package only
+# ships the versioned .so.0 — create the unversioned symlink it expects.
+RUN ln -sf /usr/lib/x86_64-linux-gnu/libpcre2-8.so.0 \
+           /usr/lib/x86_64-linux-gnu/libpcre2-8.so
+
+# WebStrada binaries and runtime directories.
 # The scope SQLite database is created next to bin/WebStrada at runtime, so the
 # whole /app tree is owned by the unprivileged service user.
+# /webroot is the default CFML site root; mount a volume over it at runtime.
 RUN useradd --system --create-home --home-dir /app webstrada && \
-    mkdir -p /app/bin /app/tmp && \
-    chown -R webstrada:webstrada /app
+    mkdir -p /app/bin /app/tmp /webroot && \
+    chown -R webstrada:webstrada /app /webroot
 
-COPY --from=builder --chown=webstrada:webstrada /src/bin/WebStrada /app/bin/WebStrada
+# Allow nginx (www-data) to read the FastCGI socket created by the webstrada user.
+RUN usermod -aG webstrada www-data
+
+COPY --from=builder --chown=webstrada:webstrada /src/bin/WebStrada     /app/bin/WebStrada
 COPY --from=builder --chown=webstrada:webstrada /src/bin/WebStrada-cli /app/bin/WebStrada-cli
-COPY --chown=webstrada:webstrada http-dev.py /app/http-dev.py
 
 # Admin panel (webstrada-admin SPA) served at /admin/ plus its CFML API
 # endpoints (/admin/api/*.cfm), both resolved against APP_ROOT at runtime.
 COPY --from=admin-builder --chown=webstrada:webstrada /admin/dist/webstrada-admin/browser /app/admin/dist/webstrada-admin/browser
 COPY --chown=webstrada:webstrada admin/api /app/admin/api
 
-USER webstrada
 WORKDIR /app
 
-# 8501: http-dev.py (HTTP front end, auto-starts the FastCGI daemon).
-EXPOSE 8501
+# 80: nginx (HTTP)
+EXPOSE 80
 
-CMD ["python3", "/app/http-dev.py", "--port", "8501"]
+# s6-overlay /init is PID 1; it brings up all services in s6-rc.d/user/.
+# No Python, no supervisor — just two C binaries (nginx + WebStrada) managed
+# by a ~3.5 MB pure-C init system.
+ENTRYPOINT ["/init"]
