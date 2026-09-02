@@ -1,4 +1,14 @@
 
+# Global build arg (declared before the first FROM so it is visible to the
+# FROM --platform below). Node running under QEMU (cross-arch buildx) crashes
+# with SIGILL during `npm ci && npm run build`, so the Angular SPA is built
+# natively on the host platform. The output is a static SPA (arch-independent),
+# so it can be copied into any target architecture unchanged. The automatic
+# buildx arg BUILDPLATFORM is force-blanked by plain `docker build`, hence the
+# custom name; build_docker.sh passes the host platform, the default covers
+# direct `docker build` invocations.
+ARG ADMIN_PLATFORM=linux/amd64
+
 # ----------------------------------------------------------------
 # Stage 1: builder - compile toolchain and all sources.
 # ----------------------------------------------------------------
@@ -60,8 +70,10 @@ RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && \
 
 # ----------------------------------------------------------------
 # Stage 1b: admin panel - build the Angular admin UI (webstrada-admin).
+# The platform is pinned via ADMIN_PLATFORM (see the global arg at the top of
+# the file) instead of the buildx automatic BUILDPLATFORM arg.
 # ----------------------------------------------------------------
-FROM node:22-alpine AS admin-builder
+FROM --platform=$ADMIN_PLATFORM node:22-alpine AS admin-builder
 
 # npm's bundled update notifier prints a "New major version of npm available!"
 # reminder on every npm run; upgrade to the current major so the reminder stays
@@ -108,13 +120,18 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # s6-overlay: lightweight C init + service supervisor (no Python needed).
-# The architecture-specific tarball differs per arch, so derive it from the
-# dpkg triplet (x86_64 / aarch64) instead of hardcoding it.
+# The architecture-specific tarball uses gcc arch names (x86_64 / aarch64),
+# not dpkg/Docker names (amd64 / arm64). dpkg-architecture is in dpkg-dev
+# which isn't installed at runtime, so map from dpkg --print-architecture.
 ARG S6_VERSION=3.2.0.2
-RUN ARCH=$(dpkg-architecture -qDEB_HOST_ARCH) && \
+RUN case "$(dpkg --print-architecture)" in \
+        amd64)  S6_ARCH="x86_64" ;; \
+        arm64)  S6_ARCH="aarch64" ;; \
+        *)      S6_ARCH="$(dpkg --print-architecture)" ;; \
+    esac && \
     curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_VERSION}/s6-overlay-noarch.tar.xz" \
         | tar -C / -Jxp && \
-    curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_VERSION}/s6-overlay-${ARCH}.tar.xz" \
+    curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
         | tar -C / -Jxp
 
 # textparser shared library built in the builder stage.
@@ -135,8 +152,13 @@ RUN rm -f /etc/nginx/sites-enabled/default
 # WebStrada loads PCRE2 via dlopen("libpcre2-8.so"); the runtime package only
 # ships the versioned .so.0 — create the unversioned symlink it expects. The
 # library directory differs per architecture (x86_64 vs aarch64), so resolve it
-# from the multi-arch dpkg path instead of hardcoding it.
-RUN LIBDIR=$(dpkg-architecture -qDEB_HOST_MULTIARCH) && \
+# from the multiarch dpkg path instead of hardcoding it. dpkg-architecture is
+# in dpkg-dev (not present at runtime), so map from dpkg --print-architecture.
+RUN case "$(dpkg --print-architecture)" in \
+        amd64) LIBDIR="x86_64-linux-gnu" ;; \
+        arm64) LIBDIR="aarch64-linux-gnu" ;; \
+        *) LIBDIR="$(dpkg --print-architecture)-linux-gnu" ;; \
+    esac && \
     ln -sf /usr/lib/${LIBDIR}/libpcre2-8.so.0 \
            /usr/lib/${LIBDIR}/libpcre2-8.so
 

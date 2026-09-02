@@ -30,6 +30,15 @@ TEXTPARSER_VERSION="${TEXTPARSER_VERSION:-1.0.11}"
 # stage because the Docker context excludes .git.
 ADMIN_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)"
 
+# The admin-builder stage builds the Angular SPA natively on the host arch
+# (Node under QEMU crashes with SIGILL on cross-arch builds), so pass the host
+# platform through. Plain `docker build` does not populate BUILDPLATFORM.
+case "$(docker info --format '{{.Architecture}}' 2>/dev/null || uname -m)" in
+    x86_64|amd64)                       ADMIN_PLATFORM="linux/amd64" ;;
+    aarch64|arm64)                      ADMIN_PLATFORM="linux/arm64" ;;
+    *)                                  ADMIN_PLATFORM="linux/amd64" ;;
+esac
+
 EXTRA_ARGS=()
 if [ "${1:-}" = "--no-cache" ]; then
     EXTRA_ARGS+=(--no-cache)
@@ -44,10 +53,11 @@ command -v docker >/dev/null 2>&1 || {
     exit 1
 }
 
-echo ">> Building image '${IMAGE}' (textparser ${TEXTPARSER_VERSION}, admin ${ADMIN_VERSION})"
+echo ">> Building image '${IMAGE}' (textparser ${TEXTPARSER_VERSION}, admin ${ADMIN_VERSION}, admin platform ${ADMIN_PLATFORM})"
 docker build \
     --build-arg TEXTPARSER_VERSION="${TEXTPARSER_VERSION}" \
     --build-arg ADMIN_VERSION="${ADMIN_VERSION}" \
+    --build-arg ADMIN_PLATFORM="${ADMIN_PLATFORM}" \
     "${EXTRA_ARGS[@]}" \
     -t "${IMAGE}" \
     -f Dockerfile \

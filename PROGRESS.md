@@ -18,6 +18,16 @@ available!" reminder no longer shows during `npm ci`/`ng build`. The bundled
 update notifier is intentionally left enabled so the reminder returns when a
 newer npm (e.g. 13.x) ships.
 
+Compatibility note (2026-09-02): the Docker `admin-builder` stage now pins
+`FROM --platform=$ADMIN_PLATFORM` so the Angular SPA is built natively on the
+host platform instead of under QEMU. Cross-arch buildx builds previously died
+with `SIGILL`/exit 132 (`qemu: uncaught target signal 4`) during
+`npm ci && npm run build` on the emulated arm64 target. The output is a static
+SPA, so it can be copied into any target arch unchanged. `BUILDPLATFORM` is a
+buildx-only automatic arg that plain `docker build` force-blanks, so a custom
+global `ARG ADMIN_PLATFORM` (default `linux/amd64`) is used; `build_docker.sh`
+derives the host platform from `docker info` and passes it via `--build-arg`.
+
 Compatibility note (2026-09-02): the system SQLite stores (`ScopeStore`,
 `CacheStore`, `ProfilerStore`) are opened in SQLite shared-cache mode
 (`sqlite3_open_v2` with `SQLITE_OPEN_SHAREDCACHE`) with `PRAGMA journal_mode=WAL`
