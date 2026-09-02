@@ -54,7 +54,7 @@ writeLog(text [, type] [, application] [, file] [, log] )
 
 ## Limitations and Other Info
 - **Limitation**: It is crucial to remember that the log attribute and the file attribute are mutually exclusive: If you provide a custom file name (e.g., file="payment_errors"), the engine completely ignores the log parameter and creates
-- **Log location**: The log location is at `/var/log/WebStrada/`
+- **Log location**: The log location is at `/var/log/webstrada/`
 - **Related Functions**: `cflog`
 - **Coldfusion Support**: Minimum version: `9`.
 - **Lucee Support**: Notes: In Lucee 6.2 or later the default log level is ERROR, so no messages will appear in the logfile unless you have specified type=error or type=fatal. You can change the default as discussed here: https://dev.lucee.org/t/application-log-defaults-to-error-in-6-2/14773

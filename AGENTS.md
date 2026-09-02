@@ -29,8 +29,8 @@ Knowledge:
 Build/Run/Test:
 * Build: `./build.sh`
 * Build with unit tests: `./build.sh --unit-tests`
-* To see the generated CLang AST of a given CFML block: `echo "{some CFML block}" | PRINT_AST= ./bin/WebStrada-cli --stdin`
-* To execute given CFML block, and see the output: `echo "{some CFML block}" | ./bin/WebStrada-cli --stdin`
+* To see the generated CLang AST of a given CFML block: `echo "{some CFML block}" | PRINT_AST= ./bin/webstrada-cli --stdin`
+* To execute given CFML block, and see the output: `echo "{some CFML block}" | ./bin/webstrada-cli --stdin`
 
 Verification:
 You can verify this project cfm execution output with local ColdFusion installation using our Python test suite:
@@ -44,6 +44,6 @@ Unit tests:
 * When working on a new cftag or cffunction always add cfm file to tests/cfm dir with as much possible variants of the feature and always test it's output with verify_with_coldfusion.py script. Don't mark task as complete until all tests passed.
 
 Fast CFML debugging:
-* Use `<cftrace>` or `trace()` to inspect variable state during quick debugging. Trace entries are written to `/var/log/WebStrada/cftrace.log` by default; set `WEBSTRADA_LOG_DIR` to override the directory. Delete the existing `cftrace.log` before each debugging run so old trace entries do not mix with the new results.
+* Use `<cftrace>` or `trace()` to inspect variable state during quick debugging. Trace entries are written to `/var/log/webstrada/cftrace.log` by default; set `WEBSTRADA_LOG_DIR` to override the directory. Delete the existing `cftrace.log` before each debugging run so old trace entries do not mix with the new results.
 
 * Do not modify bundled application fixtures such as MangoBlog to hide or work around an engine failure. When a bundled application exposes a failure, extract the smallest reproducing CFML/CFC case into the test suite, run it on WebStrada, and verify the same case against Adobe ColdFusion before changing engine behavior. Keep application fixtures unchanged unless the task explicitly targets that fixture.

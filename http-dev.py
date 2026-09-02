@@ -30,7 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # served as the site root; it defaults to APP_ROOT but can be pointed at a
 # separate directory (e.g. a mounted host volume) with --webroot / WEBROOT.
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-BINARY = os.path.join(APP_ROOT, "bin", "WebStrada")
+BINARY = os.path.join(APP_ROOT, "bin", "webstrada")
 SOCK_PATH = os.path.join(APP_ROOT, "tmp", "webstrada-dev.sock")
 BACKLOG = 100
 

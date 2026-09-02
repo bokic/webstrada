@@ -29,23 +29,23 @@ if(BUILD_UNIT_TESTS)
     )
 endif()
 
-add_executable(WebStrada-cli
+add_executable(webstrada-cli
     WebStrada_cli.cpp
     ../src/template_cache.cpp
     ../src/worker.cpp
 )
 
-target_include_directories(WebStrada-cli PRIVATE
+target_include_directories(webstrada-cli PRIVATE
     ../include
 )
 
 if(WEBSTRADA_USE_PCH_IN_BUILD)
-    target_precompile_headers(WebStrada-cli PRIVATE
+    target_precompile_headers(webstrada-cli PRIVATE
         ${CMAKE_SOURCE_DIR}/include/webstrada/pch.h
     )
 endif()
 
-target_link_libraries(WebStrada-cli
+target_link_libraries(webstrada-cli
     webstrada-core
     webstrada-compiler
     LLVM

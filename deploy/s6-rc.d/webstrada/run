@@ -6,4 +6,4 @@
 # Dockerfile, so they can connect to the socket.
 umask 0007
 exec s6-setuidgid webstrada \
-    /app/bin/WebStrada -n /app/tmp/webstrada.sock -b 100 -w 1
+    /app/bin/webstrada -n /app/tmp/webstrada.sock -b 100 -w 1

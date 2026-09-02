@@ -28,7 +28,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 RDS_HOST = os.environ.get("RDS_HOST", "127.0.0.1")
 RDS_PORT = os.environ.get("RDS_PORT", "8500")
 HTTP_BASE = f"http://{RDS_HOST}:{RDS_PORT}"
-CLI = os.path.join(REPO_ROOT, "bin", "WebStrada-cli")
+CLI = os.path.join(REPO_ROOT, "bin", "webstrada-cli")
 TEST_CFMS = [os.path.join(SCRIPT_DIR, "draw_pixels.cfm"),
              os.path.join(SCRIPT_DIR, "axis_draw_pixels.cfm")]
 

@@ -29,7 +29,7 @@ except ValueError:
 
 DEFAULT_RDS_BASE = f"rds://admin:admin@{RDS_HOST}:{RDS_PORT}/app"
 DEFAULT_HTTP_BASE = f"http://{RDS_HOST}:{RDS_PORT}"
-DEFAULT_CLI_PATH = os.path.join(REPO_ROOT, "bin", "WebStrada-cli")
+DEFAULT_CLI_PATH = os.path.join(REPO_ROOT, "bin", "webstrada-cli")
 DEFAULT_TEST_DIR = os.path.join(SCRIPT_DIR, "cfm")
 # Relative file paths in the .cfm tests (ImageWrite/ImageRead, FileWrite, ...)
 # resolve against the CLI's working directory. Run the CLI from the repo's
@@ -68,7 +68,7 @@ def main():
     parser.add_argument(
         "--cli",
         default=DEFAULT_CLI_PATH,
-        help=f"Path to WebStrada-cli binary (default: {DEFAULT_CLI_PATH})"
+        help=f"Path to webstrada-cli binary (default: {DEFAULT_CLI_PATH})"
     )
     parser.add_argument(
         "--dir",
@@ -90,7 +90,7 @@ def main():
     
     # Validate CLI binary exists
     if not os.path.exists(args.cli):
-        print_colored(f"Error: WebStrada-cli binary not found at '{args.cli}'", COLOR_RED, sys.stderr)
+        print_colored(f"Error: webstrada-cli binary not found at '{args.cli}'", COLOR_RED, sys.stderr)
         print_colored("Please build the project first using ./build.sh", COLOR_YELLOW, sys.stderr)
         sys.exit(1)
         
@@ -315,13 +315,13 @@ def main():
             #    tests land there), so pass the template path as absolute.
             cli_cmd = [args.cli, os.path.abspath(local_path)]
             # Redirect WriteLog output to a per-run writable directory so the
-            # default /var/log/WebStrada/ (uncreatable by non-root) never fails.
+            # default /var/log/webstrada/ (uncreatable by non-root) never fails.
             cli_env = dict(os.environ)
             log_dir = os.path.join(tempfile.gettempdir(), "WebStrada_verify_logs")
             os.makedirs(log_dir, exist_ok=True)
             cli_env["WEBSTRADA_LOG_DIR"] = log_dir
             if args.verbose:
-                print(f"[WebStrada-cli] Running: {' '.join(cli_cmd)}")
+                print(f"[webstrada-cli] Running: {' '.join(cli_cmd)}")
                 
             try:
                 # Read the CLI output as raw bytes and decode like the CF side
@@ -333,7 +333,7 @@ def main():
                 our_output = cli_res.stdout.decode('utf-8', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
             except subprocess.CalledProcessError as e:
                 print("")  # Newline
-                print_colored(f"  [ERROR] WebStrada-cli execution failed for {local_path}.", COLOR_RED, sys.stderr)
+                print_colored(f"  [ERROR] webstrada-cli execution failed for {local_path}.", COLOR_RED, sys.stderr)
                 if e.stderr:
                     try:
                         err_text = e.stderr.decode('utf-8', errors='replace')

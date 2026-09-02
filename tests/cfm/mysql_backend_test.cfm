@@ -5,7 +5,7 @@
      allowMultiQueries=true in the JDBC URL, a datasource setting). Run with:
        WSDATASOURCE_MYSQL_BACKEND=mysql WSDATASOURCE_MYSQL_HOST=... \
        WSDATASOURCE_MYSQL_DATABASE=... WSDATASOURCE_MYSQL_USERNAME=... \
-       WSDATASOURCE_MYSQL_PASSWORD=... bin/WebStrada-cli tests/cfm/mysql_backend_test.cfm --->
+       WSDATASOURCE_MYSQL_PASSWORD=... bin/webstrada-cli tests/cfm/mysql_backend_test.cfm --->
 
 <cfquery datasource="mysql">
 DROP TABLE IF EXISTS mb_types

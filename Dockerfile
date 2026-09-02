@@ -124,7 +124,7 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libpcre2-8.so.0 \
            /usr/lib/x86_64-linux-gnu/libpcre2-8.so
 
 # WebStrada binaries and runtime directories.
-# The scope SQLite database is created next to bin/WebStrada at runtime, so the
+# The scope SQLite database is created next to bin/webstrada at runtime, so the
 # whole /app tree is owned by the unprivileged service user.
 # /webroot is the default CFML site root; mount a volume over it at runtime.
 RUN useradd --system --create-home --home-dir /app webstrada && \
@@ -134,8 +134,8 @@ RUN useradd --system --create-home --home-dir /app webstrada && \
 # Allow nginx (www-data) to read the FastCGI socket created by the webstrada user.
 RUN usermod -aG webstrada www-data
 
-COPY --from=builder --chown=webstrada:webstrada /src/bin/WebStrada     /app/bin/WebStrada
-COPY --from=builder --chown=webstrada:webstrada /src/bin/WebStrada-cli /app/bin/WebStrada-cli
+COPY --from=builder --chown=webstrada:webstrada /src/bin/webstrada     /app/bin/webstrada
+COPY --from=builder --chown=webstrada:webstrada /src/bin/webstrada-cli /app/bin/webstrada-cli
 
 # Admin panel (webstrada-admin SPA) served at /webstrada/ plus its CFML API
 # endpoints (/webstrada/api/*.cfm), both resolved against APP_ROOT at runtime.

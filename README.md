@@ -56,19 +56,19 @@ Environment overrides: `IMAGE=name:tag` (default `webstrada:latest`) and
 
 ```bash
 # Execute CFML from stdin without loading Application.cfm/cfc
-echo '<cfdump var="hello" />' | ./bin/WebStrada-cli --stdin
+echo '<cfdump var="hello" />' | ./bin/webstrada-cli --stdin
 
 # Print LLVM IR instead of executing
-echo '<cfdump var="hello" />' | PRINT_AST= ./bin/WebStrada-cli --stdin
+echo '<cfdump var="hello" />' | PRINT_AST= ./bin/webstrada-cli --stdin
 
 # Compile and run a file (loads Application.cfm/cfc if present)
-./bin/WebStrada-cli mytemplate.cfm
+./bin/webstrada-cli mytemplate.cfm
 ```
 
 ### Application Server
 
 ```bash
-./bin/WebStrada -n :6000 -b 100 -w 4
+./bin/webstrada -n :6000 -b 100 -w 4
 ```
 
 Options:

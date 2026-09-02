@@ -14629,7 +14629,7 @@ TEST(WriteLogTest, WritesCsvRowAndHeader) {
 
     // Header is written once for a new file, then one data row.
     EXPECT_EQ(content.find("\"Severity\",\"ThreadID\",\"Date\",\"Time\",\"Application\",\"Message\"") != std::string::npos, true);
-    EXPECT_EQ(content.find("\"Information\",\"http-nio-WebStrada-exec-1\",\"") != std::string::npos, true);
+    EXPECT_EQ(content.find("\"Information\",\"http-nio-webstrada-exec-1\",\"") != std::string::npos, true);
     EXPECT_EQ(content.find("\",\"\",\"hello world\"") != std::string::npos, true);
     // Two lines total (header + row).
     size_t lines = 0;
@@ -14676,7 +14676,7 @@ TEST(WriteLogTest, SeverityTypesAndQuoting) {
     EXPECT_EQ(content.find("\"Warning\",") != std::string::npos, true);
     EXPECT_EQ(content.find("\"Error\",") != std::string::npos, true);
     EXPECT_EQ(content.find("\"Fatal\",") != std::string::npos, true);
-    EXPECT_EQ(content.find("\"Information\",\"http-nio-WebStrada-exec-1\",\"") != std::string::npos, true);
+    EXPECT_EQ(content.find("\"Information\",\"http-nio-webstrada-exec-1\",\"") != std::string::npos, true);
     EXPECT_EQ(content.find("a, b \"\"quoted\"\" x") != std::string::npos, true);
 
     unsetenv("WEBSTRADA_LOG_DIR");
@@ -14971,9 +14971,9 @@ TEST_F(JitExpressionTest, WriteLogNamedAndPositionalArgs) {
         runJitTemplate("<cfset WriteLog(text=\"named\")><cfset WriteLog(\"pos\", \"warning\")><cfset WriteLog(text=\"app\", application=false)>", variables);
     }
     std::string content = logdir.readFile("application.log");
-    EXPECT_EQ(content.find("\"Information\",\"http-nio-WebStrada-exec-1\",\"") != std::string::npos, true);
+    EXPECT_EQ(content.find("\"Information\",\"http-nio-webstrada-exec-1\",\"") != std::string::npos, true);
     EXPECT_EQ(content.find("\"named\"") != std::string::npos, true);
-    EXPECT_EQ(content.find("\"Warning\",\"http-nio-WebStrada-exec-1\",\"") != std::string::npos, true);
+    EXPECT_EQ(content.find("\"Warning\",\"http-nio-webstrada-exec-1\",\"") != std::string::npos, true);
     EXPECT_EQ(content.find("\"pos\"") != std::string::npos, true);
     EXPECT_EQ(content.find("\"app\"") != std::string::npos, true);
 }

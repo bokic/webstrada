@@ -660,30 +660,30 @@ target_link_libraries(webstrada-compiler
     LLVM
 )
 
-add_executable(WebStrada
+add_executable(webstrada
     main.cpp
     template_cache.cpp ../include/webstrada/template_cache.h
     appserver.cpp          ../include/webstrada/appserver.h
     worker.cpp             ../include/webstrada/worker.h
 )
 
-target_include_directories(WebStrada PRIVATE
+target_include_directories(webstrada PRIVATE
     ../include
 )
 
 if(WEBSTRADA_USE_PCH_IN_BUILD)
-    target_precompile_headers(WebStrada PRIVATE
+    target_precompile_headers(webstrada PRIVATE
         ${CMAKE_SOURCE_DIR}/include/webstrada/pch.h
     )
 endif()
 
-target_link_libraries(WebStrada
+target_link_libraries(webstrada
     webstrada-core
     webstrada-compiler
     fcgi
 )
 
 include(GNUInstallDirs)
-install(TARGETS WebStrada
+install(TARGETS webstrada
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

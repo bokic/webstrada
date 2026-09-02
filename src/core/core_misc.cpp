@@ -1104,9 +1104,9 @@ cfvariant *cfml::cf_writelog(const cfvariant *text, const cfvariant *type, const
         }
     }
 
-    // Default log directory is /var/log/WebStrada/ (project convention); an
+    // Default log directory is /var/log/webstrada/ (project convention); an
     // environment override is honored so tests and local runs can redirect it.
-    std::string logDir = "/var/log/WebStrada/";
+    std::string logDir = "/var/log/webstrada/";
     if (const char *env = getenv("WEBSTRADA_LOG_DIR")) {
         std::string dir(env);
         if (!dir.empty()) {
@@ -1158,7 +1158,7 @@ cfvariant *cfml::cf_writelog(const cfvariant *text, const cfvariant *type, const
     std::snprintf(dateBuf, sizeof(dateBuf), "%02d/%02d/%02d", tmv.tm_mon + 1, tmv.tm_mday, (tmv.tm_year % 100));
     std::snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d:%02d", tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
 
-    std::string row = quote(severity) + "," + quote("http-nio-WebStrada-exec-1") + "," + quote(dateBuf) + "," + quote(timeBuf)
+    std::string row = quote(severity) + "," + quote("http-nio-webstrada-exec-1") + "," + quote(dateBuf) + "," + quote(timeBuf)
                        + "," + quote(appCol) + "," + quote(message) + "\r\n";
 
     std::ofstream f(path, std::ios::app);

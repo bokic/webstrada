@@ -3,7 +3,7 @@
   test. These are WebStrada extensions, NOT part of ColdFusion, so this file
   cannot be byte-verified against CF via verify_with_coldfusion.py (running it
   there produces "Variable __CONFIGGET is undefined").
-  Run locally with: ./bin/WebStrada-cli tests/cfm/admin_extension_test.cfm
+  Run locally with: ./bin/webstrada-cli tests/cfm/admin_extension_test.cfm
 --->
 <cfset __configSet({settings: {dsnDbDir: GetTempDirectory()}})>
 
