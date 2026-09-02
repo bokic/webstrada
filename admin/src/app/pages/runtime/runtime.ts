@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { VERSION, BUILT } from '../../../environments/version';
 
 interface MemoryRegion {
   name: string;
@@ -20,8 +21,8 @@ interface ThreadRow {
   styleUrl: './runtime.css',
 })
 export class Runtime {
-  protected readonly version = 'WebStrada v0.1.0 (LLVM JIT)';
-  protected readonly built = '2026-08-01';
+  protected readonly version = `WebStrada v${VERSION} (LLVM JIT)`;
+  protected readonly built = BUILT;
 
   protected readonly memory: MemoryRegion[] = [
     { name: 'Heap Used', used: 780, max: 2048, unit: 'MB' },

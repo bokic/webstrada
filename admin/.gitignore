@@ -1,5 +1,8 @@
 # See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
+# Generated at build time by scripts/set-version.mjs
+/src/environments/version.ts
+
 # Compiled output
 /dist
 /tmp

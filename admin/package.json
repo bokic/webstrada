@@ -1,10 +1,13 @@
 {
   "name": "webstrada-admin",
-  "version": "0.0.0",
+  "version": "0.2.2",
   "scripts": {
     "ng": "ng",
+    "prebuild": "node scripts/set-version.mjs",
     "start": "ng serve",
+    "prestart": "node scripts/set-version.mjs",
     "build": "ng build",
+    "prewatch": "node scripts/set-version.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },

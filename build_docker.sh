@@ -25,6 +25,11 @@ cd "$(dirname "$0")"
 IMAGE="${IMAGE:-webstrada:latest}"
 TEXTPARSER_VERSION="${TEXTPARSER_VERSION:-1.0.11}"
 
+# The admin panel's package version is derived from the latest git tag at build
+# time (0.0.0 when the checkout has no tags). Passed into the admin-builder
+# stage because the Docker context excludes .git.
+ADMIN_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)"
+
 EXTRA_ARGS=()
 if [ "${1:-}" = "--no-cache" ]; then
     EXTRA_ARGS+=(--no-cache)
@@ -39,9 +44,10 @@ command -v docker >/dev/null 2>&1 || {
     exit 1
 }
 
-echo ">> Building image '${IMAGE}' (textparser ${TEXTPARSER_VERSION})"
+echo ">> Building image '${IMAGE}' (textparser ${TEXTPARSER_VERSION}, admin ${ADMIN_VERSION})"
 docker build \
     --build-arg TEXTPARSER_VERSION="${TEXTPARSER_VERSION}" \
+    --build-arg ADMIN_VERSION="${ADMIN_VERSION}" \
     "${EXTRA_ARGS[@]}" \
     -t "${IMAGE}" \
     -f Dockerfile \

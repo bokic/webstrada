@@ -68,9 +68,15 @@ FROM node:22-alpine AS admin-builder
 # quiet until the next npm release. The notifier itself is left enabled.
 RUN npm install -g npm@12.0.2 && npm --version
 
+# The version baked into the admin panel comes from the latest git tag, but the
+# Docker context excludes .git, so build_docker.sh derives the tag on the host
+# and passes it here as a build arg. When unset, the committed package.json
+# version is left untouched.
+ARG ADMIN_VERSION=
+
 COPY admin /admin
 WORKDIR /admin
-RUN npm ci && npm run build
+RUN node scripts/set-version.mjs "${ADMIN_VERSION}" && npm ci && npm run build
 
 # ----------------------------------------------------------------
 # Stage 2: runtime - lean image with just what the server needs.
