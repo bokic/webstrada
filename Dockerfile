@@ -63,6 +63,11 @@ RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && \
 # ----------------------------------------------------------------
 FROM node:22-alpine AS admin-builder
 
+# npm's bundled update notifier prints a "New major version of npm available!"
+# reminder on every npm run; upgrade to the current major so the reminder stays
+# quiet until the next npm release. The notifier itself is left enabled.
+RUN npm install -g npm@12.0.2 && npm --version
+
 COPY admin /admin
 WORKDIR /admin
 RUN npm ci && npm run build

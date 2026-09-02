@@ -12,6 +12,12 @@ README, and AGENTS build instructions. Log paths/names are lowercase too: the
 default log directory is now `/var/log/webstrada/` (was `/var/log/WebStrada/`)
 and the CSV thread-name field is `http-nio-webstrada-exec-1`.
 
+Compatibility note (2026-09-02): the Docker `admin-builder` stage upgrades npm
+to `12.0.2` (`npm install -g npm@12.0.2`) so npm's "New major version of npm
+available!" reminder no longer shows during `npm ci`/`ng build`. The bundled
+update notifier is intentionally left enabled so the reminder returns when a
+newer npm (e.g. 13.x) ships.
+
 Compatibility note (2026-09-02): the system SQLite stores (`ScopeStore`,
 `CacheStore`, `ProfilerStore`) are opened in SQLite shared-cache mode
 (`sqlite3_open_v2` with `SQLITE_OPEN_SHAREDCACHE`) with `PRAGMA journal_mode=WAL`

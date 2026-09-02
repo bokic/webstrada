@@ -36,8 +36,9 @@ git submodule update --init --recursive
 
 `build_docker.sh` builds a multi-stage Ubuntu Docker image: a `builder`
 stage (`ubuntu:26.04`) compiles the `textparser` dependency from
-upstream plus the project sources, an `admin-builder` stage (`node:22-alpine`)
-builds the Angular admin UI, and a `runtime` stage (`ubuntu:26.04`) keeps
+upstream plus the project sources, an `admin-builder` stage (`node:22-alpine`,
+with npm upgraded to `npm@12.0.2`) builds the
+Angular admin UI, and a `runtime` stage (`ubuntu:26.04`) keeps
 only the binaries and shared libraries the server needs. The image web root is
 `/app`; `http-dev.py` serves HTTP on port `8501` and auto-starts the FastCGI
 daemon, which can also be run directly on the TCP socket `:6000`.
