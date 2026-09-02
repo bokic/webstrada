@@ -10,6 +10,12 @@
   },
   "private": true,
   "packageManager": "npm@12.0.2",
+  "allowScripts": {
+    "@parcel/watcher": true,
+    "esbuild": true,
+    "lmdb": true,
+    "msgpackr-extract": true
+  },
   "dependencies": {
     "@angular/common": "^22.1.0",
     "@angular/compiler": "^22.1.0",
