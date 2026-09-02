@@ -23600,7 +23600,10 @@ TEST_F(ConfigExtensionTest, ConfigResetRestoresDefaultsAndPersists) {
 
 TEST_F(ConfigExtensionTest, ServerInfoExcludeAdminFilter) {
     // The stats module is shared across tests (some of which already added
-    // /webstrada rows), so assert relative behavior, not absolute counts.
+    // admin rows), so assert relative behavior, not absolute counts. Admin
+    // panel requests all reach the engine as /webstrada/* (both the Docker
+    // image and http-dev.py now use the /app/webstrada layout), and are hidden
+    // by the filter.
     webstrada::stats::request_begin("GET", "/index.cfm");
     webstrada::stats::request_end(200);
     webstrada::stats::request_begin("GET", "/webstrada/api/serverinfo.cfm");
@@ -23620,10 +23623,10 @@ TEST_F(ConfigExtensionTest, ServerInfoExcludeAdminFilter) {
     const cfvariant &lastRow = recentFiltered->m_array->at(recentFiltered->m_array->size() - 1);
     EXPECT_EQ(cfml::toStdString(member(lastRow, "template")), "/index.cfm");
 
-    // Every remaining row is a non-/webstrada request.
+    // Every remaining row is a non-admin (/webstrada) request.
     for (const auto &row : *recentFiltered->m_array) {
         std::string tpl = cfml::toStdString(member(row, "template"));
-        EXPECT_TRUE(tpl.rfind("/webstrada", 0) != 0) << tpl;
+        EXPECT_TRUE(!webstrada::stats::is_admin_request_path(tpl)) << tpl;
     }
 }
 

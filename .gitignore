@@ -10,3 +10,5 @@
 /bin
 compile_commands.json
 CMakeLists.txt.user
+# http-dev.py runtime-crafted admin mirror (APP_ROOT/webstrada symlinks)
+/webstrada

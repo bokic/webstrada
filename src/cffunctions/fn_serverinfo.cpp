@@ -10,9 +10,11 @@
  *
  * The values come from webstrada::stats (per worker process, "since last
  * restart"), tracked by worker::process_request. An optional truthy first
- * argument (excludeAdmin) drops recent requests whose template path starts
- * with /webstrada — used by the dashboard's "hide admin requests" switch, so
- * the filtering happens server-side.
+ * argument (excludeAdmin) drops recent requests whose template path is an
+ * admin-panel path (/webstrada/* — the panel is deployed at /app/webstrada in
+ * both Docker and http-dev.py; see webstrada::stats::is_admin_request_path) —
+ * used by the dashboard's "hide admin requests" switch, so the filtering
+ * happens server-side.
  */
 
 #include "common.h"
@@ -84,7 +86,7 @@ cfvariant *cf___serverinfo(const cfvariant **args, int argc)
     std::vector<const webstrada::stats::RecentRequest *> filtered;
     filtered.reserve(allRecent.size());
     for (const auto &r : allRecent) {
-        if (excludeAdmin && r.templatePath.rfind("/webstrada", 0) == 0) {
+        if (excludeAdmin && webstrada::stats::is_admin_request_path(r.templatePath)) {
             continue;
         }
         filtered.push_back(&r);

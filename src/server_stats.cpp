@@ -124,5 +124,10 @@ void set_hide_admin_requests(bool hide)
     g_hideAdminRequests = hide;
 }
 
+bool is_admin_request_path(const std::string &path)
+{
+    return path.rfind("/webstrada", 0) == 0;
+}
+
 } // namespace stats
 } // namespace webstrada

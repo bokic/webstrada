@@ -44,7 +44,59 @@ SPA_FALLBACK_PREFIXES = []
 # Built Angular admin panel (webstrada-admin), served at /webstrada/ with an
 # SPA fallback to index.html. Build it with:
 #   (cd admin && npm run build)
-ADMIN_DIST = os.path.join(APP_ROOT, "admin", "dist", "webstrada-admin", "browser")
+#
+# The dev server mirrors the Docker layout: the admin tree is exposed under
+# APP_ROOT/webstrada (SPA at webstrada/dist/webstrada-admin/browser, API at
+# webstrada/api), matching how the image deploys it at /app/webstrada. That
+# keeps the URL prefix (/webstrada/...) identical to the physical path the
+# engine resolves (DOCUMENT_ROOT + REQUEST_URI), so no path rewriting is needed
+# and the engine's admin filter needs to match only /webstrada. The same
+# symlinks are created at startup by ensure_admin_mirror(); tests rely on the
+# defaults below pointing at APP_ROOT/webstrada.
+ADMIN_DIST = os.path.join(APP_ROOT, "webstrada", "dist", "webstrada-admin", "browser")
+
+
+def _admin_source_dir():
+    """The on-disk admin source tree the mirror exposes (repo 'admin' dir)."""
+    return os.path.join(APP_ROOT, "admin")
+
+
+def _admin_mirror_dir():
+    """The exposed admin layout under APP_ROOT/webstrada (mirrors Docker)."""
+    return os.path.join(APP_ROOT, "webstrada")
+
+
+def ensure_admin_mirror():
+    """Expose the repo's admin tree under APP_ROOT/webstrada so the dev URL
+    /webstrada/ matches the physical layout, exactly like the Docker image
+    (which deploys the same content at /app/webstrada).
+
+    The repo keeps its admin sources under APP_ROOT/admin; the mirror creates
+    symlinks webstrada/api and webstrada/dist/webstrada-admin/browser -> their
+    admin dirs. It only binds paths that already exist, never overwrites an
+    existing real directory, and repairs stale symlinks (e.g. after the repo
+    was moved, when a previous run's absolute link goes dangling)."""
+    src = os.path.abspath(_admin_source_dir())
+    m = os.path.abspath(_admin_mirror_dir())
+    bindings = [
+        (os.path.join(src, "api"), os.path.join(m, "api")),
+        (os.path.join(src, "dist", "webstrada-admin", "browser"),
+         os.path.join(m, "dist", "webstrada-admin", "browser")),
+    ]
+    for source, link in bindings:
+        if not os.path.isdir(source):
+            continue
+        if os.path.islink(link):
+            # Repair a stale/broken link left behind by an earlier run whose
+            # source moved (dangling) or now points elsewhere.
+            if os.path.realpath(link) == source:
+                continue
+            os.unlink(link)
+        elif os.path.exists(link):
+            # A real directory (e.g. a checkout) - leave it alone.
+            continue
+        os.makedirs(os.path.dirname(link), exist_ok=True)
+        os.symlink(source, link)
 
 # --- FastCGI protocol constants ---------------------------------------------
 FCGI_BEGIN_REQUEST = 1
@@ -325,13 +377,15 @@ class DevHandler(BaseHTTPRequestHandler):
         if candidate is None:
             return self._send_error(403, "Forbidden")
 
-        # The engine's own Angular admin panel lives under APP_ROOT/admin, served
-        # at the /webstrada/ URL path.
+        # The engine's own Angular admin panel is served at the /webstrada/ URL
+        # path from the app root (ensure_admin_mirror() binds the repo's admin/
+        # tree under APP_ROOT/webstrada). The layout mirrors Docker's /app/webstrada,
+        # so the engine resolves templates as DOCUMENT_ROOT + REQUEST_URI with no
+        # rewriting, exactly like production.
         if rel == "/webstrada" or rel.startswith("/webstrada/"):
-            if os.path.splitext(candidate)[1].lower() in (".cfm", ".cfc"):
-                norm = os.path.normpath("/admin" + rel[len("/webstrada"):])
-                if norm.startswith("/admin/"):
-                    candidate = APP_ROOT + norm
+            if os.path.splitext(rel)[1].lower() in (".cfm", ".cfc"):
+                candidate = os.path.normpath(APP_ROOT + rel)
+                if candidate.startswith(_admin_mirror_dir() + os.sep):
                     return self._serve_cfml(candidate, rel, query, document_root=APP_ROOT)
                 return self._send_error(403, "Forbidden")
             return self._serve_admin(rel)
@@ -520,6 +574,7 @@ def main():
     if not os.path.isdir(os.path.join(APP_ROOT, "tmp")):
         os.makedirs(os.path.join(APP_ROOT, "tmp"), exist_ok=True)
 
+    ensure_admin_mirror()
     ensure_daemon(args.workers)
     print(f"[http-dev] web root: {WEBROOT}")
     print(f"[http-dev] WebStrada FastCGI socket: {SOCK_PATH}")

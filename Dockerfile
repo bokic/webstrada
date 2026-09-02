@@ -143,9 +143,11 @@ COPY --from=builder --chown=webstrada:webstrada /src/bin/webstrada     /app/bin/
 COPY --from=builder --chown=webstrada:webstrada /src/bin/webstrada-cli /app/bin/webstrada-cli
 
 # Admin panel (webstrada-admin SPA) served at /webstrada/ plus its CFML API
-# endpoints (/webstrada/api/*.cfm), both resolved against APP_ROOT at runtime.
-COPY --from=admin-builder --chown=webstrada:webstrada /admin/dist/webstrada-admin/browser /app/admin/dist/webstrada-admin/browser
-COPY --chown=webstrada:webstrada admin/api /app/admin/api
+# endpoints (/webstrada/api/*.cfm). The tree is deployed under /app/webstrada
+# so the browser-facing URL prefix matches the physical layout and the engine
+# resolves DOCUMENT_ROOT (/app) + REQUEST_URI (/webstrada/...) directly.
+COPY --from=admin-builder --chown=webstrada:webstrada /admin/dist/webstrada-admin/browser /app/webstrada/dist/webstrada-admin/browser
+COPY --chown=webstrada:webstrada admin/api /app/webstrada/api
 
 WORKDIR /app
 

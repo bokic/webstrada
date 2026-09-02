@@ -48,9 +48,17 @@ int increment_trace_session_count();
 void reset_trace_session_count();
 int trace_session_count();
 
-// In-memory setting to exclude /webstrada requests from execution tracing and dashboard stats (default true)
+// In-memory setting to exclude admin-panel requests from execution tracing
+// and dashboard stats (default true). Admin-panel requests reach the engine
+// under /webstrada (the panel is deployed at /app/webstrada in Docker and
+// mirrored at APP_ROOT/webstrada by http-dev.py).
 bool hide_admin_requests();
 void set_hide_admin_requests(bool hide);
+
+// True if a request path belongs to the engine's admin panel. The panel is
+// deployed under /app/webstrada in Docker and mirrored at APP_ROOT/webstrada by
+// http-dev.py, so a /webstrada/* path identifies it in both environments.
+bool is_admin_request_path(const std::string &path);
 
 } // namespace stats
 } // namespace webstrada

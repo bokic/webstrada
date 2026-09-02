@@ -88,9 +88,13 @@ serving everything else as a static file.
 
 By default the web root is the directory containing the script, but it can be
 pointed at any directory (e.g. a mounted host volume) with `--webroot` or the
-`WEBROOT` environment variable. The built admin panel (`admin/dist/...`) and
-its `/webstrada/api/*.cfm` endpoints are always served from the app root at
-`/webstrada/`, independent of the web root.
+`WEBROOT` environment variable. The built admin panel and its
+`/webstrada/api/*.cfm` endpoints are always served from the app root at
+`/webstrada/`, independent of the web root. On startup the dev server exposes
+the repo's `admin/` tree as `APP_ROOT/webstrada` (SPA at
+`webstrada/dist/webstrada-admin/browser`, API at `webstrada/api`) — the same
+layout the Docker image deploys at `/app/webstrada` — so the engine resolves
+`DOCUMENT_ROOT + REQUEST_URI` with no path translation, just like production.
 
 ```bash
 python3 http-dev.py [--host 0.0.0.0] [--port 8501] [--workers 4] [--webroot DIR]
