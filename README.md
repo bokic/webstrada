@@ -1,58 +1,27 @@
 # webstrada 🌐
 
-[![Language: C](https://shields.io)](https://wikipedia.org)
-[![License: LGPL v3](https://shields.io)](https://gnu.org)
-[![Build Status](https://shields.io)]()
+[![Language: C++23](https://img.shields.io/badge/Language-C%2B%2B23-blue.svg)](https://en.cppreference.com/w/cpp/23)
+[![Compiler: LLVM/Clang](https://img.shields.io/badge/JIT-LLVM-orange.svg)](https://llvm.org/)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0.html)
 
-A high-performance, lightweight, and modular **Web Routing & Network Proxy Engine** written in pure C. 
+A high-performance, lightweight **CFML Application Engine** written in C++. 
 
-`webstrada` is built for microservices, edge computing, and custom embedded systems that require microsecond-level routing precision without the overhead of heavy web enterprise frameworks. It acts as a super-fast traffic orchestrator, handling HTTP requests, path routing, and upstream proxying with a minimal memory footprint.
+**WebStrada** is a high-performance, **CFML (ColdFusion Markup Language)** application server written in modern C++23. Powered by an LLVM-based JIT compiler and an optimized native runtime, WebStrada delivers Adobe ColdFusion compatibility with near-instant execution speed, ultra-low memory overhead, and native deployment capabilities without Java/JVM dependencies.
 
 ---
 
 ## ✨ Features
 
-- **⚡ Zero-Copy Routing:** Highly optimized path matching and request parsing using standard C memory mechanics.
-- **🛡️ Lightweight Proxying:** Forward HTTP/HTTPS traffic efficiently to backend upstreams or microservices.
-- **🧩 Modular Architecture:** Easily extendable with custom plugins or handlers for request modification and logging.
-- **💻 Low Resource Footprint:** Ideal for containerized cloud environments (Docker) and resource-constrained edge hardware.
-
----
-
-## 🛠️ Building & Installation
-
-### Prerequisites
-
-To compile `webstrada`, you will need a modern C compiler (`gcc` or `clang`), `cmake`, and standard network socket development headers.
-
-*   **Ubuntu / Debian:**
-    ```bash
-    sudo apt-get install build-essential cmake
-    ```
-*   **Arch Linux:**
-    ```bash
-    sudo pacman -S base-devel cmake
-    ```
-
-### Build Steps
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com
-   cd webstrada
-   ```
-
-2. **Compile the binary:**
-   ```bash
-   mkdir build && cd build
-   cmake -DCMAKE_BUILD_TYPE=Release ..
-   make -j\$(nproc)
-   ```
-
-3. **Install the service:**
-   ```bash
-   sudo make install
-   ```
+- **⚡ LLVM JIT Compilation:** Directly compiles CFML tags, `<cfscript>`, expressions, and ColdFusion Components (CFCs) into optimized native machine code.
+- **🎯 Adobe ColdFusion Compatibility:** Rigorous behavioral alignment with Adobe ColdFusion 2025, verified by differential test suites.
+- **☕ Zero JVM Footprint:** Starts in milliseconds, consumes a fraction of the memory required by traditional CF engines, and eliminates JVM warm-up penalties and garbage collection pauses.
+- **🧩 Comprehensive Tag & Function Support:**
+  - Standard scopes (`Application`, `Session`, `Request`, `Server`, `CGI`, `Variables`, `This`).
+  - Database persistence (`<cfquery>`, `<cfqueryparam>`, `<cfstoredproc>`, `<cftransaction>`, Query-of-Queries).
+  - Web & HTTP tags (`<cfhttp>`, `<cfheader>`, `<cfcontent>`, `<cflocation>`, `<cfflush>`).
+  - Native image processing (`<cfimage>`, Cairo/JPEG), XML, WDDX, ZIP/archive operations, and file/directory I/O.
+- **🌐 Deployment Ready:** Runs as a standalone FastCGI application server (`webstrada`) fronted by Nginx/Caddy/Apache, or as a direct command-line runner (`webstrada-cli`).
+- **🗄️ Multi-Process Scopes & Caching:** Multi-process session and application caching backed by SQLite WAL mode and shared-memory architectures.
 
 ---
 
@@ -61,25 +30,31 @@ To compile `webstrada`, you will need a modern C compiler (`gcc` or `clang`), `c
 Run `webstrada` by passing a configuration file or defining your routing paths via the command line interface:
 
 ```bash
-webstrada --config ./config.json --port 8080
+# Download docker images
+docker pull bokic78/webstrada:latest
+
+# Create docker container
+cd {to root of your CFML application}
+docker create --name webstrada -p 80:80 -v .:/webroot bokic78/webstrada:latest
+
+# Start webstrada app server
+docker start webstrada
+
+# Stop webstrada app server
+docker stop webstrada
+
+# Delete webstrada docker container
+docker rm webstrada
+
+# Delete webstrada docker image
+docker rmi bokic78/webstrada:latest
+
 ```
 
-### Direct Proxy Mode
-```bash
-webstrada --listen 0.0.0.0:80 --upstream 127.0.0.1:3000
-```
+This will server current directory as CFML application. Then open:
 
----
-
-## 🤝 Contributing
-
-We welcome structural performance enhancements, bug fixes, and feature requests to make `webstrada` even faster!
-
-1. **Fork** the project.
-2. **Create** your feature branch (`git checkout -b feature/AmazingFeature`).
-3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`).
-4. **Push** to the branch (`git push origin feature/AmazingFeature`).
-5. **Open a Pull Request**.
+http://localhost/ — the built-in web root (serves the app directory)
+http://localhost/webstrada/ — the WebStrada admin panel
 
 ---
 
