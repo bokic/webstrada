@@ -2,7 +2,7 @@
 
 [![Language: C++23](https://img.shields.io/badge/Language-C%2B%2B23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 [![Compiler: LLVM/Clang](https://img.shields.io/badge/JIT-LLVM-orange.svg)](https://llvm.org/)
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0.html)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 A high-performance, lightweight **CFML Application Engine** written in C++. 
 
@@ -60,6 +60,6 @@ http://localhost/webstrada/ — the WebStrada admin panel
 
 ## 📄 License
 
-This project is licensed under the **GNU Lesser General Public License v3.0 (LGPL-3.0)** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 Developed with ❤️ by [Boris Barbulovski (bokic)](https://github.com).
