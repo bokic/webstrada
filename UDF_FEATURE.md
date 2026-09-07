@@ -1,15 +1,15 @@
 # UDF Feature — User-Defined Functions and Closures
 
 Status: **Implemented** (compile-time registration + runtime dispatch + closures),
-verified byte-for-byte against ColdFusion 2021 in `tests/cfm/udf_basic_test.cfm`,
-`udf_closure_test.cfm`, `udf_scope_test.cfm` and the `UdfTest` unit-test suite.
-BUGS.md item #1 (closures degrading to a bare parameter reference) is fixed.
+with coverage against Adobe ColdFusion 2021 and 2025 in the CFM fixtures under
+`tests/cfm/`, plus the `UdfTest` unit-test suite. The original closure parsing
+regression is fixed.
 
 This document is the single source of truth for the "register and call custom
 functions" feature (cfscript `function` keyword + anonymous function/closure
-expressions). It captures the exact Adobe ColdFusion 2021 behavior, verified by
-running snippets against the local CF server, and the resulting implementation
-design for WebStrada.
+expressions). It captures Adobe ColdFusion behavior verified against the local
+CF servers, along with the implementation notes that are relevant to maintaining
+the feature.
 
 All experiment snippets live in `tmp/udf_probes/e*.cfm`; run one against the
 server with `./tmp/run_cf.sh tmp/udf_probes/eNN.cfm`. The CF error messages were
@@ -36,22 +36,31 @@ function-name check resolves it.
 
 ---
 
-## 2. Current WebStrada state (what must change)
+## 2. Current WebStrada state
 
-| Area | Current behavior | Problem |
-|------|------------------|---------|
-| Closure in expression | `parseTokensToAST` (src/compiler.cpp:762) tokenizes `function(x)` as a `TextParser_cfml_Function` token and treats it as a normal call `function(x)`; the trailing `{ ... }` CodeBlock is never consumed. IR becomes `cfvariant_call_function(out, ..., "arrayMap", [arr, x], 2)` → "Variable X is undefined." | The `function` keyword + body are dropped; only `(x)` survives |
-| Function declaration statement | `compile_script_statement` (src/compiler.cpp:3274) has no `function name(...){...}` case; it falls into the generic expression path and misparses | `function add(a,b){...}` → "Unknown function call: add" |
-| Function value | `cfvariant::Function` (include/webstrada/cfvariant.h) is only a *built-in method handle* — a text string (cf8.cpp `functionHandleText`). Not callable, no compiled code, no metadata | UDF/closure values can't be stored or invoked |
-| Call dispatch | Compile-time-known builtins → direct JIT stub; everything else → `cfml::cfvariant_call_function` (src/cf8.cpp:7084) string lookup → "Unknown function call: NAME" (cf8.cpp:5013) | No UDF/variable lookup path |
-| Callbacks | `ArrayMap`/`ArraySort` etc. invoke named string callbacks via `callCallback`/`evaluateExpr` (cf8.cpp:1908); a `Function` value's `toString()` is not a callable name | `arrayMap(arr, function(x){...})` unusable |
-| Bare name | `cfvariant_bare_identifier` (cf8.cpp:6751): undefined variable → built-in handle or "Variable X is undefined." | No UDF resolution |
+The feature is implemented. Page-level UDF declarations are collected before
+template code generation and registered in the `variables` scope, so definitions
+are hoisted. Named UDFs and anonymous closures compile to LLVM entry points and
+are represented by callable `Function` values carrying their metadata and
+captured scope.
+
+Calls to non-built-in names resolve variables at runtime and invoke callable UDF
+values. Struct/member-held functions, function arguments, recursion, nested
+functions, and callback functions use the same callable path. Built-in functions
+remain direct JIT calls and cannot be shadowed by UDF declarations.
+
+The implementation also covers the higher-order callback functions currently
+listed as implemented in `PROGRESS.md`, including `ArrayEach`, `ArrayFilter`,
+`ArrayMap`, `ArrayReduce`, `ArraySort`, `StructEach`, `StructFilter`,
+`StructMap`, `StructReduce`, `StructSort`, and `StructToSorted`.
 
 ---
 
-## 3. Verified ColdFusion 2021 behavior (source of truth)
+## 3. Verified Adobe ColdFusion behavior (source of truth)
 
-Tests: `tmp/udf_probes/e*.cfm`; server: CF 2021 at `192.168.100.10:8500`.
+The original probes were run against CF 2021; newer regression fixtures are
+also verified against the local CF 2025 server. See the individual test files
+and `PROGRESS.md` for the current verification coverage.
 Server errors abort the HTTP response, so "page aborted" below means a fatal
 runtime/compile error; exact exception classes/messages were recovered from
 `coldfusion-error.log` and `cfusion.jar`.
@@ -90,9 +99,14 @@ runtime/compile error; exact exception classes/messages were recovered from
   undefined."; `add()` → "Variable A is undefined.". (e1)
 - **Default parameter values** (`b = 10`, `c = "x"`, `d = []`,
   `e = structNew()`) are evaluated at call time when the arg is absent. (e2, e21)
-- **Named arguments are NOT valid in cfscript calls.** `person(age=30, name="Bob")`
-  → `compiler.ParseException` "Invalid CFML construct found on line {line} at
-  column {column}." (e16a/b)
+- **Named arguments are supported for UDF calls.** Calls such as
+  `person(age=30, name="Bob")` are reordered against declared parameters;
+  omitted parameters use defaults. Mixed positional/named calls and reordered
+  named calls are supported. Unknown named arguments are retained in the
+  `arguments` scope, matching current Adobe CF behavior. Named arguments for
+  built-in functions remain unsupported, matching the current CF verification
+  environment. See `tests/cfm/named_arguments_test.cfm`,
+  `namedargs_extra_test.cfm`, and `UdfTest.NamedArguments*`.
 - **`arguments` scope** is a struct containing upper-cased param-name keys **and**
   numeric indices 1..N of *all* passed args. `structKeyList(arguments)` → "A,B";
   `arguments[1]`, `arguments.a`, `arrayLen(arguments)`, `structCount(arguments)`
@@ -294,55 +308,27 @@ UDF once the UDF's local scope is passed as `variables`.
 
 ---
 
-## 5. Edge cases / open questions
+## 5. Remaining divergences and boundaries
 
-- **`var` scoping inside loops/if in script** — CF `var` is function-scoped;
-  this compiler treats `var`-like declarations how? (TODO: check current
-  handling; cfscript `var` statements are currently stripped in
-  `compile_script_statement`.)
-- **Function expressions in `<cfset>` / tag expression context** (`<cfset f =
-  function(x){...}>`) — should work via the same closure path; verify CF.
-- **Recursive UDF via its own name** — the UDF must see itself; since it is
-  registered in `variables` before any call, a self-reference resolves normally.
-- **`arguments` for page-level (template) code** — CF: `arguments` is undefined
-  at page level ("Variable ARGUMENTS is undefined."); only functions define it.
-- **Empty-name / illegal-char UDF names** — enforce `IllegalUDFNameException`.
-- **`return null;`** — CF 2021 treats `null` as an undefined variable; our
-  engine has a `null` literal. Decide: follow CF (error) or keep our extension.
-- **Component (CFC) functions** are out of scope for this task.
+- `return null;` differs from Adobe CF 2021: CF treats `null` as an undefined
+  variable, while WebStrada supports a `null` literal.
+- A template ending with `<cfscript>` and no trailing newline can emit a
+  trailing space that Adobe CF does not. This is a cosmetic output difference,
+  tracked separately in `BUGS_COSMETIC.md`.
+- Component/CFC methods have their own implementation path. They use the same
+  UDF runtime machinery where applicable, but this document focuses on page
+  UDFs and closures.
+- Named arguments for built-in functions are not supported; this matches the
+  behavior observable on the current CF verification server.
+
+Page-level `var` validation, function-scoped locals, recursive UDFs, closures in
+`<cfset>`/script expressions, page-level `arguments` behavior, and illegal or
+duplicate UDF-name validation are implemented and covered by the unit tests and
+CFM fixtures referenced in `PROGRESS.md`.
 
 ---
 
-## 6. Implementation plan (proposed order)
-
-1. Parse closure expressions in `parseTokensToAST` (new `Closure` AST node) so
-   BUGS.md #1 is fixed for the parse level; add cfm tests under
-   `tests/cfm/` (e.g. `udf_closure_expr_test.cfm`) and unit tests.
-2. Extend `cfvariant::Function` with the `UDFInfo` payload + create/invoke
-   helpers; add `IsClosure`/`IsCustomFunction` wiring.
-3. Compile a UDF body as an LLVM function (scopes, params, defaults,
-   `arguments`, return slot, type coercion checks).
-4. Register page-level function declarations at template start; enforce
-   CF's compile-time name rules.
-5. Runtime dispatch: extend `cfvariant_call_function` + non-builtin FuncCall
-   compile path to resolve and invoke Function values; "Variable {NAME} is
-   undefined." fallback.
-6. Closures as values: emit closure construction at the `Closure` AST node;
-   capture scope instance; per-invocation state.
-7. Callback integration: `arrayMap`/`arrayFilter`/`arrayEach`/`arrayReduce`/
-   `structEach`/`structMap`/etc. invoke Function values directly.
-8. Full test pass: `./tests/verify_with_coldfusion.py` (single + full + `--exact`)
-   with new cfm fixtures exercising every case in section 3; unit tests for
-   corner cases; update BUGS.md (remove item #1 when fully fixed), PROGRESS.md,
-   README.md.
-
-### 6.1 Implementation status
-
-All of steps 1–8 are done (callbacks: `arrayMap`, `arraySort` and the
-`evaluateExpr`/`callCallback` paths invoke Function values directly;
-`arrayFilter`/`arrayEach`/`arrayReduce`/`structEach`/etc. remain unimplemented
-as separate features, but any callback that reaches `callCallback` handles a
-closure). Key implementation notes:
+## 6. Implementation notes
 
 - `UDFInfo` (cfvariant.h) carries the JIT entry pointer, name, closure flag and
   the captured scope. Built-in method handles keep the old text-only
@@ -361,9 +347,13 @@ closure). Key implementation notes:
 - Page-level UDFs are collected before code generation, compiled, and
   registered into `variables` at `main` entry (hoisting). CF's compile-time
   name rules (builtin collision, duplicate, illegal chars) are enforced.
-- Known divergence (pre-existing, unrelated): a template ending with
-  `<cfscript>` and no trailing newline emits a trailing space CF does not
-  (see BUGS.md #1).
+- Higher-order functions invoke callable `Function` values directly, while
+  named callback strings continue through the compatibility interpreter path.
+- The current feature-level regression coverage includes
+  `tests/cfm/udf_basic_test.cfm`, `udf_closure_test.cfm`, `udf_scope_test.cfm`,
+  `udf_exception_test.cfm`, `udf_local_arguments_scope_test.cfm`,
+  `udf_variables_scope_test.cfm`, `udf_cfoutput_script_test.cfm`, and the
+  named-argument fixtures.
 
 ## 7. Verification commands
 
