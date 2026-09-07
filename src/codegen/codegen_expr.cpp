@@ -201,6 +201,11 @@ void parseParamList(const TextParserTokenItem &parenToken, const char *cfm_text,
     std::vector<TextParserTokenItem> group;
     auto flush = [&]() {
         if (group.empty()) return;
+        for (const auto &t : group) {
+            if (t.token_id == TextParser_cfml_SpreadOperator) {
+                throw webstrada::exception("unimplemented operator");
+            }
+        }
         std::string name, type;
         std::vector<TextParserTokenItem> defToks;
         size_t start = 0;
@@ -550,6 +555,9 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 nextCanBeUnary = false;
             }
         }
+        else if (tok.token_id == TextParser_cfml_SpreadOperator) {
+            throw webstrada::exception("unimplemented operator");
+        }
         else if (tok.token_id == TextParser_cfml_Parenthesis) {
             if (tok.children.empty()) throw webstrada::exception("Empty parentheses");
             auto ast = parseTokensToAST(tok.children[0].children, cfm_text, sharpContext);
@@ -801,6 +809,11 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 std::vector<TextParserTokenItem> pairToks;
                 auto flushPair = [&]() {
                     if (pairToks.empty()) return;
+                    for (const auto &t : pairToks) {
+                        if (t.token_id == TextParser_cfml_SpreadOperator) {
+                            throw webstrada::exception("unimplemented operator");
+                        }
+                    }
                     auto sep = std::find_if(pairToks.begin(), pairToks.end(), [&](const TextParserTokenItem &t) {
                         if (isOperatorToken(t.token_id)) {
                             std::string op(cfm_text + t.position, t.len);
@@ -867,6 +880,9 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             std::string op(cfm_text + tok.position, tok.len);
             while(!op.empty() && isspace(op.front())) op.erase(op.begin());
             while(!op.empty() && isspace(op.back())) op.pop_back();
+            if (op == "..." || tok.token_id == TextParser_cfml_SpreadOperator) {
+                throw webstrada::exception("unimplemented operator");
+            }
             std::string rawOp = op;
             for (auto &c : op) c = toupper(c);
 
@@ -1452,6 +1468,9 @@ llvm::Value *CompileExprAST(
         return emitCall(builder, f, args);
     }
     case ExprAST::UnaryOp: {
+        if (node->op_val == "...") {
+            throw webstrada::exception("unimplemented operator");
+        }
         auto *operand = CompileExprAST(module, builder, function, node->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
         if (node->op_val == "-" || node->op_val == "NEG") {
             auto *f = module->getFunction("cfvariant_neg");
@@ -1466,6 +1485,9 @@ llvm::Value *CompileExprAST(
     }
     case ExprAST::BinaryOp: {
         std::string op = node->op_val;
+        if (op == "...") {
+            throw webstrada::exception("unimplemented operator");
+        }
 
         if (op == ".") {
             // Tag-form component methods can receive a flattened `this.foo`

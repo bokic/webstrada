@@ -297,6 +297,7 @@
         "SharpChar",
         "SharpExpression",
         "Separator",
+        "SpreadOperator",
         "ScriptLineComment",
         "ScriptBlockComment",
         "ExpressionEnd",
@@ -321,6 +322,7 @@
         "SharpChar",
         "SharpExpression",
         "Separator",
+        "SpreadOperator",
         "CodeBlock",
         "ScriptLineComment",
         "ScriptBlockComment",
@@ -449,6 +451,11 @@
     "Separator": {
       "type": "SimpleToken",
       "startRegex": ","
+    },
+    "SpreadOperator": {
+      "type": "SimpleToken",
+      "startRegex": "\\.\\.\\.",
+      "textColor": "0x35b2dd"
     },
     "Variable": {
       "type": "SimpleToken",
@@ -601,6 +608,7 @@
         "SingleString",
         "DoubleString",
         "Separator",
+        "SpreadOperator",
         "ScriptLineComment",
         "ScriptBlockComment",
         "Number",
@@ -655,6 +663,7 @@
         "SingleString",
         "DoubleString",
         "Separator",
+        "SpreadOperator",
         "ScriptLineComment",
         "ScriptBlockComment",
         "Number",

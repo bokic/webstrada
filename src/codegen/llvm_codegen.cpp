@@ -5303,6 +5303,13 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
         }
 
         case TextParser_cfml_SharpExpression: {
+            std::function<void(const TextParserTokenItem &)> checkSpread = [&](const TextParserTokenItem &t) {
+                if (t.token_id == TextParser_cfml_SpreadOperator) {
+                    throw webstrada::exception("unimplemented operator");
+                }
+                for (const auto &c : t.children) checkSpread(c);
+            };
+            checkSpread(token);
             auto varName = extractVarFromSharpExpr(token, cfm_text);
             if (!varName.isEmpty()) {
                 if (varName.contains('(') || varName.contains('[')) {

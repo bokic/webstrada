@@ -1,5 +1,7 @@
 
 
+Compatibility note (2026-09-07): `SpreadOperator` (`...`) is added to `cfml_definition.json` (inside `Expression`, `ScriptExpression`, `Parenthesis`, and `SquareBrackets`). The codegen stage now throws `unimplemented operator` when encountering the spread operator across expressions, struct/array literals, function parameter declarations, and sharp interpolations. Covered by `JitExpressionTest.SpreadOperatorUnimplementedThrows`.
+
 Compatibility note (2026-09-07): `IncDecOperator` (`++` / `--`) is now a single dedicated grammar token in `cfml_definition.json`, placed inside `ExpressionTokens`. Pre-increment (`++x`, `--x`) and post-increment (`x++`, `x--`) are fully supported in CFScript expressions: post-form returns the old value and then mutates the variable; pre-form mutates first and returns the new value. The engine already handled the two-adjacent-sign-token case; this stage wires up the dedicated single-token grammar so the textparser produces an `IncDecOperator` token instead of two `AddOperator` tokens. Byte-verified against Adobe ColdFusion 2025 (`tests/cfm/incdec_operator_test.cfm`; the original `tests/cfm/cfscript_incr_test.cfm` continues to pass). Note: CFScript `while`/`do-while` loops are a pre-existing failure (see `BUGS.md`).
 
 Get all technical info from: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusion-tags/tag-summary.html

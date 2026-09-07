@@ -7387,6 +7387,26 @@ TEST_F(JitExpressionTest, InvalidSyntaxThrows) {
     EXPECT_EQ(caught, true);
 }
 
+TEST_F(JitExpressionTest, SpreadOperatorUnimplementedThrows) {
+    auto assertThrowsUnimplemented = [&](const char *tmpl) {
+        try {
+            runJitTemplate(tmpl, variables);
+            FAIL() << "Expected exception for template: " << tmpl;
+        } catch (const webstrada::exception &ex) {
+            EXPECT_EQ(std::string(ex.what()), "unimplemented operator");
+        }
+    };
+
+    assertThrowsUnimplemented("<cfset x = ...a>");
+    assertThrowsUnimplemented("<cfscript>x = ...a;</cfscript>");
+    assertThrowsUnimplemented("<cfscript>f(...a);</cfscript>");
+    assertThrowsUnimplemented("<cfscript>x = [...a];</cfscript>");
+    assertThrowsUnimplemented("<cfscript>x = {...a};</cfscript>");
+    assertThrowsUnimplemented("<cfscript>function test(...args) {}</cfscript>");
+    assertThrowsUnimplemented("<cfoutput>#...a#</cfoutput>");
+    assertThrowsUnimplemented("<cfset s = \"str #...a#\">");
+}
+
 // Boolean stringification distinguishes literal booleans (true/false) from
 // computed ones (YES/NO) across the & operator, string interpolation, the
 // cfoutput tag path, ToString, and and/or operand-returning semantics.
