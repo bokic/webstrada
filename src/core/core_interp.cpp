@@ -6586,6 +6586,57 @@ int compareVariants(const webstrada::cfvariant *a, const webstrada::cfvariant *b
     a = &as;
     b = &bs;
 
+    // Strict identity comparison: === / !==
+    // Mirrors CF's CfJspPage._strictCompare: types must be compatible
+    // (same "category") for the values to be considered equal; otherwise
+    // the result is always "not equal", regardless of value.
+    //
+    // Type categories:
+    //   - Null/NotSet        (both → equal)
+    //   - Boolean            (both → compare bool values)
+    //   - Numeric            (Number, Long, Float, DateTime — both numeric → compare as doubles)
+    //   - String             (both → case-insensitive string compare, same as ==)
+    //   - Everything else (Array, Struct, Query, Binary, Xml, Component, Function)
+    //     → never equal unless they are the exact same type AND both reduce to 0 in cfCompare
+    if (op.equals("===") || op.equals("!==")) {
+        bool isEq = false;
+
+        auto isNullLike = [](const cfvariant *v) {
+            return v->m_type == cfvariant::Null || v->m_type == cfvariant::NotSet;
+        };
+        auto isNumeric = [](const cfvariant *v) {
+            return v->m_type == cfvariant::Number || v->m_type == cfvariant::Long ||
+                   v->m_type == cfvariant::Float  || v->m_type == cfvariant::DateTime;
+        };
+
+        if (isNullLike(a) && isNullLike(b)) {
+            // Both null/notset → strictly equal
+            isEq = true;
+        } else if (isNullLike(a) || isNullLike(b)) {
+            // One null, one not → strictly not equal
+            isEq = false;
+        } else if (a->m_type == cfvariant::Boolean && b->m_type == cfvariant::Boolean) {
+            isEq = (a->m_bool == b->m_bool);
+        } else if (isNumeric(a) && isNumeric(b)) {
+            // Both numeric types: compare as doubles (same as cfCompare numeric branch)
+            double da = 0.0, db = 0.0;
+            if (tryCfDouble(a, da) && tryCfDouble(b, db)) {
+                isEq = (da == db);
+            } else {
+                isEq = false;
+            }
+        } else if (a->m_type == cfvariant::String && b->m_type == cfvariant::String) {
+            // Both strings: case-insensitive compare (same as ==)
+            isEq = (a->m_str->compareCaseInsensitive(*b->m_str) == 0);
+        } else {
+            // Different type categories (e.g. String vs Number, Boolean vs Number) → not equal
+            isEq = false;
+        }
+
+        if (op.equals("===")) return isEq ? 1 : 0;
+        return isEq ? 0 : 1;  // !==
+    }
+
     int cmp = cfCompare(a, b);
     if (op.equals("EQ") || op.equals("IS") || op.equals("EQUAL") || op.equals("==")) return cmp == 0 ? 1 : 0;
     if (op.equals("NEQ") || op.equals("IS NOT") || op.equals("NOT EQUAL") || op.equals("!=")) return cmp != 0 ? 1 : 0;

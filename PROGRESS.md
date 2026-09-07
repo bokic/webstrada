@@ -728,6 +728,15 @@ webroot DOCUMENT_ROOT/admin SPA/admin API/admin+webroot traversal/POST, plus
 
 **Detailed Parse Error Diagnostics & Multi-line Operators.** On parsing failures in `parser::parse` (`parser.cpp`), the exception details now include the target file's full pathname, line number, column number (derived from the textparser line map), and the parser error message (via `textparser_parse_error`). Set `"multiLine": true` on `Operator` in `definitions/cfml_definition.json` (and regenerated `cfml_definition.json.h`) so expressions with assignment/operators spanning multiple lines tokenize properly. Covered by `ParserErrorDetailsTest.DetailedParseErrorInfo` unit test.
 
+**Strict Comparison Operators `===` / `!==`.** The identity-comparison operators `===` (strict equal) and `!==` (strict not-equal) are now implemented, mirroring CF 2025's `CfJspPage._strictCompare`. Unlike `==`/`!=` which coerce across types, `===` returns `true` only when both operands share the same type category **and** are equal within that category:
+- Both `Null`/`NotSet` → strictly equal.
+- Both `Boolean` → compare `true`/`false` directly.
+- Both numeric (`Number`, `Long`, `Float`, `DateTime`) → compare as doubles (so `1.0 === 1` is `true`).
+- Both `String` → case-insensitive string compare (same as `==`).
+- **Different type categories** (e.g. `"1" === 1`, `true === 1`, `true === "true"`) → **always `false`**.
+
+Precedence is at the same level as `==`/`!=` (level 8). Grammar already included the tokens; only the runtime (`compareVariants` in `core_interp.cpp`) and the operator precedence table (`codegen_expr.cpp`) required updating. Unit tests in `tests/cfm/strict_compare1.cfm`.
+
 ## CFML Functions
 
 | Function | Return Type | Arguments | Implemented | Notes |

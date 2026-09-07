@@ -84,6 +84,7 @@ static int getOpPrecedence(const std::string &op, bool unary) {
     if (op == "EQ" || op == "NEQ" || op == "LT" || op == "LTE" || op == "LE" || op == "GT" || op == "GTE" || op == "GE" ||
         op == "IS" || op == "EQUAL" || op == "GREATER THAN" || op == "LESS THAN" ||
         op == "CONTAINS" || op == "DOES NOT CONTAIN" || op == "IS NOT" || op == "==" || op == "!=" ||
+        op == "===" || op == "!==" ||
         op == ">=" || op == "<=" || op == ">" || op == "<") return 8;
     if (op == "&") return 9;
     if (op == "+" || op == "-") return 10;
