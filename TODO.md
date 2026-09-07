@@ -14,10 +14,25 @@ Next areas to work on:
 * Web Services (using libcurl, libxml2)
 * ORM (Custom implementation)
 
-* Optimization
-* implement local cfvariant key cache. check drop cache if code line has external calls
-* implement prefefined array of temporaries per template, and function
-* change all cffunctions so they will return void, and update return value by last cfvariant &out parameter
+* Optimizations:
+* Add a per-function cache for first-level `cfvariant` member accesses:
+  * At compile time, identify all eligible accesses.
+  * Allocate a fixed-size pointer array in the function frame.
+  * Assign each eligible access a compile-time slot index.
+  * Initialize all slots to `nullptr`.
+  * On the first access, resolve the member normally and cache its pointer.
+  * On subsequent accesses, reuse the cached pointer.
+  * After any external or potentially mutating call, clear the function's cache because the callee may delete, replace, or modify struct members.
+  * Retain generation/owner validation so local deletions, clears, scope replacement, recursion, and aliasing cannot produce stale pointers.
+* Add compile-time-sized temporary storage for each template and function:
+  * Calculate the required number of temporary slots during code generation.
+  * Allocate independent temporary storage for every invocation.
+  * Initialize all slots as empty/`Null`.
+  * Reuse slots for expression temporaries whose lifetimes do not overlap.
+  * Track active temporary slots per cleanup region, including loop iterations and nested function/exception regions.
+  * Clear released slots when leaving a region, on early exits, and during exception unwinding.
+  * Temporary slots must never escape their owning template/function invocation or cleanup region.
+  * Move values out of temporary slots when the source slot's lifetime ends; otherwise copy them before assigning, returning, or retaining them after the slot's region is cleared.
 
 * git tag 0.9
 
