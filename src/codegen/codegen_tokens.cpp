@@ -528,6 +528,12 @@ std::vector<TextParserTokenItem> mergeObjectMembers(const std::vector<TextParser
     for (size_t cIdx = 0; cIdx < children.size(); cIdx++) {
         const auto &tok = children[cIdx];
         if (tok.token_id == TextParser_cfml_ObjectMember) {
+            if (tok.len > 1) {
+                // e.g. "?." safe navigation operator: leave unmerged so codegen can reject it
+                pendingDot = false;
+                processedChildren.push_back(tok);
+                continue;
+            }
             if (!processedChildren.empty() &&
                 (processedChildren.back().token_id == TextParser_cfml_Variable ||
                  processedChildren.back().token_id == TextParser_cfml_Keyword)) {

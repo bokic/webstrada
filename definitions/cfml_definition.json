@@ -441,7 +441,7 @@
     },
     "ObjectMember": {
       "type": "SimpleToken",
-      "startRegex": "\\."
+      "startRegex": "\\?\\.|\\."
     },
     "Function": {
       "type": "SimpleToken",
@@ -462,6 +462,11 @@
       "startRegex": "[a-z_\\$]+[a-z0-9_\\$]*",
       "textColor": "0x9cdcfe"
     },
+    "LambdaOperator": {
+      "type": "SimpleToken",
+      "startRegex": "=>",
+      "textColor": "0x35b2dd"
+    },
     "AssignOperator": {
       "type": "SimpleToken",
       "startRegex": "\\+=|\\-=|\\*=|\\/=|%=|&=|=",
@@ -469,7 +474,7 @@
     },
     "TernaryOperator": {
       "type": "SimpleToken",
-      "startRegex": "\\?:|\\?|\\:",
+      "startRegex": "\\?\\?|\\?:|\\?|\\:",
       "textColor": "0x35b2dd"
     },
     "LogicalImpOperator": {
@@ -537,6 +542,7 @@
       "multiLine": true,
       "deleteIfOnlyOneChild": true,
       "nestedTokens": [
+        "LambdaOperator",
         "CompareOperator",
         "AssignOperator",
         "TernaryOperator",
@@ -680,6 +686,12 @@
     }
   },
   "operator_precedence": [
+    {
+      "operators": [
+        "LambdaOperator"
+      ],
+      "associativity": "right"
+    },
     {
       "operators": [
         "AssignOperator"

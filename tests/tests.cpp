@@ -7407,6 +7407,30 @@ TEST_F(JitExpressionTest, SpreadOperatorUnimplementedThrows) {
     assertThrowsUnimplemented("<cfset s = \"str #...a#\">");
 }
 
+TEST_F(JitExpressionTest, UnsupportedOperatorsThrow) {
+    auto assertThrowsUnsupported = [&](const char *tmpl) {
+        try {
+            runJitTemplate(tmpl, variables);
+            FAIL() << "Expected unsupported operator exception for template: " << tmpl;
+        } catch (const webstrada::exception &ex) {
+            EXPECT_EQ(std::string(ex.what()), "unsupported operator");
+        }
+    };
+
+    // Lambda operator =>
+    assertThrowsUnsupported("<cfscript>f = (x) => x + 1;</cfscript>");
+    assertThrowsUnsupported("<cfscript>f = x => x + 1;</cfscript>");
+    assertThrowsUnsupported("<cfset f = (x) => x + 1>");
+
+    // Null coalescing operator ??
+    assertThrowsUnsupported("<cfscript>x = a ?? b;</cfscript>");
+    assertThrowsUnsupported("<cfset x = a ?? b>");
+
+    // Safe navigation operator ?.
+    assertThrowsUnsupported("<cfscript>x = a?.b;</cfscript>");
+    assertThrowsUnsupported("<cfset x = a?.b>");
+}
+
 TEST_F(JitExpressionTest, ScriptKeywordsSupportAndUnsupportedThrows) {
     auto assertThrowsUnsupported = [&](const char *tmpl) {
         try {

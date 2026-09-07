@@ -5328,6 +5328,9 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
                 if (t.token_id == TextParser_cfml_SpreadOperator) {
                     throw webstrada::exception("unimplemented operator");
                 }
+                if (t.token_id == TextParser_cfml_LambdaOperator) {
+                    throw webstrada::exception("unsupported operator");
+                }
                 for (const auto &c : t.children) checkSpread(c);
             };
             checkSpread(token);

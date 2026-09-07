@@ -26,7 +26,8 @@ void trace_record_event(const char *type, const char *path, const char *function
 namespace webstrada {
 
 inline bool isOperatorToken(int token_id) {
-    return token_id >= TextParser_cfml_AssignOperator && token_id <= TextParser_cfml_Operator;
+    return (token_id >= TextParser_cfml_LambdaOperator && token_id <= TextParser_cfml_Operator) ||
+           token_id == TextParser_cfml_SpreadOperator;
 }
 
 struct TextParserTokenItem

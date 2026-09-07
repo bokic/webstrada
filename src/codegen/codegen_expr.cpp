@@ -75,7 +75,9 @@ static int getOpPrecedence(const std::string &op, bool unary) {
         return 0;
     }
 
+    if (op == "=>") return -1;
     if (op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=" || op == "&=") return 0;
+    if (op == "??" || op == "?:" || op == "?") return 1;
     if (op == "IMP") return 1;
     if (op == "EQV") return 2;
     if (op == "XOR") return 3;
@@ -90,13 +92,13 @@ static int getOpPrecedence(const std::string &op, bool unary) {
     if (op == "+" || op == "-") return 10;
     if (op == "*" || op == "/" || op == "\\" || op == "MOD" || op == "%") return 11;
     if (op == "^") return 12;
-    if (op == ".") return 14;
+    if (op == "." || op == "?.") return 14;
     return 0;
 }
 
 static bool isRightAssociative(const std::string &op) {
     // CF's '^' is left-associative (2^3^2 == (2^3)^2 == 64, verified on CF 2021).
-    return op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=" || op == "&=";
+    return op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=" || op == "&=" || op == "=>";
 }
 
 static bool isSimpleNameChain(const ExprAST *n) {
@@ -204,6 +206,9 @@ void parseParamList(const TextParserTokenItem &parenToken, const char *cfm_text,
         for (const auto &t : group) {
             if (t.token_id == TextParser_cfml_SpreadOperator) {
                 throw webstrada::exception("unimplemented operator");
+            }
+            if (t.token_id == TextParser_cfml_LambdaOperator) {
+                throw webstrada::exception("unsupported operator");
             }
         }
         std::string name, type;
@@ -560,6 +565,9 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
         else if (tok.token_id == TextParser_cfml_SpreadOperator) {
             throw webstrada::exception("unimplemented operator");
         }
+        else if (tok.token_id == TextParser_cfml_LambdaOperator) {
+            throw webstrada::exception("unsupported operator");
+        }
         else if (tok.token_id == TextParser_cfml_Parenthesis) {
             if (tok.children.empty()) throw webstrada::exception("Empty parentheses");
             auto ast = parseTokensToAST(tok.children[0].children, cfm_text, sharpContext);
@@ -815,6 +823,9 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                         if (t.token_id == TextParser_cfml_SpreadOperator) {
                             throw webstrada::exception("unimplemented operator");
                         }
+                        if (t.token_id == TextParser_cfml_LambdaOperator) {
+                            throw webstrada::exception("unsupported operator");
+                        }
                     }
                     auto sep = std::find_if(pairToks.begin(), pairToks.end(), [&](const TextParserTokenItem &t) {
                         if (isOperatorToken(t.token_id)) {
@@ -860,6 +871,12 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             }
         }
         else if (tok.token_id == TextParser_cfml_ObjectMember) {
+            std::string opText(cfm_text + tok.position, tok.len);
+            while (!opText.empty() && isspace(opText.front())) opText.erase(opText.begin());
+            while (!opText.empty() && isspace(opText.back())) opText.pop_back();
+            if (opText == "?." || tok.len > 1) {
+                throw webstrada::exception("unsupported operator");
+            }
             std::string op = ".";
             bool isUnary = false;
             int prec = getOpPrecedence(op, isUnary);
@@ -884,6 +901,17 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             while(!op.empty() && isspace(op.back())) op.pop_back();
             if (op == "..." || tok.token_id == TextParser_cfml_SpreadOperator) {
                 throw webstrada::exception("unimplemented operator");
+            }
+            if (op == "=>" || tok.token_id == TextParser_cfml_LambdaOperator) {
+                throw webstrada::exception("unsupported operator");
+            }
+            if (op == "??" || (tok.token_id == TextParser_cfml_TernaryOperator && op == "??")) {
+                throw webstrada::exception("unsupported operator");
+            }
+            if (tok.token_id == TextParser_cfml_TernaryOperator && op == "?" &&
+                i + 1 < tokens.size() && tokens[i + 1].token_id == TextParser_cfml_ObjectMember &&
+                tokens[i + 1].position == tok.position + tok.len) {
+                throw webstrada::exception("unsupported operator");
             }
             std::string rawOp = op;
             for (auto &c : op) c = toupper(c);
@@ -1544,6 +1572,9 @@ llvm::Value *CompileExprAST(
         if (node->op_val == "...") {
             throw webstrada::exception("unimplemented operator");
         }
+        if (node->op_val == "=>" || node->op_val == "??" || node->op_val == "?.") {
+            throw webstrada::exception("unsupported operator");
+        }
         auto *operand = CompileExprAST(module, builder, function, node->right, cgi, server, cookie, application, session, url, form, variables, cfm_text);
         if (node->op_val == "-" || node->op_val == "NEG") {
             auto *f = module->getFunction("cfvariant_neg");
@@ -1560,6 +1591,9 @@ llvm::Value *CompileExprAST(
         std::string op = node->op_val;
         if (op == "...") {
             throw webstrada::exception("unimplemented operator");
+        }
+        if (op == "=>" || op == "??" || op == "?.") {
+            throw webstrada::exception("unsupported operator");
         }
 
         if (op == ".") {
