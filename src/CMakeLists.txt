@@ -334,6 +334,8 @@ add_library(webstrada-core
     cffunctions/fn_iif.cpp
     cffunctions/fn_invoke.cpp
     cffunctions/fn_isarray.cpp
+    cffunctions/fn_isauthenticated.cpp
+    cffunctions/fn_isauthorized.cpp
     cffunctions/fn_isbinary.cpp
     cffunctions/fn_isboolean.cpp
     cffunctions/fn_isclosure.cpp
@@ -352,6 +354,7 @@ add_library(webstrada-core
     cffunctions/fn_isnull.cpp
     cffunctions/fn_isonline.cpp
     cffunctions/fn_ispdf.cpp
+    cffunctions/fn_isprotected.cpp
     cffunctions/fn_isthreadinterrupted.cpp
     cffunctions/fn_isvalid.cpp
     cffunctions/fn_iswddx.cpp

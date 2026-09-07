@@ -1906,8 +1906,12 @@ cfvariant *cf_invoke(const cfvariant *object, const cfvariant *methodName, const
 // with "Variable INVOKECFCLIENTFUNCTION is undefined." (verified on the RDS
 // host). The stub reproduces that by throwing a variable-undefined error.
 cfvariant *cf_invokecfclientfunction(const cfvariant *arg);
-cfvariant *cf_isauthenticated();
-cfvariant *cf_isauthorized();
+// IsAuthenticated, IsAuthorized, and IsProtected are obsolete ColdFusion
+// security functions (removed in CF MX / CF 6). In modern Adobe ColdFusion
+// (CF 2021/2025), calling them throws "Variable <NAME> is undefined." (verified
+// on the RDS host) and UDFs with these names are allowed.
+cfvariant *cf_isauthenticated(const cfvariant *arg = nullptr);
+cfvariant *cf_isauthorized(const cfvariant *arg = nullptr);
 cfvariant *cf_isbinary(const cfvariant *val);
 cfvariant *cf_isboolean(const cfvariant *val);
 cfvariant *cf_isclosure(const cfvariant *val);
@@ -1937,7 +1941,7 @@ cfvariant *cf_isonline(const cfvariant *value);
 cfvariant *cf_ispdfarchive(const cfvariant *value, const cfvariant *standard = nullptr);
 cfvariant *cf_ispdffile(const cfvariant *value);
 cfvariant *cf_ispdfobject(const cfvariant *value);
-cfvariant *cf_isprotected();
+cfvariant *cf_isprotected(const cfvariant *arg = nullptr);
 cfvariant *cf_isquery(const cfvariant *val);
 cfvariant *cf_issafehtml();
 cfvariant *cf_issamllogoutresponse();

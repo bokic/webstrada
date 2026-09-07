@@ -4709,6 +4709,15 @@ cfvariant evaluateExpr(string &out, const string &expr,
         if (fname.equals("INVOKECFCLIENTFUNCTION")) {
             throw webstrada::exception("Variable INVOKECFCLIENTFUNCTION is undefined.");
         }
+        if (fname.equals("ISAUTHENTICATED")) {
+            throw webstrada::exception("Variable ISAUTHENTICATED is undefined.");
+        }
+        if (fname.equals("ISAUTHORIZED")) {
+            throw webstrada::exception("Variable ISAUTHORIZED is undefined.");
+        }
+        if (fname.equals("ISPROTECTED")) {
+            throw webstrada::exception("Variable ISPROTECTED is undefined.");
+        }
         if (fname.equals("REPLACELIST")) {
             if (call.args.size() < 3 || call.args.size() > 6) throw webstrada::exception("ReplaceList requires 3 to 6 arguments");
             cfvariant a1 = evaluateExpr(out, call.args[0], cgi, server, cookie, application, session, url, form, variables);

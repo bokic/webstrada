@@ -1,52 +1,23 @@
 # Research: ISPROTECTED cffunction implementation notes
 
-- Git commit: `6881a2511a9fe67b582286462f66573bb8b5e16b`
-- Timestamp: `2026-08-03 20:19:57 UTC`
-
 ## Current state
 
-- Runtime stub: `cfml::cf_isprotected()` in `src/cf8.cpp:14248` throws `"Function ISPROTECTED is not implemented"`.
-- Compiler: `ISPROTECTED` is in the zero-arg not-implemented function list (`src/compiler.cpp:1740`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5499`.
+- Runtime implementation: `cfml::cf_isprotected()` in `src/cffunctions/fn_isprotected.cpp` throws `"Variable ISPROTECTED is undefined."` (byte-identical to Adobe ColdFusion 2025).
+- Removed in ColdFusion MX with the removal of pre-MX Advanced Security.
+- In Adobe ColdFusion 2025, calling `isProtected()` throws `Variable ISPROTECTED is undefined.` and defining a UDF with this name is allowed.
+- JIT compiler resolves unqualified calls through `cfvariant_call_function`, allowing UDF definitions to take precedence and falling through to `Variable ISPROTECTED is undefined.` when undefined.
+- Symbol registered via `AddSymbol` in `src/codegen/llvm_compiler.cpp`.
 
-## Implemented: 0%
+## Implemented: 100% (Not a CF 2025 function; byte-identical error reproduced)
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:14248` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1740`, symbol at `src/compiler.cpp:5499` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Reproduces CF 2025 error | `src/cffunctions/fn_isprotected.cpp` |
+| Compiler wiring | ✅ Calls through `cfvariant_call_function` allowing UDFs | `src/codegen/codegen_expr.cpp` |
+| Interpreter dispatch | ✅ Throws variable-undefined error | `src/core/core_interp.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*isprotected*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:557` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Crypto/Token/Decision) | — |
+| Tests | ✅ Verified against CF 2025 | `tests/cfm/is_protected_authenticated_authorized.cfm`, `JitExpressionTest.Tier2IsProtected` |
+| Tracker status | ✅ Updated | `PROGRESS.md`, `UNIMPLEMENTED_FUNCTIONS.md` |
 | Docs/spec | ✅ Spec reference exists | `cfml_docs/CFML_FUNCTION_ISPROTECTED.md` |
-
-## What ISPROTECTED does at the low C level
-
-Returns true if the current request is for a protected (secure) page that requires authentication.
-
-- Arg 1: `value` (any).
-
-## Parameter passing (by value / by reference)
-
-Verified on Adobe ColdFusion 2025 (`RDS_HOST=192.168.100.10`): ColdFusion passes simple-value arguments (string, number, boolean) **by value** — mutating a parameter inside a function never changes the caller's variable. Structs and queries are passed by reference and arrays by value, but this function takes only simple arguments, so the caller's variables are always unchanged after a call.
-
-- Arg 1: `value` (any). passed by value.
-
-## Proposed compiled form
-
-```cpp
-cfvariant *cf_isprotected(const cfvariant *a1);
-```
-Compiled as a direct JIT call (AGENTS.md rule), registered via `AddSymbol`; the compiler emits the call site with `1` argument(s) evaluated into `const cfvariant *` parameters.
-
-## Dependency
-
-File-format sniffing (PDF magic bytes, ZIP/OLE container detection); for PDF/A a PDF library or parser.
-
-## Ease of implementation
-
-Low-to-medium: single-purpose call, no state to maintain, but needs the above library. Real (typed) implementation can be done in one function.

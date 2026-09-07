@@ -1,5 +1,7 @@
 
 
+Compatibility note (2026-09-07): `IsProtected`, `IsAuthenticated`, and `IsAuthorized` are obsolete ColdFusion security functions (removed in CF MX / CF 6). In modern Adobe ColdFusion (CF 2021/2025), calling them throws `Variable <NAME> is undefined.` (verified on the RDS host) and UDFs with these names are allowed. Implemented in `fn_isprotected.cpp`, `fn_isauthenticated.cpp`, and `fn_isauthorized.cpp` reproducing the exact CF 2025 error. Byte-verified against Adobe ColdFusion 2025 (`tests/cfm/is_protected_authenticated_authorized.cfm` and `JitExpressionTest.Tier2Is*`).
+
 Compatibility note (2026-09-07): `LambdaOperator` (`=>`), safe navigation `ObjectMember` (`?.`), and null-coalescing `TernaryOperator` (`??`) are added to `cfml_definition.json`. The codegen stage throws `unsupported operator` when encountering any of these operators across expressions, statements, struct literals, function parameter declarations, and sharp interpolations. Covered by `JitExpressionTest.UnsupportedOperatorsThrow`.
 
 Compatibility note (2026-09-07): CFScript keywords in `cfml_definition.json` updated with complete keyword set (`var`, `function`, `new`, `this`, `super`, `null`, `try`, `catch`, `finally`, `if`, `then`, `else`, `switch`, `case`, `default`, `break`, `continue`, `while`, `do`, `for`, `in`, `return`, `throw`, `rethrow`, `retry`, `component`, `interface`, `property`, `pageencoding`, `import`, `include`, `param`, `lock`, `transaction`, `thread`, `public`, `private`, `remote`, `package`, `static`, `final`, `abstract`, `required`). Supported keywords are hooked across statement and expression codegen (including `null` literal, `switch`/`case`/`default`, closures, member contexts, variable identifier positions, and tag attribute parsing). Unsupported script keywords (`lock`, `transaction`, `thread`, `param`, `retry`, `component`, `interface`, `property`) throw `unsupported keyword` in codegen when used as statements or expressions. Covered by `JitExpressionTest.ScriptKeywordsSupportAndUnsupportedThrows`.
@@ -1067,8 +1069,8 @@ Precedence is at the same level as `==`/`!=` (level 8). Grammar already included
 | Invoke | any | `object: string`, `methodName: string`, `arguments: any` | ✅ Yes | Invokes a CFC method or a page UDF (empty object = current page UDF), with positional array or named struct arguments. Verified against CF 2025 in tests/cfm/tier2_invoke_test.cfm. |
 | InvokeCFClientFunction | — | | ⚠️ Not a CF 2025 function | CF 2025 reports `Variable INVOKECFCLIENTFUNCTION is undefined.`, which the engine reproduces (see fn_ajax.cpp). |
 | IsArray | boolean | `value: any` | ✅ Yes | Checks if value is an array |
-| IsAuthenticated | | | ❌ No | |
-| IsAuthorized | | | ❌ No | |
+| IsAuthenticated | — | | ⚠️ Not a CF 2025 function | Obsolete pre-MX security function. CF 2025 reports `Variable ISAUTHENTICATED is undefined.`, which the engine reproduces (see fn_isauthenticated.cpp). UDFs with this name are allowed. |
+| IsAuthorized | — | | ⚠️ Not a CF 2025 function | Obsolete pre-MX security function. CF 2025 reports `Variable ISAUTHORIZED is undefined.`, which the engine reproduces (see fn_isauthorized.cpp). UDFs with this name are allowed. |
 | IsBinary | boolean | `value: any` | ✅ Yes | |
 | IsBoolean | boolean | `value: any` | ✅ Yes | |
 | IsClosure | boolean | `value: any` | ✅ Yes | `YES` for anonymous function values (`f = function(x){...}`), `NO` for named UDFs and built-in method handles — verified against CF 2021 (tests/cfm/udf_closure_test.cfm + `UdfTest.IsClosureIsCustomFunction`) |
@@ -1097,7 +1099,7 @@ Precedence is at the same level as `==`/`!=` (level 8). Grammar already included
 | IsPDFArchive | boolean | `pdf: any` | ✅ Yes | PDF magic sniffing (`%PDF-` + `%%EOF`, archived only when a PDF/A marker is present). RDS host always reports NO (no PDF service, see BUGS_CF.md). |
 | IsPDFFile | boolean | `filepath: string` | ✅ Yes | PDF magic-byte sniffing. RDS host always reports NO (no PDF service, see BUGS_CF.md). |
 | IsPDFObject | boolean | `obj: any` | ✅ Yes | PDF magic-byte sniffing. RDS host always reports NO (no PDF service, see BUGS_CF.md). |
-| IsProtected | | | ❌ No | |
+| IsProtected | — | | ⚠️ Not a CF 2025 function | Obsolete pre-MX security function. CF 2025 reports `Variable ISPROTECTED is undefined.`, which the engine reproduces (see fn_isprotected.cpp). UDFs with this name are allowed. |
 | IsQuery | boolean | `value: any` | ✅ Yes | |
 | isSafeHTML | | | ❌ No | |
 | isSamlLogoutResponse | | | ❌ No | |

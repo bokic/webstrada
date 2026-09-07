@@ -238,14 +238,6 @@ cfvariant *cfml::cf_invalidateoauthaccesstoken() {
     throw webstrada::exception("Function InvalidateOauthAccesstoken is not implemented");
 }
 
-cfvariant *cfml::cf_isauthenticated() {
-    throw webstrada::exception("Function IsAuthenticated is not implemented");
-}
-
-cfvariant *cfml::cf_isauthorized() {
-    throw webstrada::exception("Function IsAuthorized is not implemented");
-}
-
 cfvariant *cfml::cf_isinstanceof(const cfvariant *obj, const cfvariant *typeName) {
     if (!obj || !typeName) throw webstrada::exception("IsInstanceOf requires 2 arguments");
     return cf_isinstanceof_impl(obj, typeName);
@@ -261,10 +253,6 @@ cfvariant *cfml::cf_isk2serverdoccountexceeded() {
 
 cfvariant *cfml::cf_isk2serveronline() {
     throw webstrada::exception("Function IsK2ServerOnline is not implemented");
-}
-
-cfvariant *cfml::cf_isprotected() {
-    throw webstrada::exception("Function IsProtected is not implemented");
 }
 
 cfvariant *cfml::cf_issafehtml() {

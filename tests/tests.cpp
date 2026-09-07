@@ -21600,6 +21600,48 @@ TEST_F(JitExpressionTest, Tier2InvokeCFClientFunction) {
     EXPECT_THROW(runJitTemplate("<cfscript>invokeCFClientFunction(\"f\");</cfscript><cfoutput>X</cfoutput>", variables), webstrada::exception);
 }
 
+TEST_F(JitExpressionTest, Tier2IsProtected) {
+    // Obsolete security function removed in CF MX; CF reports variable as undefined.
+    EXPECT_THROW(runJitTemplate("<cfscript>isProtected();</cfscript><cfoutput>X</cfoutput>", variables), webstrada::exception);
+    try {
+        runJitTemplate("<cfscript>isProtected();</cfscript>", variables);
+        FAIL() << "Expected exception";
+    } catch (const webstrada::exception &e) {
+        EXPECT_NE(std::string(e.what()).find("Variable ISPROTECTED is undefined."), std::string::npos);
+    }
+    EXPECT_THROW(cfml::cf_isprotected(), webstrada::exception);
+    // UDF with the same name works
+    EXPECT_EQ(runJitTemplate("<cffunction name=\"isProtected\"><cfreturn \"prot_ok\"></cffunction><cfoutput>#isProtected()#</cfoutput>", variables).equals("prot_ok"), true);
+}
+
+TEST_F(JitExpressionTest, Tier2IsAuthenticated) {
+    // Obsolete security function removed in CF MX; CF reports variable as undefined.
+    EXPECT_THROW(runJitTemplate("<cfscript>isAuthenticated();</cfscript><cfoutput>X</cfoutput>", variables), webstrada::exception);
+    try {
+        runJitTemplate("<cfscript>isAuthenticated();</cfscript>", variables);
+        FAIL() << "Expected exception";
+    } catch (const webstrada::exception &e) {
+        EXPECT_NE(std::string(e.what()).find("Variable ISAUTHENTICATED is undefined."), std::string::npos);
+    }
+    EXPECT_THROW(cfml::cf_isauthenticated(), webstrada::exception);
+    // UDF with the same name works
+    EXPECT_EQ(runJitTemplate("<cffunction name=\"isAuthenticated\"><cfreturn \"auth_ok\"></cffunction><cfoutput>#isAuthenticated()#</cfoutput>", variables).equals("auth_ok"), true);
+}
+
+TEST_F(JitExpressionTest, Tier2IsAuthorized) {
+    // Obsolete security function removed in CF MX; CF reports variable as undefined.
+    EXPECT_THROW(runJitTemplate("<cfscript>isAuthorized();</cfscript><cfoutput>X</cfoutput>", variables), webstrada::exception);
+    try {
+        runJitTemplate("<cfscript>isAuthorized();</cfscript>", variables);
+        FAIL() << "Expected exception";
+    } catch (const webstrada::exception &e) {
+        EXPECT_NE(std::string(e.what()).find("Variable ISAUTHORIZED is undefined."), std::string::npos);
+    }
+    EXPECT_THROW(cfml::cf_isauthorized(), webstrada::exception);
+    // UDF with the same name works
+    EXPECT_EQ(runJitTemplate("<cffunction name=\"isAuthorized\"><cfreturn \"authz_ok\"></cffunction><cfoutput>#isAuthorized()#</cfoutput>", variables).equals("authz_ok"), true);
+}
+
 // ---- Cache family (sqlite-backed) ----
 
 class CacheTest : public testing::Test {

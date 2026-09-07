@@ -2288,6 +2288,18 @@ static cfvariant *cf_call_builtin_dispatch(
         // Not a CF 2025 function: reproduce the variable-undefined error.
         throw webstrada::exception("Variable INVOKECFCLIENTFUNCTION is undefined.");
     }
+    if (fname.equals("ISAUTHENTICATED")) {
+        // Not a CF 2025 function: reproduce the variable-undefined error.
+        throw webstrada::exception("Variable ISAUTHENTICATED is undefined.");
+    }
+    if (fname.equals("ISAUTHORIZED")) {
+        // Not a CF 2025 function: reproduce the variable-undefined error.
+        throw webstrada::exception("Variable ISAUTHORIZED is undefined.");
+    }
+    if (fname.equals("ISPROTECTED")) {
+        // Not a CF 2025 function: reproduce the variable-undefined error.
+        throw webstrada::exception("Variable ISPROTECTED is undefined.");
+    }
     if (fname.equals("REPLACELIST")) {
         if (arg_count < 3 || arg_count > 6) throw webstrada::exception("ReplaceList requires 3 to 6 arguments");
         return cf_replacelist(args[0], args[1], args[2],
