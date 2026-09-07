@@ -377,7 +377,7 @@ parseTagAttrs(const std::vector<TextParserTokenItem> *attrParts, const char *cfm
     if (!attrParts) return attrs;
     for (size_t ai = 0; ai < attrParts->size(); ) {
         const auto &at = (*attrParts)[ai];
-        if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+        if (!isAttrNameToken(at.token_id)) { ai++; continue; }
         string aname(cfm_text + at.position, at.len);
         std::vector<TextParserTokenItem> valToks;
         size_t vi = ai + 1;
@@ -395,7 +395,7 @@ parseTagAttrs(const std::vector<TextParserTokenItem> *attrParts, const char *cfm
                 vi++;
                 continue;
             }
-            if (vt.token_id == TextParser_cfml_Variable &&
+            if (isAttrNameToken(vt.token_id) &&
                 !lastWasOperator &&
                 vt.position > (*attrParts)[vi - 1].position + (*attrParts)[vi - 1].len) {
                 break;
@@ -524,16 +524,26 @@ void validateOutputExpressionSharp(const TextParserTokenItem &outputExpression, 
 std::vector<TextParserTokenItem> mergeObjectMembers(const std::vector<TextParserTokenItem> &children)
 {
     std::vector<TextParserTokenItem> processedChildren;
+    bool pendingDot = false;
     for (size_t cIdx = 0; cIdx < children.size(); cIdx++) {
         const auto &tok = children[cIdx];
-        if (!processedChildren.empty() && 
-            (tok.token_id == TextParser_cfml_Variable || tok.token_id == TextParser_cfml_ObjectMember) &&
-            (processedChildren.back().token_id == TextParser_cfml_Variable)) {
+        if (tok.token_id == TextParser_cfml_ObjectMember) {
+            if (!processedChildren.empty() &&
+                (processedChildren.back().token_id == TextParser_cfml_Variable ||
+                 processedChildren.back().token_id == TextParser_cfml_Keyword)) {
+                processedChildren.back().len = tok.position + tok.len - processedChildren.back().position;
+                processedChildren.back().token_id = TextParser_cfml_Variable;
+                pendingDot = true;
+                continue;
+            }
+        } else if (pendingDot && (tok.token_id == TextParser_cfml_Variable || tok.token_id == TextParser_cfml_Keyword)) {
             processedChildren.back().len = tok.position + tok.len - processedChildren.back().position;
             processedChildren.back().token_id = TextParser_cfml_Variable;
-        } else {
-            processedChildren.push_back(tok);
+            pendingDot = false;
+            continue;
         }
+        pendingDot = false;
+        processedChildren.push_back(tok);
     }
     return processedChildren;
 }
@@ -686,7 +696,7 @@ void parseTagAttrs(const TextParserTokenItem &startTag, const char *cfm_text,
         if (ch.token_id != TextParser_cfml_Expression) continue;
         const auto &children = ch.children;
         for (size_t ai = 0; ai < children.size(); ) {
-            if (children[ai].token_id != TextParser_cfml_Variable) { ai++; continue; }
+            if (!isAttrNameToken(children[ai].token_id)) { ai++; continue; }
             std::string aname(cfm_text + children[ai].position, children[ai].len);
             for (auto &c : aname) c = (char)tolower((unsigned char)c);
             ai++;

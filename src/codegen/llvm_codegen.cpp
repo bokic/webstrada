@@ -457,21 +457,6 @@ static void scanTagFunctionBody(const std::vector<TextParserTokenItem> &tokens,
     }
 }
 
-// True when the token at `vi` of a tag's attribute parts starts a NEW attribute
-// (a `name=` pair): a Variable token, or the `var` keyword form (`var=`). The
-// textparser tokenizes `var` as a Keyword, so without this check `var="x"`
-// would be swallowed into the previous attribute's value tokens (see BUGS.md
-// "var cannot be used as a named function argument").
-static bool isAttrNameToken(const std::vector<TextParserTokenItem> &parts,
-                            size_t vi, const char *cfm_text)
-{
-    const auto &vt = parts[vi];
-    if (vt.token_id == TextParser_cfml_Variable) return true;
-    if (vt.token_id == TextParser_cfml_Keyword && vt.len == 3 &&
-        std::memcmp(cfm_text + vt.position, "var", 3) == 0) return true;
-    return false;
-}
-
 static llvm::Function *getUdfSignatureFn(llvm::Module *module, llvm::IRBuilder<> &builder,
                                          const std::string &name, bool isComponentMethod = false)
 {
@@ -1711,7 +1696,7 @@ void compile_token_list(
                 };
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     aname.toLower();
                     std::vector<TextParserTokenItem> valToks;
@@ -1719,9 +1704,9 @@ void compile_token_list(
                     while (vi < attrParts->size() && isOperatorToken((*attrParts)[vi].token_id)) vi++;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -1975,7 +1960,7 @@ void compile_token_list(
                 };
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -1983,9 +1968,9 @@ void compile_token_list(
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -2035,7 +2020,7 @@ void compile_token_list(
                 };
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -2043,9 +2028,9 @@ void compile_token_list(
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -2094,7 +2079,7 @@ void compile_token_list(
                 };
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -2102,9 +2087,9 @@ void compile_token_list(
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -2168,7 +2153,7 @@ void compile_token_list(
                 bool hasText = false;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -2326,7 +2311,7 @@ void compile_token_list(
                 std::vector<std::pair<std::string, std::vector<TextParserTokenItem>>> timerAttrs;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -2615,7 +2600,7 @@ void compile_token_list(
                 std::vector<std::pair<std::string, std::vector<TextParserTokenItem>>> luAttrs;
                 for (size_t ai = 0; ai < luAttrParts->size(); ) {
                     const auto &at = (*luAttrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -2702,7 +2687,7 @@ void compile_token_list(
                 std::vector<std::pair<std::string, std::vector<TextParserTokenItem>>> loAttrs;
                 for (size_t ai = 0; ai < loAttrParts->size(); ) {
                     const auto &at = (*loAttrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -2780,7 +2765,7 @@ void compile_token_list(
                 std::vector<std::pair<std::string, std::vector<TextParserTokenItem>>> lgAttrs;
                 for (size_t ai = 0; ai < lgAttrParts->size(); ) {
                     const auto &at = (*lgAttrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -2951,7 +2936,7 @@ void compile_token_list(
                 bool hasName = false;
                 for (size_t ai = 0; ai < paramAttrParts->size(); ) {
                     const auto &at = (*paramAttrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -3134,7 +3119,7 @@ void compile_token_list(
                 };
                 for (size_t ai = 0; ai < ocAttrParts->size(); ) {
                     const auto &at = (*ocAttrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -3300,16 +3285,16 @@ void compile_token_list(
                 llvm::Value *loginStorageVal = nullptr;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     aname.toLower();
                     std::vector<TextParserTokenItem> valToks;
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -3391,16 +3376,16 @@ void compile_token_list(
                 llvm::Value *attrsVal = emitCall(builder, fCreateStruct, {});
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     aname.toLower();
                     std::vector<TextParserTokenItem> valToks;
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -3458,16 +3443,16 @@ void compile_token_list(
 
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     aname.toLower();
                     std::vector<TextParserTokenItem> valToks;
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -3519,7 +3504,7 @@ void compile_token_list(
                 llvm::Value *templateVal = nullptr, *runonceVal = nullptr;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -3533,9 +3518,9 @@ void compile_token_list(
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -3597,7 +3582,7 @@ void compile_token_list(
                 std::vector<std::string> unknownAttrs;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -3609,9 +3594,9 @@ void compile_token_list(
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -3697,7 +3682,7 @@ void compile_token_list(
                 llvm::Value *aValue = nullptr, *aOmit = nullptr;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     string anameLow = aname;
                     anameLow.toLower();
@@ -3705,9 +3690,9 @@ void compile_token_list(
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -3941,16 +3926,16 @@ void compile_token_list(
                 llvm::Value *nullVal = valueVal, *listVal = valueVal, *sepVal = valueVal;
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     aname.toLower();
                     std::vector<TextParserTokenItem> valToks;
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -4005,15 +3990,15 @@ void compile_token_list(
                 };
                 for (size_t ai = 0; ai < attrParts->size(); ) {
                     const auto &at = (*attrParts)[ai];
-                    if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                    if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                     string aname(cfm_text + at.position, at.len);
                     std::vector<TextParserTokenItem> valToks;
                     size_t vi = ai + 1;
                     while (vi < attrParts->size()) {
                         const auto &vt = (*attrParts)[vi];
-                        bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                           vi + 1 < attrParts->size() &&
-                                           isOperatorToken((*attrParts)[vi + 1].token_id));
+                        bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                           isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                           isAttrNameToken(*attrParts, vi, cfm_text));
                         if (nextIsAttr) break;
                         if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                         vi++;
@@ -5221,7 +5206,7 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
             llvm::Value *attrsVal = emitCall(builder, fCreateStruct, {});
             for (size_t ai = 0; ai < attrParts->size(); ) {
                 const auto &at = (*attrParts)[ai];
-                if (at.token_id != TextParser_cfml_Variable) { ai++; continue; }
+                if (at.token_id != TextParser_cfml_Variable && at.token_id != TextParser_cfml_Keyword) { ai++; continue; }
                 string aname(cfm_text + at.position, at.len);
                 string anameLow = aname;
                 anameLow.toLower();
@@ -5235,9 +5220,9 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
                 size_t vi = ai + 1;
                 while (vi < attrParts->size()) {
                     const auto &vt = (*attrParts)[vi];
-                    bool nextIsAttr = (vt.token_id == TextParser_cfml_Variable &&
-                                       vi + 1 < attrParts->size() &&
-                                       isOperatorToken((*attrParts)[vi + 1].token_id));
+                    bool nextIsAttr = (vi + 1 < attrParts->size() &&
+                                       isOperatorToken((*attrParts)[vi + 1].token_id) &&
+                                       isAttrNameToken(*attrParts, vi, cfm_text));
                     if (nextIsAttr) break;
                     if (!isOperatorToken(vt.token_id)) valToks.push_back(vt);
                     vi++;
@@ -5293,6 +5278,42 @@ llvm::AllocaInst *lpIndexVar = createEntryAlloca(builder, mainfunc, builder.getI
 
             emitCall(builder, fQueryEnd, {capture, attrsVal, cgi, server, cookie, application,
                                           session, url, form, variables});
+            break;
+        }
+
+        case TextParser_cfml_SavecontentTagPair: {
+            std::vector<TextParserTokenItem> flat;
+            for (const auto &child : token.children) {
+                if (child.token_id == TextParser_cfml_OutputExpression) {
+                    for (const auto &subChild : child.children) {
+                        flat.push_back(subChild);
+                    }
+                } else {
+                    flat.push_back(child);
+                }
+            }
+            compile_tag_savecontent_statement(flat, 0, context, module, builder, mainfunc,
+                                              out, ws, cgi, server, cookie, application, session, url, form, variables,
+                                              cfm_text, cfm_text_size, loopStack);
+            pos = token.position + token.len;
+            break;
+        }
+
+        case TextParser_cfml_MailTagPair: {
+            std::vector<TextParserTokenItem> flat;
+            for (const auto &child : token.children) {
+                if (child.token_id == TextParser_cfml_OutputExpression) {
+                    for (const auto &subChild : child.children) {
+                        flat.push_back(subChild);
+                    }
+                } else {
+                    flat.push_back(child);
+                }
+            }
+            compile_tag_mail_statement(flat, 0, context, module, builder, mainfunc,
+                                       out, ws, cgi, server, cookie, application, session, url, form, variables,
+                                       cfm_text, cfm_text_size, loopStack);
+            pos = token.position + token.len;
             break;
         }
 

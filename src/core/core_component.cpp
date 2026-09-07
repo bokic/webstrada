@@ -972,6 +972,13 @@ static cfvariant *invokeComponentValue(cfvariant *compVal, const std::string &me
     ComponentInfo *owner = nullptr;
     int idx = findMethodInInfo(startInfo, upper, owner);
     if (idx < 0) {
+        if (inst->thisScope && inst->thisScope->m_struct) {
+            auto it = inst->thisScope->m_struct->find(string(upper.c_str()));
+            if (it != inst->thisScope->m_struct->end() && it->second.m_type == cfvariant::Function) {
+                return cfml::cf_udf_invoke(&it->second, args, argc, out, cgi, server, cookie,
+                                           application, session, url, form, inst->variablesScope);
+            }
+        }
         cf_component_throw_method_not_found(compVal, methodName.c_str());
     }
     ComponentMethod &m = owner->methods[idx];

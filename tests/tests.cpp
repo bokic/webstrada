@@ -7407,6 +7407,100 @@ TEST_F(JitExpressionTest, SpreadOperatorUnimplementedThrows) {
     assertThrowsUnimplemented("<cfset s = \"str #...a#\">");
 }
 
+TEST_F(JitExpressionTest, ScriptKeywordsSupportAndUnsupportedThrows) {
+    auto assertThrowsUnsupported = [&](const char *tmpl) {
+        try {
+            runJitTemplate(tmpl, variables);
+            FAIL() << "Expected unsupported keyword exception for: " << tmpl;
+        } catch (const webstrada::exception &ex) {
+            EXPECT_EQ(std::string(ex.what()), "unsupported keyword");
+        }
+    };
+
+    // Unsupported statement keywords throw "unsupported keyword"
+    assertThrowsUnsupported("<cfscript>lock timeout=\"5\" { x = 1; }</cfscript>");
+    assertThrowsUnsupported("<cfscript>transaction { x = 1; }</cfscript>");
+    assertThrowsUnsupported("<cfscript>thread name=\"t1\" { x = 1; }</cfscript>");
+    assertThrowsUnsupported("<cfscript>param name=\"x\" default=\"1\";</cfscript>");
+    assertThrowsUnsupported("<cfscript>retry;</cfscript>");
+    assertThrowsUnsupported("<cfscript>interface MyInterface {}</cfscript>");
+    assertThrowsUnsupported("<cfscript>component MyComponent {}</cfscript>");
+    assertThrowsUnsupported("<cfscript>property name=\"p\";</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = lock;</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = transaction;</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = thread;</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = param;</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = retry;</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = component;</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = interface;</cfscript>");
+    assertThrowsUnsupported("<cfscript>x = property;</cfscript>");
+
+    // Supported keywords in expressions, statements, and member contexts
+    {
+        cfvariant vars = cfvariant::Struct;
+        string out = runJitTemplate("<cfscript>x = null; writeOutput(isNull(x));</cfscript>", vars);
+        EXPECT_EQ(out.trimmed().equals("YES"), true) << out.constData();
+    }
+    {
+        cfvariant vars = cfvariant::Struct;
+        string out = runJitTemplate("<cfscript>st = { default: 42 }; writeOutput(st.default);</cfscript>", vars);
+        EXPECT_EQ(out.trimmed().equals("42"), true) << out.constData();
+    }
+    {
+        cfvariant vars = cfvariant::Struct;
+        string out = runJitTemplate("<cfscript>f = function(x) { return x * 3; }; writeOutput(f(7));</cfscript>", vars);
+        EXPECT_EQ(out.trimmed().equals("21"), true) << out.constData();
+    }
+    {
+        cfvariant vars = cfvariant::Struct;
+        string out = runJitTemplate("<cfscript>s = \"\"; for (item in [10, 20, 30]) { s &= item & \",\"; } writeOutput(s);</cfscript>", vars);
+        EXPECT_EQ(out.trimmed().equals("10,20,30,"), true) << out.constData();
+    }
+    {
+        cfvariant vars = cfvariant::Struct;
+        string out = runJitTemplate(
+            "<cfscript>\n"
+            "ans = \"\";\n"
+            "k = 2;\n"
+            "switch (k) {\n"
+            "  case 1: ans = \"one\"; break;\n"
+            "  case 2: ans = \"two\"; break;\n"
+            "  default: ans = \"other\"; break;\n"
+            "}\n"
+            "writeOutput(ans);\n"
+            "</cfscript>", vars);
+        EXPECT_EQ(out.trimmed().equals("two"), true) << out.constData();
+    }
+    {
+        cfvariant vars = cfvariant::Struct;
+        string out = runJitTemplate(
+            "<cfscript>\n"
+            "ans = \"\";\n"
+            "try {\n"
+            "  throw(\"my error\");\n"
+            "} catch (any e) {\n"
+            "  ans = e.message;\n"
+            "} finally {\n"
+            "  ans &= \"|done\";\n"
+            "}\n"
+            "writeOutput(ans);\n"
+            "</cfscript>", vars);
+        EXPECT_EQ(out.trimmed().equals("my error|done"), true) << out.constData();
+    }
+    {
+        cfvariant vars = cfvariant::Struct;
+        string out = runJitTemplate(
+            "<cfscript>\n"
+            "i = 0;\n"
+            "do {\n"
+            "  i++;\n"
+            "} while (i < 3);\n"
+            "writeOutput(i);\n"
+            "</cfscript>", vars);
+        EXPECT_EQ(out.trimmed().equals("3"), true) << out.constData();
+    }
+}
+
 // Boolean stringification distinguishes literal booleans (true/false) from
 // computed ones (YES/NO) across the & operator, string interpolation, the
 // cfoutput tag path, ToString, and and/or operand-returning semantics.

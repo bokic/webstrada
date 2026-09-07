@@ -232,6 +232,8 @@ void parseParamList(const TextParserTokenItem &parenToken, const char *cfm_text,
             name = std::string(cfm_text + group[0].position, group[0].len);
             start = 1;
         }
+        while (!name.empty() && isspace((unsigned char)name.front())) name.erase(name.begin());
+        while (!name.empty() && isspace((unsigned char)name.back())) name.pop_back();
         if (start < group.size() && isOperatorToken(group[start].token_id)) {
             std::string op(cfm_text + group[start].position, group[start].len);
             while (!op.empty() && isspace(op.front())) op.erase(op.begin());
@@ -1142,6 +1144,24 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
             while (!kwText.empty() && isspace(kwText.back())) kwText.pop_back();
             for (auto &c : kwText) c = tolower(c);
 
+            bool memberContext = (!opStack.empty() && opStack.back().first == "." && !opStack.back().second);
+            bool namedArg = (i + 1 < tokens.size() &&
+                             isOperatorToken(tokens[i + 1].token_id));
+            if (namedArg) {
+                std::string opText(cfm_text + tokens[i + 1].position, tokens[i + 1].len);
+                while (!opText.empty() && isspace(opText.front())) opText.erase(opText.begin());
+                while (!opText.empty() && isspace(opText.back())) opText.pop_back();
+                namedArg = (opText == "=");
+            }
+            if (memberContext || namedArg) {
+                auto node = std::make_unique<ExprAST>();
+                node->type = ExprAST::Variable;
+                node->string_val = kwText;
+                operandStack.push_back(std::move(node));
+                nextCanBeUnary = false;
+                continue;
+            }
+
             if (kwText == "function" && nextCanBeUnary &&
                 i + 2 < tokens.size() &&
                 tokens[i + 1].token_id == TextParser_cfml_Parenthesis &&
@@ -1163,31 +1183,6 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 continue;
             }
             if (kwText == "var") {
-                // The textparser tokenizes `var` as a Keyword unconditionally,
-                // but CF 2025 accepts it in three non-declaration roles:
-                //  1. a member name after '.' (`arguments.var`),
-                //  2. a named-argument name (`two(var="x")`, `trace(var="x")`),
-                //  3. a struct/member key in `foo.var` / `{var: 1}`.
-                // In each case treat it as a variable so the surrounding code
-                // can consume it. A real declaration is `var x = ..` (Keyword,
-                // then a Variable), never `var = ..` or `.var`.
-                bool memberContext = (!opStack.empty() && opStack.back().first == "." && !opStack.back().second);
-                bool namedArg = (i + 1 < tokens.size() &&
-                                 isOperatorToken(tokens[i + 1].token_id));
-                if (namedArg) {
-                    std::string opText(cfm_text + tokens[i + 1].position, tokens[i + 1].len);
-                    while (!opText.empty() && isspace(opText.front())) opText.erase(opText.begin());
-                    while (!opText.empty() && isspace(opText.back())) opText.pop_back();
-                    namedArg = (opText == "=");
-                }
-                if (memberContext || namedArg) {
-                    auto node = std::make_unique<ExprAST>();
-                    node->type = ExprAST::Variable;
-                    node->string_val = "var";
-                    operandStack.push_back(std::move(node));
-                    nextCanBeUnary = false;
-                    continue;
-                }
                 // CF rejects `var` outside a function body (also inside an
                 // included template, compiled as a standalone page). Inside a
                 // function body the keyword is dropped and the assignment that
@@ -1206,17 +1201,95 @@ std::unique_ptr<ExprAST> parseTokensToAST(const std::vector<TextParserTokenItem>
                 text = text.trimmed();
                 throw webstrada::exception("Unexpected keyword '" + text + "' in expression");
             }
-
-            // `this` is a scope reference (component this scope / CF: page `this`
-            // is undefined). Treat it as a variable so `this.x` resolves at
-            // runtime through the scope lookup.
-            if (kwText == "this") {
+            if (kwText == "this" || kwText == "super") {
                 auto node = std::make_unique<ExprAST>();
                 node->type = ExprAST::Variable;
                 node->string_val = kwText;
                 operandStack.push_back(std::move(node));
                 nextCanBeUnary = false;
+                continue;
             }
+            if (kwText == "null") {
+                auto node = std::make_unique<ExprAST>();
+                node->type = ExprAST::LiteralNull;
+                operandStack.push_back(std::move(node));
+                nextCanBeUnary = false;
+                continue;
+            }
+            if (kwText == "new") {
+                if (!nextCanBeUnary) throw webstrada::exception("Unexpected tokens in expression");
+                std::string path;
+                size_t ni = i + 1;
+                while (ni < tokens.size() && tokens[ni].token_id == TextParser_cfml_Variable) {
+                    std::string part(cfm_text + tokens[ni].position, tokens[ni].len);
+                    while (!part.empty() && isspace((unsigned char)part.back())) part.pop_back();
+                    if (!path.empty() && path.back() != '.' && !part.empty() && part.front() != '.') path += ".";
+                    path += part;
+                    i = ni;
+                    ni = i + 1;
+                }
+                if (ni < tokens.size() && tokens[ni].token_id == TextParser_cfml_Function) {
+                    std::string fname(cfm_text + tokens[ni].position, tokens[ni].len);
+                    size_t paren = fname.find('(');
+                    if (paren != std::string::npos) fname = fname.substr(0, paren);
+                    while (!fname.empty() && isspace((unsigned char)fname.back())) fname.pop_back();
+                    if (!path.empty() && path.back() != '.') path += ".";
+                    path += fname;
+                    i = ni;
+                    ni = i + 1;
+                }
+                if (path.empty()) {
+                    throw webstrada::exception("new requires a component path");
+                }
+                auto node = std::make_unique<ExprAST>();
+                node->type = ExprAST::NewExpr;
+                node->op_val = path;
+                if (i + 1 < tokens.size() && tokens[i + 1].token_id == TextParser_cfml_Parenthesis) {
+                    const auto &subExprTok = tokens[i + 1];
+                    i++;
+                    if (!subExprTok.children.empty() &&
+                        (subExprTok.children[0].token_id == TextParser_cfml_Expression ||
+                         subExprTok.children[0].token_id == TextParser_cfml_ScriptExpression)) {
+                        const auto &exprTok = subExprTok.children[0];
+                        std::vector<TextParserTokenItem> argToks;
+                        for (const auto &child : exprTok.children) {
+                            if (child.token_id == TextParser_cfml_Separator) {
+                                if (!argToks.empty()) {
+                                    node->args.push_back(parseTokensToAST(argToks, cfm_text, sharpContext));
+                                    argToks.clear();
+                                }
+                            } else {
+                                argToks.push_back(child);
+                            }
+                        }
+                        if (!argToks.empty()) {
+                            node->args.push_back(parseTokensToAST(argToks, cfm_text, sharpContext));
+                        }
+                    }
+                }
+                operandStack.push_back(std::move(node));
+                nextCanBeUnary = false;
+                continue;
+            }
+
+            if (kwText == "lock" || kwText == "transaction" || kwText == "thread" ||
+                kwText == "param" || kwText == "retry" || kwText == "component" ||
+                kwText == "interface" || kwText == "property") {
+                throw webstrada::exception("unsupported keyword");
+            }
+            if (kwText == "default" || kwText == "required" || kwText == "in" ||
+                kwText == "public" || kwText == "private" || kwText == "package" ||
+                kwText == "remote" || kwText == "static" || kwText == "final" ||
+                kwText == "abstract") {
+                auto node = std::make_unique<ExprAST>();
+                node->type = ExprAST::Variable;
+                node->string_val = kwText;
+                operandStack.push_back(std::move(node));
+                nextCanBeUnary = false;
+                continue;
+            }
+
+            throw webstrada::exception("Unexpected tokens in expression");
         }
     }
 
@@ -1722,7 +1795,17 @@ llvm::Value *CompileExprAST(
             // an indexed assignment descends through it. Mango's
             // Application.cfc relies on this for this.mappings["/org/..."]
             // without first assigning structNew().
-            if (base->type == ExprAST::BinaryOp && base->op_val == "." &&
+            if (base->type == ExprAST::Variable && base->string_val.find('.') != std::string::npos) {
+                auto parts = splitMemberPath(base->string_val);
+                auto root = std::make_unique<ExprAST>();
+                root->type = ExprAST::Variable;
+                root->string_val = parts.front();
+                root->isChainBase = true;
+                auto *owner = CompileExprAST(module, builder, function, root,
+                    cgi, server, cookie, application, session, url, form, variables, cfm_text);
+                std::vector<std::string> tail(parts.begin() + 1, parts.end());
+                arr = emitMemberWalkForAssignment(module, builder, owner, tail);
+            } else if (base->type == ExprAST::BinaryOp && base->op_val == "." &&
                 base->right && base->right->type == ExprAST::Variable) {
                 auto *fMember = module->getFunction("cfvariant_index_for_assignment");
                 if (!fMember) fMember = llvm::Function::Create(

@@ -372,10 +372,12 @@ static size_t compile_script_do_while(
         builder.CreateBr(condBB);
     }
 
-    // Locate the trailing `while (cond)`; afterBody points at the Function while.
+    // Locate the trailing `while (cond)`; afterBody points at the while token.
     size_t whileIdx = afterBody;
     while (whileIdx < tokens.size() &&
-           !(tokens[whileIdx].token_id == TextParser_cfml_Function &&
+           !((tokens[whileIdx].token_id == TextParser_cfml_Function ||
+              tokens[whileIdx].token_id == TextParser_cfml_Keyword ||
+              tokens[whileIdx].token_id == TextParser_cfml_Variable) &&
              string(cfm_text + tokens[whileIdx].position, tokens[whileIdx].len).equals("while"))) {
         whileIdx++;
     }
@@ -456,7 +458,8 @@ static size_t compile_script_for(
     if (!hasSemi) {
         size_t inIdx = innerTokens.size();
         for (size_t j = 0; j < innerTokens.size(); j++) {
-            if (innerTokens[j].token_id == TextParser_cfml_Variable &&
+            if ((innerTokens[j].token_id == TextParser_cfml_Variable ||
+                 innerTokens[j].token_id == TextParser_cfml_Keyword) &&
                 string(cfm_text + innerTokens[j].position, innerTokens[j].len).equals("in")) {
                 inIdx = j;
                 break;
@@ -666,7 +669,7 @@ static size_t compile_script_switch(
     size_t idx = 0;
     while (idx < bodyTokens.size()) {
         const auto &tok = bodyTokens[idx];
-        if (tok.token_id == TextParser_cfml_Variable) {
+        if (tok.token_id == TextParser_cfml_Variable || tok.token_id == TextParser_cfml_Keyword) {
             webstrada::string vtext(cfm_text + tok.position, tok.len);
             if (vtext.equals("case") || vtext.equals("default")) {
                 bool isDefault = vtext.equals("default");
@@ -1083,7 +1086,7 @@ static size_t compile_script_try_statement(
 
     const TextParserTokenItem *finallyBody = nullptr;
     if (i < tokens.size() &&
-        tokens[i].token_id == TextParser_cfml_Variable &&
+        (tokens[i].token_id == TextParser_cfml_Variable || tokens[i].token_id == TextParser_cfml_Keyword) &&
         string(cfm_text + tokens[i].position, tokens[i].len).equals("finally")) {
         size_t fb = i + 1;
         while (fb < tokens.size() &&
@@ -1365,7 +1368,7 @@ static size_t compile_script_statement(
     // `return [expr];` inside a function body: store the (coerced) value in the
     // return slot and jump to the common exit block. A bare `return;` returns
     // undefined.
-    if (token.token_id == TextParser_cfml_Variable &&
+    if ((token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) &&
         string(cfm_text + token.position, token.len).equals("return")) {
         if (!g_returnCtx) {
             throw webstrada::exception("'return' is only valid inside a function");
@@ -1412,7 +1415,7 @@ static size_t compile_script_statement(
     // regex), so without this guard `if (c) A; elseif (c2) B;` would fall into
     // the generic statement path where the leading `elseif (c2)` call is
     // dropped and `B;` would run silently.
-    if (token.token_id == TextParser_cfml_Function) {
+    if (token.token_id == TextParser_cfml_Function || token.token_id == TextParser_cfml_Keyword) {
         webstrada::string fname(cfm_text + token.position, token.len);
         fname = fname.trimmed();
         int paren = fname.indexOf('(');
@@ -1423,8 +1426,8 @@ static size_t compile_script_statement(
             throw webstrada::exception("Unexpected 'elseif' in cfscript (use 'else if')");
         }
         // Loop/switch statement keywords are tokenized as Function tokens
-        // (the grammar's Function regex matches `name(`); dispatch them to
-        // their dedicated compilers when followed by a Parenthesis.
+        // (the grammar's Function regex matches `name(`) or Keyword tokens;
+        // dispatch them to their dedicated compilers when followed by a Parenthesis.
         if (start + 1 < tokens.size() && tokens[start + 1].token_id == TextParser_cfml_Parenthesis) {
             if (fname.equals("throw")) {
                 return compile_script_throw_statement(tokens, start, context, module, builder, mainfunc,
@@ -1449,8 +1452,8 @@ static size_t compile_script_statement(
         }
     }
 
-    // `do { ... } while (cond);` — the textparser tokenizes `do` as a Variable.
-    if (token.token_id == TextParser_cfml_Variable &&
+    // `do { ... } while (cond);` — the textparser tokenizes `do` as a Keyword or Variable.
+    if ((token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) &&
         string(cfm_text + token.position, token.len).equals("do") &&
         start + 1 < tokens.size() &&
         tokens[start + 1].token_id == TextParser_cfml_CodeBlock) {
@@ -1460,7 +1463,7 @@ static size_t compile_script_statement(
     }
 
     // `break;` and `continue;` inside loops/switch.
-    if (token.token_id == TextParser_cfml_Variable &&
+    if ((token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) &&
         start + 1 < tokens.size() &&
         tokens[start + 1].token_id == TextParser_cfml_ExpressionEnd) {
         webstrada::string kw(cfm_text + token.position, token.len);
@@ -1489,7 +1492,7 @@ static size_t compile_script_statement(
     // <cfabort>). Previously a bare `abort;` fell through to the expression
     // path and resolved as an undefined variable, so a `try { abort; }` caught
     // it; CF aborts the request (uncatchable).
-    if (token.token_id == TextParser_cfml_Variable &&
+    if ((token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) &&
         string(cfm_text + token.position, token.len).equals("abort") &&
         start + 1 < tokens.size() &&
         tokens[start + 1].token_id == TextParser_cfml_ExpressionEnd) {
@@ -1506,7 +1509,7 @@ static size_t compile_script_statement(
     // undefined (like a bare `return;`); outside it aborts the current
     // template page with the same uncatchable exit_exception as <cfexit>
     // (swallowed at include/construction/prelude boundaries).
-    if (token.token_id == TextParser_cfml_Variable &&
+    if ((token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) &&
         string(cfm_text + token.position, token.len).equals("exit") &&
         start + 1 < tokens.size() &&
         tokens[start + 1].token_id == TextParser_cfml_ExpressionEnd) {
@@ -1526,7 +1529,7 @@ static size_t compile_script_statement(
     // `rethrow;` — re-raises the exception caught by the innermost enclosing
     // catch block (an error anywhere else, matching CF's compile-time
     // rejection of `rethrow;` outside a catch).
-    if (token.token_id == TextParser_cfml_Variable &&
+    if ((token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) &&
         string(cfm_text + token.position, token.len).equals("rethrow") &&
         start + 1 < tokens.size() &&
         tokens[start + 1].token_id == TextParser_cfml_ExpressionEnd) {
@@ -1543,20 +1546,16 @@ static size_t compile_script_statement(
     }
 
     // Bare `throw;` / `throw <message>;` (the parenthesized `throw(...)` form
-    // is dispatched from the Function branch above).
-    if (token.token_id == TextParser_cfml_Variable &&
+    // is dispatched from the Function/Keyword branch above).
+    if ((token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) &&
         string(cfm_text + token.position, token.len).equals("throw")) {
         return compile_script_throw_statement(tokens, start, context, module, builder, mainfunc,
                                               out, cgi, server, cookie, application, session, url, form, variables,
                                               cfm_text, cfm_text_size, loopStack);
     }
 
-    // Script equivalents of <cfsavecontent> and <cfinclude>.  These are
-    // statements in Adobe CFML, even though textparser represents their
-    // keywords as ordinary Variable tokens.  Sending them to the expression
-    // parser produces the misleading "Unexpected tokens in expression" error
-    // seen while loading Mango's sampledash plugin.
-    if (token.token_id == TextParser_cfml_Variable) {
+    // Script equivalents of <cfsavecontent>, <cfinclude>, and import.
+    if (token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) {
         std::string keyword = tokenText(token, cfm_text);
         for (auto &c : keyword) c = (char)tolower((unsigned char)c);
         if (keyword == "savecontent") {
@@ -1565,7 +1564,8 @@ static size_t compile_script_statement(
                 cfm_text, cfm_text_size, loopStack);
         }
         if (keyword == "include" && start + 1 < tokens.size() &&
-            tokens[start + 1].token_id == TextParser_cfml_DoubleString) {
+            (tokens[start + 1].token_id == TextParser_cfml_DoubleString ||
+             tokens[start + 1].token_id == TextParser_cfml_SingleString)) {
             auto *fString = getOrCreateHelper(module, builder, "cfvariant_create_string",
                                                builder.getPtrTy(), {builder.getPtrTy()});
             auto *fInclude = getOrCreateHelper(module, builder, "cf_include", builder.getVoidTy(),
@@ -1583,6 +1583,49 @@ static size_t compile_script_statement(
             size_t after = start + 2;
             if (after < tokens.size() && tokens[after].token_id == TextParser_cfml_ExpressionEnd) after++;
             return after;
+        }
+        if (keyword == "import") {
+            size_t after = start + 1;
+            while (after < tokens.size() &&
+                   (tokens[after].token_id == TextParser_cfml_ScriptLineComment ||
+                    tokens[after].token_id == TextParser_cfml_ScriptBlockComment)) {
+                after++;
+            }
+            if (after < tokens.size()) {
+                size_t semi = after;
+                while (semi < tokens.size() && tokens[semi].token_id != TextParser_cfml_ExpressionEnd) {
+                    semi++;
+                }
+                if (semi > after) {
+                    std::string impPath(cfm_text + tokens[after].position,
+                                        tokens[semi - 1].position + tokens[semi - 1].len - tokens[after].position);
+                    while (!impPath.empty() && isspace((unsigned char)impPath.front())) impPath.erase(impPath.begin());
+                    while (!impPath.empty() && isspace((unsigned char)impPath.back())) impPath.pop_back();
+                    if (impPath.size() >= 2 && ((impPath.front() == '"' && impPath.back() == '"') ||
+                                                (impPath.front() == '\'' && impPath.back() == '\''))) {
+                        impPath = impPath.substr(1, impPath.size() - 2);
+                    }
+                    auto *fString = getOrCreateHelper(module, builder, "cfvariant_create_string",
+                                                       builder.getPtrTy(), {builder.getPtrTy()});
+                    llvm::Value *pathVal = emitCall(builder, fString,
+                        {builder.CreateGlobalString(llvm::StringRef(impPath), "", 0, module, true)});
+                    auto *fImport = getOrCreateHelper(module, builder, "cf_import_path", builder.getVoidTy(),
+                                                      {builder.getPtrTy()});
+                    emitCall(builder, fImport, {pathVal});
+                }
+                return (semi < tokens.size() && tokens[semi].token_id == TextParser_cfml_ExpressionEnd) ? semi + 1 : semi;
+            }
+        }
+        if (keyword == "pageencoding") {
+            size_t after = start + 1;
+            while (after < tokens.size() && tokens[after].token_id != TextParser_cfml_ExpressionEnd) after++;
+            if (after < tokens.size() && tokens[after].token_id == TextParser_cfml_ExpressionEnd) after++;
+            return after;
+        }
+        if (keyword == "lock" || keyword == "transaction" || keyword == "thread" ||
+            keyword == "param" || keyword == "retry" || keyword == "component" ||
+            keyword == "interface" || keyword == "property") {
+            throw webstrada::exception("unsupported keyword");
         }
     }
 
@@ -1663,12 +1706,12 @@ void compile_script_expression(
         // not executable expressions in this stream. This is especially
         // important for tag-based CFCs, where the surrounding <cfscript> pair
         // is also compiled as ordinary page code.
-        size_t functionKeyword = i;
+        size_t functionKeyword = size_t(-1);
         if (token.token_id == TextParser_cfml_Keyword &&
             string(cfm_text + token.position, token.len).equals("function")) {
-            // already at the declaration keyword
-        } else if (token.token_id == TextParser_cfml_Variable) {
-            // Access/return-type modifiers are emitted as Variable tokens
+            functionKeyword = i;
+        } else if (token.token_id == TextParser_cfml_Variable || token.token_id == TextParser_cfml_Keyword) {
+            // Access/return-type modifiers are emitted as Variable or Keyword tokens
             // (for example `private function` and `public string function`).
             size_t probe = i;
             for (int count = 0; count < 6; count++) {
@@ -1679,7 +1722,8 @@ void compile_script_expression(
                     functionKeyword = probe;
                     break;
                 }
-                if (tokens[probe].token_id != TextParser_cfml_Variable) break;
+                if (tokens[probe].token_id != TextParser_cfml_Variable &&
+                    tokens[probe].token_id != TextParser_cfml_Keyword) break;
             }
         }
         if (functionKeyword < tokens.size() &&

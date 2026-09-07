@@ -565,7 +565,7 @@
     },
     "Keyword": {
       "type": "SimpleToken",
-      "startRegex": "var\\b|function\\b|this\\b|try\\b|catch\\b|if\\b|then\\b|else\\b",
+      "startRegex": "var\\b|function\\b|new\\b|this\\b|super\\b|null\\b|try\\b|catch\\b|finally\\b|if\\b|then\\b|else\\b|switch\\b|case\\b|default\\b|break\\b|continue\\b|while\\b|do\\b|for\\b|in\\b|return\\b|throw\\b|rethrow\\b|retry\\b|component\\b|interface\\b|property\\b|pageencoding\\b|import\\b|include\\b|param\\b|lock\\b|transaction\\b|thread\\b|public\\b|private\\b|remote\\b|package\\b|static\\b|final\\b|abstract\\b|required\\b",
       "textColor": "0xc586c0"
     },
     "Parenthesis": {

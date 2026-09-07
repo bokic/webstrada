@@ -38,6 +38,19 @@ struct TextParserTokenItem
     std::string error;
 };
 
+// True when the token at `vi` of a tag's attribute parts starts a NEW attribute
+// (a `name=` pair): a Variable or Keyword token.
+inline bool isAttrNameToken(int tokenId)
+{
+    return tokenId == TextParser_cfml_Variable || tokenId == TextParser_cfml_Keyword;
+}
+
+inline bool isAttrNameToken(const std::vector<TextParserTokenItem> &parts,
+                            size_t vi, const char *cfm_text = nullptr)
+{
+    return isAttrNameToken(parts[vi].token_id);
+}
+
 struct TextParserTokenItemKeyValue
 {
     std::map<std::string, TextParserTokenItem> params;
