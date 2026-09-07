@@ -1172,11 +1172,23 @@ static size_t scriptFunctionKeywordIndex(const std::vector<TextParserTokenItem> 
         return (start + 1 < tokens.size() && tokens[start + 1].token_id == TextParser_cfml_Function)
                    ? start : size_t(-1);
     }
-    if (t.token_id != TextParser_cfml_Variable) return size_t(-1);
-    // Look ahead over consecutive modifier Variables (access, return type,
-    // `final`) to a `function` keyword followed by a function name.
+    // Accept modifier keywords (public/private/package/remote/static/final/abstract/required)
+    // or Variable tokens (return type, older modifier spelling) at the start.
+    auto isModifierOrType = [](const TextParserTokenItem &tok, const char *text) {
+        if (tok.token_id == TextParser_cfml_Variable) return true;
+        if (tok.token_id != TextParser_cfml_Keyword) return false;
+        // Only accept non-"function" keywords that can appear before `function`
+        std::string w(text + tok.position, tok.len);
+        std::string low; low.reserve(w.size());
+        for (auto c : w) low += (char)tolower((unsigned char)c);
+        return low == "public" || low == "private" || low == "package" || low == "remote" ||
+               low == "static" || low == "final" || low == "abstract" || low == "required";
+    };
+    if (!isModifierOrType(t, cfm_text)) return size_t(-1);
+    // Look ahead over consecutive modifier Variables/Keywords to a `function`
+    // keyword followed by a function name.
     size_t j = start;
-    while (j < tokens.size() && tokens[j].token_id == TextParser_cfml_Variable) j++;
+    while (j < tokens.size() && isModifierOrType(tokens[j], cfm_text)) j++;
     if (j < tokens.size() && tokens[j].token_id == TextParser_cfml_Keyword &&
         kwTextIs(tokens[j], cfm_text, "function") &&
         j + 1 < tokens.size() && tokens[j + 1].token_id == TextParser_cfml_Function) {
@@ -1196,22 +1208,39 @@ static size_t parseScriptFunctionDecl(const std::vector<TextParserTokenItem> &to
         return start;
     }
     std::string access = "public";
+    bool isStatic = false;
+    bool isAbstract = false;
     std::string returnTypeBeforeName;
     for (size_t i = start; i < fnKeyword; i++) {
-        if (tokens[i].token_id == TextParser_cfml_Variable) {
+        if (tokens[i].token_id == TextParser_cfml_Variable ||
+            tokens[i].token_id == TextParser_cfml_Keyword) {
             std::string w = tokenText(tokens[i], cfm_text);
             std::string low = lowercase(w);
             if (low == "public" || low == "private" || low == "package" || low == "remote") {
                 access = low;
+            } else if (low == "static") {
+                // static method modifier — accepted; marks the method as not
+                // needing an instance. Full static-scope dispatch is not yet
+                // implemented; the method is callable on an instance normally.
+                isStatic = true;
+            } else if (low == "abstract") {
+                // abstract method modifier — accepted; method may have no body.
+                isAbstract = true;
             } else if (low == "final") {
                 // final method modifier — accepted, no special behavior
+            } else if (low == "function" || low == "var" || low == "new" ||
+                       low == "return" || low == "if" || low == "else") {
+                // these are parser keywords that can appear in token stream but
+                // should never be treated as return types
             } else if (returnTypeBeforeName.empty()) {
                 returnTypeBeforeName = w;
             }
         }
     }
+    (void)isAbstract; // reserved for future interface validation
     size_t after = parseFunctionDecl(tokens, fnKeyword, cfm_text, def);
     def.access = access;
+    def.isStatic = isStatic;
     if (!returnTypeBeforeName.empty() && def.returnType.empty()) {
         def.returnType = returnTypeBeforeName;
     }
@@ -1270,7 +1299,8 @@ static bool parseScriptFormComponent(
     // comments/imports).
     size_t compIdx = top.size();
     for (size_t i = 0; i < top.size(); i++) {
-        if (top[i].token_id == TextParser_cfml_Variable &&
+        if ((top[i].token_id == TextParser_cfml_Variable ||
+             top[i].token_id == TextParser_cfml_Keyword) &&
             (kwTextIs(top[i], cfm_text, "component") || kwTextIs(top[i], cfm_text, "interface"))) {
             compIdx = i;
             break;
@@ -1307,17 +1337,19 @@ static bool parseScriptFormComponent(
     size_t i = 0;
     while (i < body.size()) {
         const auto &t = body[i];
-        if (t.token_id == TextParser_cfml_Variable && kwTextIs(t, cfm_text, "property")) {
+        if ((t.token_id == TextParser_cfml_Variable || t.token_id == TextParser_cfml_Keyword) &&
+            kwTextIs(t, cfm_text, "property")) {
             ComponentProperty prop;
             i = parseScriptPropertyDecl(body, i, cfm_text, prop);
             if (!prop.name.empty()) props.push_back(prop);
             continue;
         }
-        // A script-form processing directive `pageencoding "..";` is a
+        // A script-form processing directive `pageencoding ".."` is a
         // compile-time directive (the template_reader already applied it and
         // ran the BOM-conflict check), so the statement is skipped like CF
         // removes the PAGEENCODING attribute before code generation.
-        if (t.token_id == TextParser_cfml_Variable && kwTextIs(t, cfm_text, "pageencoding") &&
+        if ((t.token_id == TextParser_cfml_Variable || t.token_id == TextParser_cfml_Keyword) &&
+            kwTextIs(t, cfm_text, "pageencoding") &&
             i + 1 < body.size() &&
             (body[i + 1].token_id == TextParser_cfml_SingleString ||
              body[i + 1].token_id == TextParser_cfml_DoubleString)) {
@@ -1566,6 +1598,7 @@ ComponentInfo *llvm_codegen::compileComponent(const string &pathname)
             for (auto &c : acc) c = (char)tolower((unsigned char)c);
             m.access = acc;
             m.returnType = def.returnType;
+            m.isStatic = def.isStatic;
             m.paramNames = def.paramNames;
             m.paramTypes = def.paramTypes;
             for (size_t pi = 0; pi < def.paramNames.size(); pi++) {

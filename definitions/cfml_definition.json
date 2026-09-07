@@ -44,7 +44,7 @@
         "fileExtensions": [
           "cfc"
         ],
-        "regex": "^\\s*(?:(?:component|import|interface|final|abstract)\\b|//|/\\*)"
+        "regex": "^\\s*(?:(?:component|interface|import|pageencoding|public|private|package|remote|static|final|abstract)\\b|//|/\\*)"
       },
       "startTokens": [
         "ScriptExpression"

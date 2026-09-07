@@ -191,6 +191,7 @@ struct UdfDef {
     std::vector<TextParserTokenItem> bodyTokens;
     bool isClosure = false;
     bool isTagForm = false;
+    bool isStatic = false;
     bool output = true;
     std::string access = "public";
     std::vector<std::string> paramDefaultsRaw;

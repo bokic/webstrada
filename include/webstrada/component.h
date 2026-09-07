@@ -22,6 +22,7 @@ struct ComponentMethod {
     std::string declaredName;    // as declared (e.g. "getX") for introspection
     std::string access;          // public / private / package / remote
     std::string returnType;      // "" -> any
+    bool isStatic = false;       // static modifier (callable without instance)
     void *fn = nullptr;          // JIT cfc-method entry (component_method_entry_fn)
     std::vector<UdfParamInfo> params;   // introspection (cfdump/GetComponentMetaData)
     std::vector<std::string> paramNames;

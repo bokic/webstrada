@@ -221,7 +221,9 @@ std::string buildUdfMetaBlob(const UdfDef &def, const char *cfm_text)
         meta.params.push_back(std::move(p));
     }
     meta.returnType = string(def.returnType.c_str());
-    meta.access = "public";
+    std::string acc = def.access.empty() ? "public" : def.access;
+    for (auto &c : acc) c = (char)tolower((unsigned char)c);
+    meta.access = string(acc.c_str());
     return udf_meta_serialize(meta);
 }
 
@@ -323,6 +325,13 @@ size_t parseTagFunctionDecl(const std::vector<TextParserTokenItem> &tokens,
     }
     auto accIt = attrs.find("access");
     if (accIt != attrs.end()) def.access = accIt->second;
+    auto modIt = attrs.find("modifier");
+    if (modIt != attrs.end()) {
+        std::string mod = modIt->second;
+        for (auto &c : mod) c = (char)tolower((unsigned char)c);
+        if (mod == "static") def.isStatic = true;
+        // "abstract" and "final" are accepted and silently ignored for now
+    }
 
     // Scan forward to the matching `</cffunction>` (tracking nested
     // <cffunction> depth; cffunction must not nest but a stray one is ignored).

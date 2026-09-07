@@ -1452,6 +1452,7 @@ cfvariant *cf_getcomponentmetadata_impl(const cfvariant *compVal)
         f.structSet("name", cfvariant(m.declaredName.empty() ? m.name.c_str() : m.declaredName.c_str()));
         f.structSet("access", cfvariant(m.access.c_str()));
         f.structSet("returntype", cfvariant(m.returnType.c_str()));
+        f.structSet("modifier", cfvariant(m.isStatic ? "static" : ""));
         f.structSet("output", cfvariant("true"));
         cfvariant params(cfvariant::Array);
         for (const auto &p : m.params) {
