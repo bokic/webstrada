@@ -5875,6 +5875,19 @@ cfvariant evaluateExpr(string &out, const string &expr,
             return tempReturn(cf_ispdfarchive(&a, call.args.size() == 2 ? &b : nullptr));
         }
 
+        if (fname.equals("ISSAFEHTML")) {
+            if (call.args.empty() || call.args.size() > 2) throw webstrada::exception("The function accepts 1 to 2 parameters.");
+            cfvariant a = evaluateExpr(out, call.args[0], cgi, server, cookie, application, session, url, form, variables);
+            cfvariant b;
+            if (call.args.size() == 2) b = evaluateExpr(out, call.args[1], cgi, server, cookie, application, session, url, form, variables);
+            return tempReturn(cf_issafehtml(&a, call.args.size() == 2 ? &b : nullptr));
+        }
+
+        if (fname.equals("VERIFYCLIENT")) {
+            if (!call.args.empty()) throw webstrada::exception("The function takes 0 parameters.");
+            return tempReturn(cf_verifyclient());
+        }
+
         if (fname.equals("CSVREAD")) {
             if (call.args.size() < 1 || call.args.size() > 4) throw webstrada::exception("CSVRead requires 1 to 4 arguments");
             cfvariant a = evaluateExpr(out, call.args[0], cgi, server, cookie, application, session, url, form, variables);

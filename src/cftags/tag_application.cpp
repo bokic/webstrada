@@ -149,13 +149,16 @@ thread_local bool g_searchImplicitScopes = true;
 // scope_end so one request's values never leak into the next).
 thread_local cfvariant g_requestScope;
 
-void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session)
+void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session,
+                 cfvariant *url, cfvariant *form)
 {
     auto &sc = g_scope;
     sc = cfml::ScopeContext{};
     sc.store = store;
     sc.application = application;
     sc.session = session;
+    sc.url = url;
+    sc.form = form;
     g_searchImplicitScopes = true;
     g_requestScope = cfvariant(cfvariant::Struct);
     cf_udf_context_clear();
@@ -294,6 +297,13 @@ cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
             if (!restoredLive) scope_json_deserialize(sjson, *session);
             session->m_disabled = false;
             sc.sessionStartTime = startTime;
+        }
+
+        if (session) {
+            session->structSet("CFID", cfvariant(cfid));
+            session->structSet("CFTOKEN", cfvariant(token));
+            session->structSet("URLTOKEN", cfvariant(string("CFID=") + cfid + "&CFTOKEN=" + token));
+            session->structSet("SESSIONID", cfvariant(storeKey + "_" + cfid + "_" + token));
         }
 
         sc.sessionId = sessionId.constData();

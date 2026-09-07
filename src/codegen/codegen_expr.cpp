@@ -2246,7 +2246,7 @@ llvm::Value *CompileExprAST(
             fname == "GETGATEWAYHELPER" || fname == "GETK2SERVERDOCCOUNT" || fname == "GETK2SERVERDOCCOUNTLIMIT" || fname == "GETPAGECONTEXT" || fname == "GETPRINTERINFO" || fname == "GETPRINTERLIST" ||
             fname == "GETSAFEHTML" || fname == "GETSAMLAUTHREQUEST" || fname == "GETSAMLLOGOUTREQUEST" || fname == "GETSOAPREQUEST" || fname == "GETSOAPREQUESTHEADER" || fname == "GETSOAPRESPONSE" || fname == "GETSOAPRESPONSEHEADER" ||             fname == "GETVFSMETADATA"  || fname == "HQLMETHODS" ||
             fname == "INITSAMLAUTHREQUEST" || fname == "INITSAMLLOGOUTREQUEST" || fname == "INTERRUPTTHREAD" || fname == "INVALIDATEOAUTHACCESSTOKEN" ||
-            fname == "ISK2SERVERABROKER" || fname == "ISK2SERVERDOCCOUNTEXCEEDED" || fname == "ISK2SERVERONLINE" || fname == "ISSAFEHTML" || fname == "ISSAMLLOGOUTRESPONSE" || fname == "ISSOAPREQUEST" ||
+            fname == "ISK2SERVERABROKER" || fname == "ISK2SERVERDOCCOUNTEXCEEDED" || fname == "ISK2SERVERONLINE" || fname == "ISSAMLLOGOUTRESPONSE" || fname == "ISSOAPREQUEST" ||
             fname == "ISSPREADSHEETFILE" || fname == "ISSPREADSHEETOBJECT" || fname == "ISVALIDOAUTHACCESSTOKEN" || fname == "JAVACAST" ||
             fname == "NUMBERFORMAT" || fname == "ONWSAUTHENTICATE" || fname == "ORMCLEARSESSION" || fname == "ORMCLOSEALLSESSIONS" || fname == "ORMCLOSESESSION" || fname == "ORMEVICTCOLLECTION" || fname == "ORMEVICTENTITY" || fname == "ORMEVICTQUERIES" || fname == "ORMEXECUTEQUERY" || fname == "ORMFLUSH" || fname == "ORMFLUSHALL" || fname == "ORMGETSESSION" || fname == "ORMGETSESSIONFACTORY" ||
             fname == "ORMINDEX" || fname == "ORMINDEXPURGE" || fname == "ORMRELOAD" || fname == "ORMSEARCH" || fname == "ORMSEARCHOFFLINE" || fname == "PROCESSSAMLLOGOUTREQUEST" || fname == "PROCESSSAMLRESPONSE" ||
@@ -2254,7 +2254,7 @@ llvm::Value *CompileExprAST(
             fname == "SPREADSHEETADDAUTOFILTER" || fname == "SPREADSHEETADDCOLUMN" || fname == "SPREADSHEETADDFREEZEPANE" || fname == "SPREADSHEETADDIMAGE" || fname == "SPREADSHEETADDINFO" || fname == "SPREADSHEETADDPAGEBREAKS" || fname == "SPREADSHEETADDPRINTGRIDLINES" || fname == "SPREADSHEETADDROW" || fname == "SPREADSHEETADDROWS" || fname == "SPREADSHEETADDSPLITPANE" || fname == "SPREADSHEETCREATESHEET" || fname == "SPREADSHEETDELETECOLUMN" || fname == "SPREADSHEETDELETECOLUMNS" || fname == "SPREADSHEETDELETEROW" || fname == "SPREADSHEETDELETEROWS" || fname == "SPREADSHEETFORMATCELL" || fname == "SPREADSHEETFORMATCELLRANGE" || fname == "SPREADSHEETFORMATCOLUMN" || fname == "SPREADSHEETFORMATCOLUMNS" || fname == "SPREADSHEETFORMATROW" || fname == "SPREADSHEETFORMATROWS" || fname == "SPREADSHEETGETCELLCOMMENT" || fname == "SPREADSHEETGETCELLFORMULA" || fname == "SPREADSHEETGETCELLVALUE" || fname == "SPREADSHEETGETCOLUMNCOUNT" || fname == "SPREADSHEETGETCOLUMNWIDTH" || fname == "SPREADSHEETGETLASTROWNUMBER" || fname == "SPREADSHEETGETPRINTORIENTATION" ||
             fname == "SPREADSHEETGROUPCOLUMNS" || fname == "SPREADSHEETGROUPROWS" || fname == "SPREADSHEETINFO" || fname == "SPREADSHEETISBINARYFORMAT" || fname == "SPREADSHEETISCOLUMNHIDDEN" || fname == "SPREADSHEETISROWHIDDEN" || fname == "SPREADSHEETISSTREAMINGXMLFORMAT" || fname == "SPREADSHEETISXMLFORMAT" || fname == "SPREADSHEETMERGECELLS" || fname == "SPREADSHEETNEW" || fname == "SPREADSHEETREAD" || fname == "SPREADSHEETREADBINARY" || fname == "SPREADSHEETREMOVECOLUMNBREAK" || fname == "SPREADSHEETREMOVEPRINTGRIDLINES" || fname == "SPREADSHEETREMOVEROWBREAK" || fname == "SPREADSHEETREMOVESHEET" || fname == "SPREADSHEETREMOVESHEETNUMBER" || fname == "SPREADSHEETRENAMESHEET" || fname == "SPREADSHEETSETACTIVESHEET" || fname == "SPREADSHEETSETACTIVESHEETNUMBER" || fname == "SPREADSHEETSETCELLCOMMENT" || fname == "SPREADSHEETSETCELLFORMULA" || fname == "SPREADSHEETSETCELLVALUE" || fname == "SPREADSHEETSETCOLUMNBREAK" || fname == "SPREADSHEETSETCOLUMNHIDDEN" || fname == "SPREADSHEETSETCOLUMNWIDTH" || fname == "SPREADSHEETSETFITTOPAGE" || fname == "SPREADSHEETSETFOOTER" || fname == "SPREADSHEETSETFOOTERIMAGE" || fname == "SPREADSHEETSETHEADER" ||
              fname == "SPREADSHEETSETHEADERIMAGE" || fname == "SPREADSHEETSETROWBREAK" || fname == "SPREADSHEETSETROWHEIGHT" || fname == "SPREADSHEETSETROWHIDDEN" || fname == "SPREADSHEETSHIFTCOLUMNS" || fname == "SPREADSHEETSHIFTROWS" || fname == "SPREADSHEETUNGROUPCOLUMNS" || fname == "SPREADSHEETUNGROUPROWS" || fname == "SPREADSHEETWRITE" || fname == "STOREADDACL" || fname == "STOREGETACL" || fname == "STOREGETMETADATA" || fname == "STORESETACL" || fname == "STORESETMETADATA" || fname == "STREAMINGSPREADSHEETCLEANUP" || fname == "STREAMINGSPREADSHEETNEW" || fname == "STREAMINGSPREADSHEETPROCESS" || fname == "STREAMINGSPREADSHEETREAD" || fname == "STREAMINGSPREADSHEETISSTREAMINGXMLFORMAT" || fname == "STREAMINGSPREADSHEETISXMLFORMAT" ||
-             fname == "THREADJOIN" || fname == "THREADTERMINATE" || fname == "THROW" || fname == "VERIFYCLIENT" || fname == "WSGETALLCHANNELS" || fname == "WSGETSUBSCRIBERS" || fname == "WSPUBLISH" || fname == "WSSENDMESSAGE") {
+             fname == "THREADJOIN" || fname == "THREADTERMINATE" || fname == "THROW" || fname == "WSGETALLCHANNELS" || fname == "WSGETSUBSCRIBERS" || fname == "WSPUBLISH" || fname == "WSSENDMESSAGE") {
             std::string libName = "cf_" + node->op_val;
             for (auto &c : libName) c = tolower(c);
             auto *fHelper = module->getFunction(libName);
@@ -2284,6 +2284,41 @@ llvm::Value *CompileExprAST(
                 );
             }
             return emitCall(builder, fHelper, {});
+        }
+
+        if (fname == "VERIFYCLIENT") {
+            if (!node->args.empty()) {
+                throw webstrada::exception("The function takes 0 parameters.");
+            }
+            auto *fHelper = module->getFunction("cf_verifyclient");
+            if (!fHelper) {
+                fHelper = llvm::Function::Create(
+                    llvm::FunctionType::get(builder.getPtrTy(), {}, false),
+                    llvm::Function::InternalLinkage, "cf_verifyclient", module
+                );
+            }
+            return emitCall(builder, fHelper, {});
+        }
+
+        if (fname == "ISSAFEHTML") {
+            if (node->args.size() < 1 || node->args.size() > 2) {
+                throw webstrada::exception("The function accepts 1 to 2 parameters.");
+            }
+            auto *arg1 = CompileExprAST(module, builder, function, node->args[0], cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            llvm::Value *arg2 = nullptr;
+            if (node->args.size() == 2) {
+                arg2 = CompileExprAST(module, builder, function, node->args[1], cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            } else {
+                arg2 = llvm::ConstantPointerNull::get(builder.getPtrTy());
+            }
+            auto *fHelper = module->getFunction("cf_issafehtml");
+            if (!fHelper) {
+                fHelper = llvm::Function::Create(
+                    llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false),
+                    llvm::Function::InternalLinkage, "cf_issafehtml", module
+                );
+            }
+            return emitCall(builder, fHelper, {arg1, arg2});
         }
 
         if (fname == "GETFUNCTIONCALLEDNAME") {

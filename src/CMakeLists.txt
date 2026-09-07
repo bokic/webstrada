@@ -355,6 +355,7 @@ add_library(webstrada-core
     cffunctions/fn_isonline.cpp
     cffunctions/fn_ispdf.cpp
     cffunctions/fn_isprotected.cpp
+    cffunctions/fn_issafehtml.cpp
     cffunctions/fn_isthreadinterrupted.cpp
     cffunctions/fn_isvalid.cpp
     cffunctions/fn_iswddx.cpp
@@ -516,6 +517,7 @@ add_library(webstrada-core
     cffunctions/fn_urlsessionformat.cpp
     cffunctions/fn_val.cpp
     cffunctions/fn_valuelist.cpp
+    cffunctions/fn_verifyclient.cpp
     cffunctions/fn_week.cpp
     cffunctions/fn_wrap.cpp
     cffunctions/fn_writedump.cpp

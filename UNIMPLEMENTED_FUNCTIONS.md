@@ -51,13 +51,13 @@ Compatibility note (2026-08-26): custom-tag calls now preserve component/UDF
 local assignment precedence; this is an execution-scope fix and does not add
 or remove a CFML function from the unimplemented list.
 
-Total: 157 functions (23.57% of 666) that are still unimplemented and throw the `Function X is not implemented` stub error. This covers everything marked `❌ No` in PROGRESS.md (CFML Functions table).
+Total: 155 functions (23.27% of 666) that are still unimplemented and throw the `Function X is not implemented` stub error. This covers everything marked `❌ No` in PROGRESS.md (CFML Functions table).
 
 ## Unimplemented
 
 | Category | Count | % of total | Functions |
 |---|---|---|---|
-| **Auth/SAML/OAuth** | 16 | 10.19% | AuthenticatedContext, AuthenticatedUser, GenerateSAMLSPMetadata, GetSAMLAuthRequest, GetSAMLLogoutRequest, GetSafeHTML, InitSAMLAuthRequest, InitSAMLLogoutRequest, InvalidateOauthAccesstoken, IsValidOauthAccesstoken, ProcessSAMLLogoutRequest, ProcessSAMLResponse, SendSAMLLogoutResponse, VerifyClient, isSafeHTML, isSamlLogoutResponse |
+| **Auth/SAML/OAuth** | 14 | 9.03% | AuthenticatedContext, AuthenticatedUser, GenerateSAMLSPMetadata, GetSAMLAuthRequest, GetSAMLLogoutRequest, GetSafeHTML, InitSAMLAuthRequest, InitSAMLLogoutRequest, InvalidateOauthAccesstoken, IsValidOauthAccesstoken, ProcessSAMLLogoutRequest, ProcessSAMLResponse, SendSAMLLogoutResponse, isSamlLogoutResponse |
 | **Get*/Meta/System** | 8 | 5.10% | GetGatewayHelper, GetK2ServerDocCount, GetK2ServerDocCountLimit, GetPageContext, GetPrinterInfo, GetPrinterList, GetVFSMetaData, SetEncoding (deferred) |
 | **Crypto/Token/Decision** | 5 | 3.18% | CreateEncryptedJWT, CreateSignedJWT (deferred: JKS keystore needed), IsK2ServerABroker, IsK2ServerDocCountExceeded, IsK2ServerOnline |
 | **Create/Misc** | 9 | 5.73% | InterruptThread, SendGatewayMessage, StoreAddACL, StoreGetACL, StoreGetMetadata, StoreSetACL, StoreSetMetadata, ThreadJoin, ThreadTerminate |

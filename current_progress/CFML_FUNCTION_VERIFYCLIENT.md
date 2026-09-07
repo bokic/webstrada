@@ -5,23 +5,23 @@
 
 ## Current state
 
-- Runtime stub: `cfml::cf_verifyclient()` in `src/cf8.cpp:16926` throws `"Function VERIFYCLIENT is not implemented"`.
-- Compiler: `VERIFYCLIENT` is in the zero-arg not-implemented function list (`src/compiler.cpp:1748`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5735`.
+- Runtime implementation: `cfml::cf_verifyclient()` in `src/cffunctions/fn_verifyclient.cpp`.
+- Compiler: `VERIFYCLIENT` JIT compilation in `src/codegen/codegen_expr.cpp`.
+- Interpreter: `VERIFYCLIENT` dispatch in `src/core/core_interp.cpp` and `src/core/core_membermethods.cpp`.
+- Symbol registered via `llvm::sys::DynamicLibrary::AddSymbol` in `src/codegen/llvm_compiler.cpp`.
 
-## Implemented: 0%
+## Implemented: 100%
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:16926` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1748`, symbol at `src/compiler.cpp:5735` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Implemented | `src/cffunctions/fn_verifyclient.cpp` |
+| Compiler wiring | ✅ JIT compiled | `src/codegen/codegen_expr.cpp`, symbol at `src/codegen/llvm_compiler.cpp` |
+| Interpreter dispatch | ✅ Implemented | `src/core/core_interp.cpp`, `src/core/core_membermethods.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*verifyclient*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:852` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Auth/SAML/OAuth) | — |
+| Tests | ✅ Verified | `tests/cfm/verifyclient_test.cfm` (100% match against CF 2025) |
+| Tracker status | ✅ Updated | `PROGRESS.md` (✅ Yes), removed from `UNIMPLEMENTED_FUNCTIONS.md` |
 | Docs/spec | ✅ Spec reference exists | `cfml_docs/CFML_FUNCTION_VERIFYCLIENT.md` |
 
 ## What VERIFYCLIENT does at the low C level

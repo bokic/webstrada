@@ -433,7 +433,7 @@ void worker::process_request(FCGX_Request *request) {
 
         // Bind the SQLite-backed APPLICATION/SESSION scopes for this request.
         // scope_end() persists them back (RAII so it also runs on exceptions).
-        cfml::scope_begin(&m_scopeStore, &m_application, &m_session);
+        cfml::scope_begin(&m_scopeStore, &m_application, &m_session, &m_url, &m_form);
         cfml::trace_record_event("ENGINE", "[ENGINE]", "SCOPE_STORE_BINDING");
         scopeSaveGuard.active = true;
 
@@ -634,7 +634,7 @@ void worker::process_cli_request(const string &pathname, const string &web_root)
     m_application.setDisabled();
     m_session.setDisabled();
 
-    cfml::scope_begin(&m_scopeStore, &m_application, &m_session);
+    cfml::scope_begin(&m_scopeStore, &m_application, &m_session, &m_url, &m_form);
     struct ScopeSaveGuard {
         ~ScopeSaveGuard() { cfml::scope_end(); }
     } scopeSaveGuard;

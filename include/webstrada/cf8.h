@@ -760,6 +760,8 @@ struct ScopeContext {
     ScopeStore *store = nullptr;
     cfvariant *application = nullptr;  // points at the worker's request slot
     cfvariant *session = nullptr;      // points at the worker's request slot
+    cfvariant *url = nullptr;          // points at the worker's request slot
+    cfvariant *form = nullptr;         // points at the worker's request slot
     std::string appName;               // "" when <cfapplication> has no name
     std::string sessionId;             // "CFID:CFTOKEN"; "" when no session
     double appTimeoutSeconds = 0;      // effective timeout (0 = never purge)
@@ -779,7 +781,8 @@ struct ScopeContext {
 
 // Set up the request-scope context. `store` may be null (CLI) — the enable
 // helpers then throw a "not available in this context" error.
-void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session);
+void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session,
+                 cfvariant *url = nullptr, cfvariant *form = nullptr);
 
 // Persist any enabled/dirty scope back into the store and clear the context.
 // Safe to call when scope_begin was never invoked.
@@ -1943,7 +1946,7 @@ cfvariant *cf_ispdffile(const cfvariant *value);
 cfvariant *cf_ispdfobject(const cfvariant *value);
 cfvariant *cf_isprotected(const cfvariant *arg = nullptr);
 cfvariant *cf_isquery(const cfvariant *val);
-cfvariant *cf_issafehtml();
+cfvariant *cf_issafehtml(const cfvariant *input, const cfvariant *policyFile = nullptr);
 cfvariant *cf_issamllogoutresponse();
 cfvariant *cf_issimplevalue(const cfvariant *val);
 cfvariant *cf_issoaprequest();

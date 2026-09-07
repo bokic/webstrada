@@ -102,6 +102,7 @@ static const MemberMethodEntry kStringMemberMethods[] = {
     {"ISDATE", "ISDATE"},
     {"ISNULL", "ISNULL"},
     {"ISNUMERIC", "ISNUMERIC"},
+    {"ISSAFEHTML", "ISSAFEHTML"},
     {"ISSIMPLEVALUE", "ISSIMPLEVALUE"},
     {"JSSTRINGFORMAT", "JSSTRINGFORMAT"},
     {"LCASE", "LCASE"},
@@ -2469,6 +2470,16 @@ static cfvariant *cf_call_builtin_dispatch(
                           arg_count >= 3 ? args[2] : nullptr,
                           arg_count >= 4 ? args[3] : nullptr,
                           arg_count == 5 ? args[4] : nullptr);
+    }
+
+    if (fname.equals("ISSAFEHTML")) {
+        if (arg_count < 1 || arg_count > 2) throw webstrada::exception("The function accepts 1 to 2 parameters.");
+        return cf_issafehtml(args[0], arg_count == 2 ? args[1] : nullptr);
+    }
+
+    if (fname.equals("VERIFYCLIENT")) {
+        if (arg_count != 0) throw webstrada::exception("The function takes 0 parameters.");
+        return cf_verifyclient();
     }
 
     if (fname.equals("GETEXCEPTION")) {

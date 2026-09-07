@@ -5,23 +5,24 @@
 
 ## Current state
 
-- Runtime stub: `cfml::cf_issafehtml()` in `src/cf8.cpp:14259` throws `"Function ISSAFEHTML is not implemented"`.
-- Compiler: `ISSAFEHTML` is in the zero-arg not-implemented function list (`src/compiler.cpp:1740`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5501`.
+- Runtime implementation: `cfml::cf_issafehtml()` in `src/cffunctions/fn_issafehtml.cpp`.
+- Compiler: `ISSAFEHTML` JIT compilation in `src/codegen/codegen_expr.cpp`.
+- Interpreter: `ISSAFEHTML` dispatch in `src/core/core_interp.cpp` and `src/core/core_membermethods.cpp`.
+- String member method support: `str.isSafeHTML()` in `src/core/core_membermethods.cpp`.
+- Symbol registered via `llvm::sys::DynamicLibrary::AddSymbol` in `src/codegen/llvm_compiler.cpp`.
 
-## Implemented: 0%
+## Implemented: 100%
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:14259` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1740`, symbol at `src/compiler.cpp:5501` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Implemented | `src/cffunctions/fn_issafehtml.cpp` |
+| Compiler wiring | ✅ JIT compiled | `src/codegen/codegen_expr.cpp`, symbol at `src/codegen/llvm_compiler.cpp` |
+| Interpreter dispatch | ✅ Implemented | `src/core/core_interp.cpp`, `src/core/core_membermethods.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*issafehtml*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:559` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Auth/SAML/OAuth) | — |
+| Tests | ✅ Verified | `tests/cfm/issafehtml_test.cfm` (100% match against CF 2025) |
+| Tracker status | ✅ Updated | `PROGRESS.md` (✅ Yes), removed from `UNIMPLEMENTED_FUNCTIONS.md` |
 | Docs/spec | ✅ Spec reference exists | `cfml_docs/CFML_FUNCTION_ISSAFEHTML.md` |
 
 ## What ISSAFEHTML does at the low C level

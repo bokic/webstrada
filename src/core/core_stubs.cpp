@@ -255,10 +255,6 @@ cfvariant *cfml::cf_isk2serveronline() {
     throw webstrada::exception("Function IsK2ServerOnline is not implemented");
 }
 
-cfvariant *cfml::cf_issafehtml() {
-    throw webstrada::exception("Function isSafeHTML is not implemented");
-}
-
 cfvariant *cfml::cf_issamllogoutresponse() {
     throw webstrada::exception("Function isSamlLogoutResponse is not implemented");
 }
@@ -709,10 +705,6 @@ cfvariant *cfml::cf_threadterminate() {
 
 cfvariant *cfml::cf_throw() {
     throw webstrada::exception("Function Throw is not implemented");
-}
-
-cfvariant *cfml::cf_verifyclient() {
-    throw webstrada::exception("Function VerifyClient is not implemented");
 }
 
 cfvariant *cfml::cf_wsgetallchannels() {

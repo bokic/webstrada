@@ -608,7 +608,7 @@ llvm_codegen::llvm_codegen()
     llvm::sys::DynamicLibrary::AddSymbol("cf_ispdfobject", reinterpret_cast<void*>(cfml::cf_ispdfobject));
     llvm::sys::DynamicLibrary::AddSymbol("cf_isprotected", reinterpret_cast<void*>(cfml::cf_isprotected));
     llvm::sys::DynamicLibrary::AddSymbol("cf_isquery", reinterpret_cast<void*>(cfml::cf_isquery));
-    llvm::sys::DynamicLibrary::AddSymbol("cf_issafehtml", reinterpret_cast<void*>(cfml::cf_issafehtml));
+    llvm::sys::DynamicLibrary::AddSymbol("cf_issafehtml", reinterpret_cast<void*>(static_cast<cfvariant*(*)(const cfvariant*, const cfvariant*)>(cfml::cf_issafehtml)));
     llvm::sys::DynamicLibrary::AddSymbol("cf_issamllogoutresponse", reinterpret_cast<void*>(cfml::cf_issamllogoutresponse));
     llvm::sys::DynamicLibrary::AddSymbol("cf_issimplevalue", reinterpret_cast<void*>(cfml::cf_issimplevalue));
     llvm::sys::DynamicLibrary::AddSymbol("cf_issoaprequest", reinterpret_cast<void*>(cfml::cf_issoaprequest));
