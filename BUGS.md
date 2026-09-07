@@ -5,6 +5,10 @@ For issues that live on the ColdFusion side (server/installation problems found 
 testing against the RDS host) see `BUGS_CF.md`; for cosmetic output artifacts see
 `BUGS_COSMETIC.md`.
 
+## CFScript `while` / `do-while` loops do not execute
+
+`while (cond) { ... }` and `do { ... } while (cond)` inside `<cfscript>` / `.cfc` script blocks produce no output and no iterations — the body is silently skipped. This is a pre-existing bug that predates the `Keyword` grammar changes (confirmed by reverting `cfml_definition.json` to the committed state and reproducing the same failure). The parser parses the block without errors but the JIT either mis-compiles or skips the loop body. Reproducer: `tests/cfm/cfscript_while_test.cfm` (fails at `tests/cfm/cfscript_while_test.cfm` step 1 with "Unexpected keyword 'while' in expression"). Needs investigation in `codegen_script.cpp` / `llvm_codegen.cpp` where `while` statement handling lives.
+
 ## Session CFC graphs after worker restart
 
 The SQLite session format is JSON, so it cannot restore compiled CFC method tables.

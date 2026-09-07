@@ -441,6 +441,11 @@
       "startRegex": "\\&",
       "textColor": "0x35b2dd"
     },
+    "IncDecOperator": {
+      "type": "SimpleToken",
+      "startRegex": "\\+\\+|\\-\\-",
+      "textColor": "0x35b2dd"
+    },
     "AddOperator": {
       "type": "SimpleToken",
       "startRegex": "\\+|-",
@@ -471,6 +476,7 @@
         "LogicalAndOperator",
         "LogicalNotOperator",
         "ConcatOperator",
+        "IncDecOperator",
         "AddOperator",
         "MulOperator",
         "PowerOperator"
