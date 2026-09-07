@@ -1,5 +1,10 @@
 # Unimplemented CFML Tags
 
+Compatibility note (2026-09-08): the ColdFusion 2025 feature-gap overview is in
+`README.md`, and the technical backlog is in `TODO.md`. This table remains the
+exact tag-level source of truth for unsupported UI/AJAX, charting, document/PDF,
+threading, WebSocket, spreadsheet, mail/network, security, and integration tags.
+
 Direct custom-tag syntax (`<cf_name>`) is implemented; this does not change the status of the separate built-in `<cflayout>` tag.
 
 Total: 89 tags (53.94% of 165) marked `❌ No` in PROGRESS.md (CFML Tags table), all of which are planned to be implemented eventually.

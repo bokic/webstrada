@@ -1,5 +1,11 @@
 # Unimplemented CFML Functions
 
+Compatibility note (2026-09-08): the ColdFusion 2025 feature-gap overview is in
+`README.md`; the technical backlog is in `TODO.md`. This inventory continues to
+be the exact function-level source of truth, including the Spreadsheet, ORM,
+SOAP/web-service, REST, SAML/OAuth, Java/.NET, threading, gateway, and related
+integration functions listed below.
+
 Compatibility note (2026-09-07): `IsProtected`, `IsAuthenticated`, and `IsAuthorized`
 are obsolete ColdFusion security functions (removed in CF MX / CF 6). In modern
 ColdFusion, CF reports `Variable <NAME> is undefined.`, which the engine reproduces

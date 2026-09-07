@@ -1,4 +1,5 @@
 
+Compatibility note (2026-09-08): the ColdFusion 2025 feature-gap audit is summarized in `README.md` and technically decomposed in `TODO.md`. The repository's existing tag/function tables remain the source of truth for exact unsupported names. The audit additionally records pending 2025 language features (`??`, `?.`, `=>`, spread, destructuring, multi-assignment, dynamic properties, QoQ enhancements, and `cacheMaxIdleTime`) and ColdFusion 2025 Update 8 capabilities (AI/LLM, MCP, RAG/vector stores, passkeys/Argon2, Sets, and async APIs).
 
 Compatibility note (2026-09-07): `IsProtected`, `IsAuthenticated`, and `IsAuthorized` are obsolete ColdFusion security functions (removed in CF MX / CF 6). In modern Adobe ColdFusion (CF 2021/2025), calling them throws `Variable <NAME> is undefined.` (verified on the RDS host) and UDFs with these names are allowed. Implemented in `fn_isprotected.cpp`, `fn_isauthenticated.cpp`, and `fn_isauthorized.cpp` reproducing the exact CF 2025 error. Byte-verified against Adobe ColdFusion 2025 (`tests/cfm/is_protected_authenticated_authorized.cfm` and `JitExpressionTest.Tier2Is*`).
 

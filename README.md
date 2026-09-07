@@ -23,6 +23,19 @@ A high-performance, lightweight **CFML Application Engine** written in C++.
 - **🌐 Deployment Ready:** Runs as a standalone FastCGI application server (`webstrada`) fronted by Nginx/Caddy/Apache, or as a direct command-line runner (`webstrada-cli`).
 - **🗄️ Multi-Process Scopes & Caching:** Multi-process session and application caching backed by SQLite WAL mode and shared-memory architectures.
 
+## ⚠️ ColdFusion 2025 feature gaps
+
+WebStrada is not yet a complete implementation of every Adobe ColdFusion 2025 feature. The currently unsupported areas are:
+
+- 2025 language additions that are still pending, including null-coalescing/safe-navigation and lambda/spread syntax, parameter destructuring, several newer assignment/exception constructs, and the newer query-cache options.
+- Spreadsheet workbooks and streaming spreadsheets. CSV read/write/process support is available, but the Spreadsheet API is not.
+- Server-side charts and the 2025 chart improvements (including `cfchartset`, `cfcharset`, and newer chart types/customization).
+- PDF, HTML-to-PDF, document, presentation, and report tags.
+- Threading and related interruption/join/termination behavior; WebSocket support.
+- Java/.NET object interoperation, ORM/entity/HQL, SOAP/web services, REST lifecycle helpers, SAML/OAuth integrations, gateways, and Exchange/SharePoint integrations.
+- The older UI/AJAX/form-control tags and several mail/network/search integrations. `cfmail` is currently only a non-delivering logging stub.
+- ColdFusion 2025 Update 8 capabilities: native AI/LLM APIs, MCP client/server support, vector stores/RAG, passkeys/Argon2 security APIs, AI monitoring, native Sets, and CompletableFuture-style async APIs.
+
 ---
 
 ## 💡 Quick Start
