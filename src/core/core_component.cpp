@@ -121,6 +121,8 @@ void cf_component_udf_begin(cfvariant *localScope, cfvariant *variablesScope,
     ctx.component = static_cast<ComponentInstance*>(component);
     ctx.componentInfo = g_currentMethodOwnerInfo ? g_currentMethodOwnerInfo : (ctx.component ? ctx.component->info : nullptr);
     g_currentMethodOwnerInfo = nullptr;
+    ctx.calledName = g_pendingCalledName;
+    g_pendingCalledName.clear();
     g_udfCtx.push_back(std::move(ctx));
 }
 
@@ -919,6 +921,9 @@ static cfvariant *invokeMethodEntry(ComponentInstance *inst, ComponentInfo *owne
         }
     }
     size_t ctxSave = g_udfCtx.size();
+    if (g_pendingCalledName.empty()) {
+        g_pendingCalledName = m.name;
+    }
     g_currentMethodOwnerInfo = ownerInfo;
 
     IncludeRuntime *rt = cfml::include_context();
@@ -948,6 +953,7 @@ static cfvariant *invokeMethodEntry(ComponentInstance *inst, ComponentInfo *owne
         g_reqProfiler.cfcMethodTime += std::chrono::duration<double, std::milli>(t1 - t0).count();
         if (rt) rt->currentPath = prevPath;
         while (g_udfCtx.size() > ctxSave) g_udfCtx.pop_back();
+        g_pendingCalledName.clear();
         throw;
     }
 }
@@ -985,6 +991,7 @@ static cfvariant *invokeComponentValue(cfvariant *compVal, const std::string &me
     if (enforceAccess && !compVal->m_superTargetInfo && !methodExternallyCallable(m)) {
         cf_component_throw_method_not_found(compVal, methodName.c_str());
     }
+    g_pendingCalledName = methodName;
     return invokeMethodEntry(inst, owner, m, args, argc, out, cgi, server, cookie, application, session, url, form);
 }
 
@@ -1010,6 +1017,7 @@ cfvariant *cf_component_invoke_instance(ComponentInstance *inst, const char *met
         throw webstrada::exception("component",
             webstrada::string(("Method " + upper + " was not found in the component.").c_str()));
     }
+    g_pendingCalledName = methodName ? methodName : "";
     return invokeMethodEntry(inst, owner, owner->methods[idx], args, argc, out, cgi, server, cookie,
                              application, session, url, form);
 }
@@ -1032,6 +1040,9 @@ cfvariant *cf_component_method_handle_invoke(cfvariant *handleVal,
     if (idx < 0) {
         throw webstrada::exception("component",
             webstrada::string(("Method " + upper + " was not found.").c_str()));
+    }
+    if (g_pendingCalledName.empty()) {
+        g_pendingCalledName = info->name.constData() ? info->name.constData() : "";
     }
     return invokeMethodEntry(inst, owner, owner->methods[idx], args, argc, out, cgi, server, cookie,
                              application, session, url, form);
@@ -1335,6 +1346,7 @@ cfvariant *cf_cfinvoke_end(string *out, void *cgi, void *server, void *cookie, v
             throw webstrada::exception("Entity has incorrect type for being called as a function.");
         }
         for (const auto &p : udfVal->m_udf->params) paramNames.push_back(p.name.constData() ? p.name.constData() : "");
+        g_pendingCalledName = methodName;
         if (buildInvokeNamedArgs(ctx, &paramNames, namedOut, markerOut, argPtrs)) {
             res = cf_udf_invoke(udfVal, argPtrs.data(), static_cast<int>(argPtrs.size()),
                                 *out, cgi, server, cookie, application, session, url, form, variables);

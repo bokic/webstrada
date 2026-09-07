@@ -91,6 +91,7 @@ cfvariant *cf_invoke(const cfvariant *object, const cfvariant *methodName, const
         // Resolve methodName as a UDF in the current context and invoke it.
         cfvariant *udfVal = lookupVarWritable(mname.c_str(), cgi, server, cookie, application, session, url, form, variables);
         if (udfVal && udfVal->m_type == cfvariant::Function && udfVal->m_udf && udfVal->m_udf->fn) {
+            g_pendingCalledName = mname;
             if (udfVal->m_udf->componentMethodIndex >= 0 && udfVal->m_udf->component) {
                 return cf_component_method_handle_invoke(udfVal, argPtrs.data(), static_cast<int>(argPtrs.size()),
                                                          out, cgi, server, cookie, application, session, url, form);

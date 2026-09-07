@@ -370,6 +370,7 @@ cfvariant invokeMemberMethod(
         if (it != base.m_struct->end()) {
             cfvariant &member = it->second;
             if (member.m_type == cfvariant::Function && member.m_udf && member.m_udf->fn) {
+                g_pendingCalledName = methodName.constData() ? methodName.constData() : "";
                 cfvariant *res = cfml::cf_udf_invoke(&member, args, arg_count,
                                                      out, cgi, server, cookie, application, session, url, form, variables);
                 return *res;
@@ -1276,6 +1277,7 @@ cfvariant *cfml::cfvariant_call_function(
     cfvariant *udfVal = lookupVarWritable(name, cgi, server, cookie, application, session, url, form, variables);
     if (udfVal) {
         if (udfVal->m_type == cfvariant::Function && udfVal->m_udf && udfVal->m_udf->fn) {
+            g_pendingCalledName = name ? name : "";
             if (udfVal->m_udf->componentMethodIndex >= 0 && udfVal->m_udf->component) {
                 return cf_component_method_handle_invoke(udfVal, args, arg_count, out, cgi, server, cookie,
                                                          application, session, url, form);
@@ -1307,7 +1309,8 @@ cfvariant *cfml::cfvariant_call_function(
             std::string up(name);
             for (auto &c : up) c = (char)toupper((unsigned char)c);
             if (cf_component_has_method_on(inner.component, up.c_str())) {
-                return cf_component_invoke_instance(inner.component, up.c_str(), args, arg_count,
+                g_pendingCalledName = name ? name : "";
+                return cf_component_invoke_instance(inner.component, name, args, arg_count,
                                                     out, cgi, server, cookie, application, session, url, form);
             }
         }

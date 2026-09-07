@@ -27,8 +27,8 @@ Reusable runtime code:
 
 | Function | Effort | Deps | Why deferred |
 |---|---|---|---|
-| GetFunctionCalledName | M | call stack | needs call-frame recording in UDF runtime — **deferred** |
-| CallStackGet / CallStackDump | M | call stack | same frame tracking — **deferred** |
+| GetFunctionCalledName | M | call stack | — **implemented** (call-frame recording in UDF/component runtime) |
+| CallStackGet / CallStackDump | M | call stack | frame tracking — **deferred** |
 | GetBaseTagList / GetBaseTagData | M | tag stack | needs tag-nesting stack — **deferred** |
 | SetEncoding | M | request | set form/url decode charset — **deferred** |
 | CreateSignedJWT | M | openssl | JWS HS256/384/512 (HMAC exists) — **deferred** (JKS keystore needed) |

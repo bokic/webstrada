@@ -2243,7 +2243,7 @@ llvm::Value *CompileExprAST(
         if (fname == "ADDSOAPREQUESTHEADER" || fname == "ADDSOAPRESPONSEHEADER" || fname == "AUTHENTICATEDCONTEXT" || fname == "AUTHENTICATEDUSER" ||             fname == "CREATEENCRYPTEDJWT" || fname == "CREATESIGNEDJWT" || 
             fname == "DOTNETTOCFTYPE" || fname == "ENTITYDELETE" || fname == "ENTITYLOAD" ||
             fname == "ENTITYLOADBYEXAMPLE" || fname == "ENTITYLOADBYPK" || fname == "ENTITYMERGE" || fname == "ENTITYNEW" || fname == "ENTITYRELOAD" || fname == "ENTITYSAVE" || fname == "ENTITYTOQUERY" || fname == "GENERATESAMLSPMETADATA" ||
-            fname == "GETFUNCTIONCALLEDNAME" || fname == "GETGATEWAYHELPER" || fname == "GETK2SERVERDOCCOUNT" || fname == "GETK2SERVERDOCCOUNTLIMIT" || fname == "GETPAGECONTEXT" || fname == "GETPRINTERINFO" || fname == "GETPRINTERLIST" ||
+            fname == "GETGATEWAYHELPER" || fname == "GETK2SERVERDOCCOUNT" || fname == "GETK2SERVERDOCCOUNTLIMIT" || fname == "GETPAGECONTEXT" || fname == "GETPRINTERINFO" || fname == "GETPRINTERLIST" ||
             fname == "GETSAFEHTML" || fname == "GETSAMLAUTHREQUEST" || fname == "GETSAMLLOGOUTREQUEST" || fname == "GETSOAPREQUEST" || fname == "GETSOAPREQUESTHEADER" || fname == "GETSOAPRESPONSE" || fname == "GETSOAPRESPONSEHEADER" ||             fname == "GETVFSMETADATA"  || fname == "HQLMETHODS" ||
             fname == "INITSAMLAUTHREQUEST" || fname == "INITSAMLLOGOUTREQUEST" || fname == "INTERRUPTTHREAD" || fname == "INVALIDATEOAUTHACCESSTOKEN" || fname == "ISAUTHENTICATED" || fname == "ISAUTHORIZED" ||
             fname == "ISK2SERVERABROKER" || fname == "ISK2SERVERDOCCOUNTEXCEEDED" || fname == "ISK2SERVERONLINE" || fname == "ISPROTECTED" || fname == "ISSAFEHTML" || fname == "ISSAMLLOGOUTRESPONSE" || fname == "ISSOAPREQUEST" ||
@@ -2281,6 +2281,20 @@ llvm::Value *CompileExprAST(
                 fHelper = llvm::Function::Create(
                     llvm::FunctionType::get(builder.getPtrTy(), {}, false),
                     llvm::Function::InternalLinkage, libName, module
+                );
+            }
+            return emitCall(builder, fHelper, {});
+        }
+
+        if (fname == "GETFUNCTIONCALLEDNAME") {
+            if (!node->args.empty()) {
+                throw webstrada::exception(webstrada::string(("Function " + node->op_val + " does not take any arguments").c_str()));
+            }
+            auto *fHelper = module->getFunction("cf_getfunctioncalledname");
+            if (!fHelper) {
+                fHelper = llvm::Function::Create(
+                    llvm::FunctionType::get(builder.getPtrTy(), {}, false),
+                    llvm::Function::InternalLinkage, "cf_getfunctioncalledname", module
                 );
             }
             return emitCall(builder, fHelper, {});

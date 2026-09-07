@@ -493,6 +493,11 @@ cfvariant cfml::callCallback(string &out, const cfvariant &callback, const std::
 {
     // A callable Function value (closure or UDF) is invoked directly.
     if (callback.m_type == cfvariant::Function && callback.m_udf && callback.m_udf->fn) {
+        if (!callback.m_udf->name.isEmpty()) {
+            g_pendingCalledName = callback.m_udf->name.constData();
+        } else {
+            g_pendingCalledName = "_CF_ANONYMOUSCLOSURE";
+        }
         std::vector<const cfvariant*> argPtrs;
         argPtrs.reserve(args.size());
         for (const auto &a : args) argPtrs.push_back(&a);
@@ -2364,6 +2369,7 @@ cfvariant evaluateExpr(string &out, const string &expr,
                     evalArgs.push_back(tmp);
                 }
             }
+            g_pendingCalledName = call.name.constData() ? call.name.constData() : "";
             cfvariant *res = cfml::cf_udf_invoke(udfVal, evalArgs.data(), static_cast<int>(evalArgs.size()),
                                            out, cgi, server, cookie, application, session, url, form, variables);
             return *res;
@@ -6034,6 +6040,13 @@ cfvariant evaluateExpr(string &out, const string &expr,
                 }
             }
             return tempReturn(cf_trace(namedArg));
+        }
+
+        if (fname.equals("GETFUNCTIONCALLEDNAME")) {
+            if (!call.args.empty()) {
+                throw webstrada::exception(fname + " does not take any arguments");
+            }
+            return tempReturn(cfml::cf_getfunctioncalledname());
         }
 
         if (fname.equals("GETAUTHUSER") || fname.equals("GETUSERROLES") || fname.equals("ISUSERLOGGEDIN")) {

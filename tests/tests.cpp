@@ -24301,6 +24301,66 @@ TEST(TraceControlTest, StartStopClearStatus) {
     webstrada::stats::set_hide_admin_requests(true);
 }
 
+TEST(GetFunctionCalledNameTest, TopLevelReturnsEmpty) {
+    cfvariant vars = cfvariant::Struct;
+    string out = runJitTemplate("<cfoutput>[#GetFunctionCalledName()#]</cfoutput>", vars);
+    EXPECT_EQ(out.contains("[]"), true);
+}
+
+TEST(GetFunctionCalledNameTest, DirectCallPreservesCasing) {
+    cfvariant vars = cfvariant::Struct;
+    string code = "<cffunction name=\"myFunc\" returntype=\"string\">"
+                  "<cfreturn GetFunctionCalledName()>"
+                  "</cffunction>"
+                  "<cfoutput>#myFunc()#|#MYFUNC()#|#MyFunc()#</cfoutput>";
+    string out = runJitTemplate(code, vars);
+    EXPECT_EQ(out.contains("myFunc|MYFUNC|MyFunc"), true);
+}
+
+TEST(GetFunctionCalledNameTest, AliasedVariableCall) {
+    cfvariant vars = cfvariant::Struct;
+    string code = "<cffunction name=\"myFunc\" returntype=\"string\">"
+                  "<cfreturn GetFunctionCalledName()>"
+                  "</cffunction>"
+                  "<cfset fnAlias = myFunc>"
+                  "<cfset otherAlias = fnAlias>"
+                  "<cfoutput>#fnAlias()#|#otherAlias()#</cfoutput>";
+    string out = runJitTemplate(code, vars);
+    EXPECT_EQ(out.contains("fnAlias|otherAlias"), true);
+}
+
+TEST(GetFunctionCalledNameTest, NestedCallStack) {
+    cfvariant vars = cfvariant::Struct;
+    string code = "<cffunction name=\"g\" returntype=\"string\">"
+                  "<cfreturn GetFunctionCalledName()>"
+                  "</cffunction>"
+                  "<cffunction name=\"f\" returntype=\"string\">"
+                  "<cfset var before = GetFunctionCalledName()>"
+                  "<cfset var inner = g()>"
+                  "<cfset var after = GetFunctionCalledName()>"
+                  "<cfreturn before & \"|\" & inner & \"|\" & after>"
+                  "</cffunction>"
+                  "<cfoutput>#f()#</cfoutput>";
+    string out = runJitTemplate(code, vars);
+    EXPECT_EQ(out.contains("f|g|f"), true);
+}
+
+TEST(GetFunctionCalledNameTest, ClosureVariableCall) {
+    cfvariant vars = cfvariant::Struct;
+    string code = "<cfscript>"
+                  "myClosure = function() { return GetFunctionCalledName(); };"
+                  "writeOutput(myClosure());"
+                  "</cfscript>";
+    string out = runJitTemplate(code, vars);
+    EXPECT_EQ(out.contains("myClosure"), true);
+}
+
+TEST(GetFunctionCalledNameTest, WithArgumentThrows) {
+    cfvariant vars = cfvariant::Struct;
+    EXPECT_THROW(runJitTemplate("<cfoutput>#GetFunctionCalledName(1)#</cfoutput>", vars),
+                 webstrada::exception);
+}
+
 }  // namespace webstrada
 
 int main(int argc, char **argv) {

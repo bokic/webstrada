@@ -29,8 +29,10 @@ struct UdfCallCtx {
     webstrada::cfvariant *thisScope = nullptr;
     webstrada::ComponentInstance *component = nullptr;
     webstrada::ComponentInfo *componentInfo = nullptr;
+    std::string calledName;
 };
 extern thread_local std::vector<UdfCallCtx> g_udfCtx;
+extern thread_local std::string g_pendingCalledName;
 extern thread_local std::string g_requestBody;
 
 struct RequestProfiler {

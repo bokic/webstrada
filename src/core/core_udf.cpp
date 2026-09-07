@@ -74,7 +74,7 @@ static const char *const kBuiltinFunctionNames[] = {
     "FINDNOCASE", "FINDONEOF", "FIRSTDAYOFMONTH", "FIX", "FLOOR", "FORMATBASEN", "GENERATE3DESKEY", "GENERATEPBKDFKEY",
     "GENERATESAMLSPMETADATA", "GENERATESECRETKEY", "GETAPPLICATIONMETADATA", "GETAUTHUSER", "GETBASETAGDATA", "GETBASETAGLIST", "GETBASETEMPLATEPATH", "GETCLIENTVARIABLESLIST",
     "GETCOMPONENTMETADATA", "GETCONTEXTROOT", "GETCPUUSAGE", "GETCSPNONCE", "GETCURRENTTEMPLATEPATH", "GETDIRECTORYFROMPATH", "GETENCODING", "GETEXCEPTION",
-    "GETFILEFROMPATH", "GETFILEINFO", "GETFREESPACE", "GETGATEWAYHELPER", "GETHTTPREQUESTDATA", "GETHTTPTIMESTRING", "GETK2SERVERDOCCOUNT", "GETK2SERVERDOCCOUNTLIMIT",
+    "GETFILEFROMPATH", "GETFILEINFO", "GETFREESPACE", "GETFUNCTIONCALLEDNAME", "GETGATEWAYHELPER", "GETHTTPREQUESTDATA", "GETHTTPTIMESTRING", "GETK2SERVERDOCCOUNT", "GETK2SERVERDOCCOUNTLIMIT",
     "GETLOCALE", "GETLOCALEDISPLAYNAME", "GETLOCALHOSTIP", "GETMETADATA", "GETMETRICDATA", "GETPAGECONTEXT", "GETPRINTERINFO", "GETPRINTERLIST",
     "GETPROFILESECTIONS", "GETPROFILESTRING", "GETPROPERTYFILE", "GETPROPERTYSTRING", "GETREADABLEIMAGEFORMATS", "GETSAFEHTML", "GETSAMLAUTHREQUEST", "GETSAMLLOGOUTREQUEST",
     "GETSOAPREQUEST", "GETSOAPREQUESTHEADER", "GETSOAPRESPONSE", "GETSOAPRESPONSEHEADER", "GETSYSTEMFREEMEMORY", "GETSYSTEMTOTALMEMORY",     "GETTEMPDIRECTORY", "GETTEMPFILE",
@@ -199,6 +199,7 @@ cfvariant makeFunctionHandle(const string &name)
 // the captured parent scope and its unqualified writes go to the parent scope
 // unless the name is a local (param / var / nested function / arguments).
 thread_local std::vector<UdfCallCtx> g_udfCtx;
+thread_local std::string g_pendingCalledName;
 thread_local std::deque<CustomTagCallCtx> g_customTagStack;
 thread_local RequestProfiler g_reqProfiler;
 
@@ -214,6 +215,8 @@ void cfml::cf_udf_begin(cfvariant *localScope, cfvariant *parentScope)
     UdfCallCtx ctx;
     ctx.localScope = localScope;
     ctx.parentScope = parentScope;
+    ctx.calledName = g_pendingCalledName;
+    g_pendingCalledName.clear();
     g_udfCtx.push_back(std::move(ctx));
 }
 
@@ -773,6 +776,9 @@ cfvariant *cfml::cf_udf_invoke(cfvariant *udfVal, const cfvariant **args, int ar
     // The UDF body's prologue creates and registers the local scope and pushes
     // the call context; truncate the context stack afterwards (also on throw).
     size_t ctxSave = g_udfCtx.size();
+    if (g_pendingCalledName.empty() && info && !info->name.isEmpty()) {
+        g_pendingCalledName = info->name.constData();
+    }
     udf_entry_fn entry = reinterpret_cast<udf_entry_fn>(info->fn);
     cfvariant *ret = nullptr;
     try {
@@ -780,6 +786,7 @@ cfvariant *cfml::cf_udf_invoke(cfvariant *udfVal, const cfvariant **args, int ar
                     info->capturedScope, effectiveArgs, effectiveArgc);
     } catch (...) {
         while (g_udfCtx.size() > ctxSave) g_udfCtx.pop_back();
+        g_pendingCalledName.clear();
         throw;
     }
     while (g_udfCtx.size() > ctxSave) g_udfCtx.pop_back();

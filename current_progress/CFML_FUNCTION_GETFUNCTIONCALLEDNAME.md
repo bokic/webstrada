@@ -5,24 +5,24 @@
 
 ## Current state
 
-- Runtime stub: `cfml::cf_getfunctioncalledname()` in `src/cf8.cpp:13515` throws `"Function GETFUNCTIONCALLEDNAME is not implemented"`.
-- Compiler: `GETFUNCTIONCALLEDNAME` is in the zero-arg not-implemented function list (`src/compiler.cpp:1736`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5367`.
+- Runtime implementation: `cfml::cf_getfunctioncalledname()` in `src/cffunctions/fn_getfunctioncalledname.cpp`.
+- Compiler: JIT emits direct call to `cf_getfunctioncalledname()` via `src/codegen/codegen_expr.cpp`.
+- Interpreter: `evalFunction` in `src/core/core_interp.cpp` verifies 0 args and calls `cf_getfunctioncalledname()`.
+- Symbol registered in `kBuiltinFunctionNames` in `src/core/core_udf.cpp` and `AddSymbol` in `src/codegen/llvm_compiler.cpp`.
 
-## Implemented: 0%
+## Implemented: 100%
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:13515` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1736`, symbol at `src/compiler.cpp:5367` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Implemented | `src/cffunctions/fn_getfunctioncalledname.cpp` |
+| Compiler wiring | ✅ Direct JIT call (0 args) | `src/codegen/codegen_expr.cpp`, `src/codegen/llvm_compiler.cpp` |
+| Interpreter dispatch | ✅ Implemented | `src/core/core_interp.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*getfunctioncalledname*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:416` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Get*/Meta/System) | — |
-| Docs/spec | ❌ No spec reference | — |
+| Tests | ✅ Comprehensive CFM + GTest coverage | `tests/cfm/getfunctioncalledname.cfm`, `tests/tests.cpp` |
+| Tracker status | ✅ `PROGRESS.md` (✅ Yes), removed from `UNIMPLEMENTED_FUNCTIONS.md` | — |
+| Docs/spec | ✅ Supported | `cfml_docs/CFML_FUNCTION_GETFUNCTIONCALLEDNAME.md` |
 
 ## What GETFUNCTIONCALLEDNAME does at the low C level
 

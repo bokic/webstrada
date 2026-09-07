@@ -252,6 +252,7 @@ add_library(webstrada-core
     cffunctions/fn_getcspnonce.cpp
     cffunctions/fn_getencoding.cpp
     cffunctions/fn_getexception.cpp
+    cffunctions/fn_getfunctioncalledname.cpp
     cffunctions/fn_getfunctionlist.cpp
     cffunctions/fn_gethttptimestring.cpp
     cffunctions/fn_getlocale.cpp

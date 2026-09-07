@@ -162,10 +162,6 @@ cfvariant *cfml::cf_getcomponentmetadata(const cfvariant *obj) {
     return cf_getcomponentmetadata_impl(obj);
 }
 
-cfvariant *cfml::cf_getfunctioncalledname() {
-    throw webstrada::exception("Function GetFunctionCalledName is not implemented");
-}
-
 cfvariant *cfml::cf_getgatewayhelper() {
     throw webstrada::exception("Function GetGatewayHelper is not implemented");
 }
