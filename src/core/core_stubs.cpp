@@ -174,9 +174,6 @@ cfvariant *cfml::cf_getk2serverdoccountlimit() {
     throw webstrada::exception("Function GetK2ServerDocCountLimit is not implemented");
 }
 
-cfvariant *cfml::cf_getpagecontext() {
-    throw webstrada::exception("Function GetPageContext is not implemented");
-}
 
 cfvariant *cfml::cf_getprinterinfo() {
     throw webstrada::exception("Function GetPrinterInfo is not implemented");
@@ -214,9 +211,6 @@ cfvariant *cfml::cf_getsoapresponseheader() {
     throw webstrada::exception("Function GetSOAPResponseHeader is not implemented");
 }
 
-cfvariant *cfml::cf_getvfsmetadata() {
-    throw webstrada::exception("Function GetVFSMetaData is not implemented");
-}
 
 cfvariant *cfml::cf_hqlmethods() {
     throw webstrada::exception("Function HQLMethods is not implemented");
@@ -379,9 +373,6 @@ cfvariant *cfml::cf_sendsamllogoutresponse() {
     throw webstrada::exception("Function SendSAMLLogoutResponse is not implemented");
 }
 
-cfvariant *cfml::cf_setencoding() {
-    throw webstrada::exception("Function SetEncoding is not implemented");
-}
 
 cfvariant *cfml::cf_spreadsheetaddautofilter() {
     throw webstrada::exception("Function SpreadsheetAddAutoFilter is not implemented");

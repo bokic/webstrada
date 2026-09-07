@@ -5,23 +5,24 @@
 
 ## Current state
 
-- Runtime stub: `cfml::cf_setencoding()` in `src/cf8.cpp:15767` throws `"Function SETENCODING is not implemented"`.
-- Compiler: `SETENCODING` is in the zero-arg not-implemented function list (`src/compiler.cpp:1744`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5616`.
+- Runtime: `cfml::cf_setencoding(const cfvariant *scope, const cfvariant *encoding)` implemented in `src/cffunctions/fn_setencoding.cpp`.
+- Helper: `encoding_reset()`, `set_form_encoding()`, `set_url_encoding()` in `src/cffunctions/common.cpp`.
+- Compiler: JIT compiled direct call via `codegen_expr.cpp`.
+- Interpreter: `core_interp.cpp` and `core_membermethods.cpp` support.
+- Symbol registered in `llvm_compiler.cpp`.
 
-## Implemented: 0%
+## Implemented: 100%
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:15767` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1744`, symbol at `src/compiler.cpp:5616` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Implemented | `src/cffunctions/fn_setencoding.cpp` |
+| Compiler wiring | ✅ JIT compiled direct call | `src/codegen/codegen_expr.cpp` |
+| Interpreter dispatch | ✅ Implemented | `src/core/core_interp.cpp`, `src/core/core_membermethods.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*setencoding*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:714` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Get*/Meta/System) | — |
+| Tests | ✅ Verified against CF 2025 (`tests/cfm/tier1_setencoding_test.cfm` + `JitExpressionTest.Tier1SetEncoding`) | `tests/cfm/tier1_setencoding_test.cfm`, `tests/tests.cpp` |
+| Tracker status | ✅ `PROGRESS.md` (✅ Yes) | — |
 | Docs/spec | ✅ Spec reference exists | `cfml_docs/CFML_FUNCTION_SETENCODING.md` |
 
 ## What SETENCODING does at the low C level

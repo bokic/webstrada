@@ -260,6 +260,7 @@ add_library(webstrada-core
     cffunctions/fn_getlocalhostip.cpp
     cffunctions/fn_getmetadata.cpp
     cffunctions/fn_getmetricdata.cpp
+    cffunctions/fn_getpagecontext.cpp
     cffunctions/fn_getprofilesections.cpp
     cffunctions/fn_getprofilestring.cpp
     cffunctions/fn_getpropertyfile.cpp
@@ -268,6 +269,7 @@ add_library(webstrada-core
     cffunctions/fn_getsystemmemory.cpp
     cffunctions/fn_gettimezoneinfo.cpp
     cffunctions/fn_gettoken.cpp
+    cffunctions/fn_getvfsmetadata.cpp
     cffunctions/fn_getwriteableimageformats.cpp
     cffunctions/fn_hash.cpp
     cffunctions/fn_hmac.cpp
@@ -467,6 +469,7 @@ add_library(webstrada-core
     cffunctions/fn_serverinfo.cpp
     cffunctions/fn_requesttrace.cpp
     cffunctions/fn_tracecontrol.cpp
+    cffunctions/fn_setencoding.cpp
     cffunctions/fn_setlocale.cpp
     cffunctions/fn_setprofilestring.cpp
     cffunctions/fn_setvariable.cpp

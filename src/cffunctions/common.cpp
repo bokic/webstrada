@@ -6674,4 +6674,33 @@ void buildIptcStruct(ImageData *img, cfvariant &s)
     }
 }
 
+static thread_local std::string g_formEncoding;
+static thread_local std::string g_urlEncoding;
+
+void encoding_reset()
+{
+    g_formEncoding.clear();
+    g_urlEncoding.clear();
+}
+
+void set_form_encoding(const std::string &enc)
+{
+    g_formEncoding = enc;
+}
+
+void set_url_encoding(const std::string &enc)
+{
+    g_urlEncoding = enc;
+}
+
+std::string get_form_encoding()
+{
+    return g_formEncoding.empty() ? "UTF-8" : g_formEncoding;
+}
+
+std::string get_url_encoding()
+{
+    return g_urlEncoding.empty() ? "UTF-8" : g_urlEncoding;
+}
+
 } // namespace cfml

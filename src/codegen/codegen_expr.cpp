@@ -2243,14 +2243,14 @@ llvm::Value *CompileExprAST(
         if (fname == "ADDSOAPREQUESTHEADER" || fname == "ADDSOAPRESPONSEHEADER" || fname == "AUTHENTICATEDCONTEXT" || fname == "AUTHENTICATEDUSER" ||             fname == "CREATEENCRYPTEDJWT" || fname == "CREATESIGNEDJWT" || 
             fname == "DOTNETTOCFTYPE" || fname == "ENTITYDELETE" || fname == "ENTITYLOAD" ||
             fname == "ENTITYLOADBYEXAMPLE" || fname == "ENTITYLOADBYPK" || fname == "ENTITYMERGE" || fname == "ENTITYNEW" || fname == "ENTITYRELOAD" || fname == "ENTITYSAVE" || fname == "ENTITYTOQUERY" || fname == "GENERATESAMLSPMETADATA" ||
-            fname == "GETGATEWAYHELPER" || fname == "GETK2SERVERDOCCOUNT" || fname == "GETK2SERVERDOCCOUNTLIMIT" || fname == "GETPAGECONTEXT" || fname == "GETPRINTERINFO" || fname == "GETPRINTERLIST" ||
-            fname == "GETSAFEHTML" || fname == "GETSAMLAUTHREQUEST" || fname == "GETSAMLLOGOUTREQUEST" || fname == "GETSOAPREQUEST" || fname == "GETSOAPREQUESTHEADER" || fname == "GETSOAPRESPONSE" || fname == "GETSOAPRESPONSEHEADER" ||             fname == "GETVFSMETADATA"  || fname == "HQLMETHODS" ||
+            fname == "GETGATEWAYHELPER" || fname == "GETK2SERVERDOCCOUNT" || fname == "GETK2SERVERDOCCOUNTLIMIT" || fname == "GETPRINTERINFO" || fname == "GETPRINTERLIST" ||
+            fname == "GETSAFEHTML" || fname == "GETSAMLAUTHREQUEST" || fname == "GETSAMLLOGOUTREQUEST" || fname == "GETSOAPREQUEST" || fname == "GETSOAPREQUESTHEADER" || fname == "GETSOAPRESPONSE" || fname == "GETSOAPRESPONSEHEADER" || fname == "HQLMETHODS" ||
             fname == "INITSAMLAUTHREQUEST" || fname == "INITSAMLLOGOUTREQUEST" || fname == "INTERRUPTTHREAD" || fname == "INVALIDATEOAUTHACCESSTOKEN" ||
             fname == "ISK2SERVERABROKER" || fname == "ISK2SERVERDOCCOUNTEXCEEDED" || fname == "ISK2SERVERONLINE" || fname == "ISSAMLLOGOUTRESPONSE" || fname == "ISSOAPREQUEST" ||
             fname == "ISSPREADSHEETFILE" || fname == "ISSPREADSHEETOBJECT" || fname == "ISVALIDOAUTHACCESSTOKEN" || fname == "JAVACAST" ||
             fname == "NUMBERFORMAT" || fname == "ONWSAUTHENTICATE" || fname == "ORMCLEARSESSION" || fname == "ORMCLOSEALLSESSIONS" || fname == "ORMCLOSESESSION" || fname == "ORMEVICTCOLLECTION" || fname == "ORMEVICTENTITY" || fname == "ORMEVICTQUERIES" || fname == "ORMEXECUTEQUERY" || fname == "ORMFLUSH" || fname == "ORMFLUSHALL" || fname == "ORMGETSESSION" || fname == "ORMGETSESSIONFACTORY" ||
             fname == "ORMINDEX" || fname == "ORMINDEXPURGE" || fname == "ORMRELOAD" || fname == "ORMSEARCH" || fname == "ORMSEARCHOFFLINE" || fname == "PROCESSSAMLLOGOUTREQUEST" || fname == "PROCESSSAMLRESPONSE" ||
-            fname == "RELEASECOMOBJECT" || fname == "RESTDELETEAPPLICATION" || fname == "RESTINITAPPLICATION" || fname == "RESTSETRESPONSE" || fname == "SENDGATEWAYMESSAGE" || fname == "SENDSAMLLOGOUTRESPONSE" ||             fname == "SETENCODING" ||
+            fname == "RELEASECOMOBJECT" || fname == "RESTDELETEAPPLICATION" || fname == "RESTINITAPPLICATION" || fname == "RESTSETRESPONSE" || fname == "SENDGATEWAYMESSAGE" || fname == "SENDSAMLLOGOUTRESPONSE" ||
             fname == "SPREADSHEETADDAUTOFILTER" || fname == "SPREADSHEETADDCOLUMN" || fname == "SPREADSHEETADDFREEZEPANE" || fname == "SPREADSHEETADDIMAGE" || fname == "SPREADSHEETADDINFO" || fname == "SPREADSHEETADDPAGEBREAKS" || fname == "SPREADSHEETADDPRINTGRIDLINES" || fname == "SPREADSHEETADDROW" || fname == "SPREADSHEETADDROWS" || fname == "SPREADSHEETADDSPLITPANE" || fname == "SPREADSHEETCREATESHEET" || fname == "SPREADSHEETDELETECOLUMN" || fname == "SPREADSHEETDELETECOLUMNS" || fname == "SPREADSHEETDELETEROW" || fname == "SPREADSHEETDELETEROWS" || fname == "SPREADSHEETFORMATCELL" || fname == "SPREADSHEETFORMATCELLRANGE" || fname == "SPREADSHEETFORMATCOLUMN" || fname == "SPREADSHEETFORMATCOLUMNS" || fname == "SPREADSHEETFORMATROW" || fname == "SPREADSHEETFORMATROWS" || fname == "SPREADSHEETGETCELLCOMMENT" || fname == "SPREADSHEETGETCELLFORMULA" || fname == "SPREADSHEETGETCELLVALUE" || fname == "SPREADSHEETGETCOLUMNCOUNT" || fname == "SPREADSHEETGETCOLUMNWIDTH" || fname == "SPREADSHEETGETLASTROWNUMBER" || fname == "SPREADSHEETGETPRINTORIENTATION" ||
             fname == "SPREADSHEETGROUPCOLUMNS" || fname == "SPREADSHEETGROUPROWS" || fname == "SPREADSHEETINFO" || fname == "SPREADSHEETISBINARYFORMAT" || fname == "SPREADSHEETISCOLUMNHIDDEN" || fname == "SPREADSHEETISROWHIDDEN" || fname == "SPREADSHEETISSTREAMINGXMLFORMAT" || fname == "SPREADSHEETISXMLFORMAT" || fname == "SPREADSHEETMERGECELLS" || fname == "SPREADSHEETNEW" || fname == "SPREADSHEETREAD" || fname == "SPREADSHEETREADBINARY" || fname == "SPREADSHEETREMOVECOLUMNBREAK" || fname == "SPREADSHEETREMOVEPRINTGRIDLINES" || fname == "SPREADSHEETREMOVEROWBREAK" || fname == "SPREADSHEETREMOVESHEET" || fname == "SPREADSHEETREMOVESHEETNUMBER" || fname == "SPREADSHEETRENAMESHEET" || fname == "SPREADSHEETSETACTIVESHEET" || fname == "SPREADSHEETSETACTIVESHEETNUMBER" || fname == "SPREADSHEETSETCELLCOMMENT" || fname == "SPREADSHEETSETCELLFORMULA" || fname == "SPREADSHEETSETCELLVALUE" || fname == "SPREADSHEETSETCOLUMNBREAK" || fname == "SPREADSHEETSETCOLUMNHIDDEN" || fname == "SPREADSHEETSETCOLUMNWIDTH" || fname == "SPREADSHEETSETFITTOPAGE" || fname == "SPREADSHEETSETFOOTER" || fname == "SPREADSHEETSETFOOTERIMAGE" || fname == "SPREADSHEETSETHEADER" ||
              fname == "SPREADSHEETSETHEADERIMAGE" || fname == "SPREADSHEETSETROWBREAK" || fname == "SPREADSHEETSETROWHEIGHT" || fname == "SPREADSHEETSETROWHIDDEN" || fname == "SPREADSHEETSHIFTCOLUMNS" || fname == "SPREADSHEETSHIFTROWS" || fname == "SPREADSHEETUNGROUPCOLUMNS" || fname == "SPREADSHEETUNGROUPROWS" || fname == "SPREADSHEETWRITE" || fname == "STOREADDACL" || fname == "STOREGETACL" || fname == "STOREGETMETADATA" || fname == "STORESETACL" || fname == "STORESETMETADATA" || fname == "STREAMINGSPREADSHEETCLEANUP" || fname == "STREAMINGSPREADSHEETNEW" || fname == "STREAMINGSPREADSHEETPROCESS" || fname == "STREAMINGSPREADSHEETREAD" || fname == "STREAMINGSPREADSHEETISSTREAMINGXMLFORMAT" || fname == "STREAMINGSPREADSHEETISXMLFORMAT" ||
@@ -3435,11 +3435,11 @@ llvm::Value *CompileExprAST(
         // No-argument functions: getContextRoot(), getLocalHostIP(),
         // isDebugMode(), getSystemFreeMemory(), getSystemTotalMemory(),
         // getFunctionList(), getCSPNonce(), getClientVariablesList(),
-        // transactionCommit().
+        // transactionCommit(), getPageContext().
         if (fname == "GETCONTEXTROOT" || fname == "GETLOCALHOSTIP" || fname == "ISDEBUGMODE" ||
             fname == "GETSYSTEMFREEMEMORY" || fname == "GETSYSTEMTOTALMEMORY" ||
             fname == "GETFUNCTIONLIST" || fname == "GETCSPNONCE" || fname == "GETCLIENTVARIABLESLIST" ||
-            fname == "TRANSACTIONCOMMIT") {
+            fname == "TRANSACTIONCOMMIT" || fname == "GETPAGECONTEXT") {
             if (node->args.size() > 0 && !(node->args.size() == 1 && node->args[0]->type == ExprAST::LiteralNull)) {
                 throw webstrada::exception(webstrada::string(("Function " + node->op_val + " requires 0 arguments").c_str()));
             }
@@ -3459,12 +3459,14 @@ llvm::Value *CompileExprAST(
         // getTotalSpace(path), isIPv6(value), isLocalHost(value),
         // getMetricData(mode), isDDX(value), isWDDX(value),
         // deleteClientVariable(name), preserveSingleQuotes(variable),
-        // createODBCDate(date), createODBCTime(date), isThreadInterrupted(name).
+        // createODBCDate(date), createODBCTime(date), isThreadInterrupted(name),
+        // getVFSMetaData(fileSystemType).
         if (fname == "GETENCODING" || fname == "GETFREESPACE" || fname == "GETTOTALSPACE" ||
             fname == "ISIPV6" || fname == "ISLOCALHOST" || fname == "GETMETRICDATA" ||
             fname == "ISDDX" || fname == "ISWDDX" || fname == "DELETECLIENTVARIABLE" ||
             fname == "PRESERVESINGLEQUOTES" || fname == "CREATEODBCDATE" ||
-            fname == "CREATEODBCTIME" || fname == "ISTHREADINTERRUPTED") {
+            fname == "CREATEODBCTIME" || fname == "ISTHREADINTERRUPTED" ||
+            fname == "GETVFSMETADATA") {
             if (node->args.size() != 1) {
                 throw webstrada::exception(webstrada::string(("Function " + node->op_val + " requires exactly 1 argument").c_str()));
             }
@@ -3493,6 +3495,23 @@ llvm::Value *CompileExprAST(
                 fHelper = llvm::Function::Create(
                     llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false),
                     llvm::Function::InternalLinkage, "cf_objectequals", module
+                );
+            }
+            return emitCall(builder, fHelper, {arg1, arg2});
+        }
+
+        // Two-argument function: setEncoding(scope, charset).
+        if (fname == "SETENCODING") {
+            if (node->args.size() != 2) {
+                throw webstrada::exception("SetEncoding requires exactly 2 arguments");
+            }
+            auto *arg1 = CompileExprAST(module, builder, function, node->args[0], cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            auto *arg2 = CompileExprAST(module, builder, function, node->args[1], cgi, server, cookie, application, session, url, form, variables, cfm_text);
+            auto *fHelper = module->getFunction("cf_setencoding");
+            if (!fHelper) {
+                fHelper = llvm::Function::Create(
+                    llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy(), builder.getPtrTy()}, false),
+                    llvm::Function::InternalLinkage, "cf_setencoding", module
                 );
             }
             return emitCall(builder, fHelper, {arg1, arg2});

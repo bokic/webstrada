@@ -5603,7 +5603,7 @@ cfvariant evaluateExpr(string &out, const string &expr,
         if (fname.equals("GETCONTEXTROOT") || fname.equals("GETLOCALHOSTIP") || fname.equals("ISDEBUGMODE") ||
             fname.equals("GETSYSTEMFREEMEMORY") || fname.equals("GETSYSTEMTOTALMEMORY") ||
             fname.equals("GETFUNCTIONLIST") || fname.equals("GETCSPNONCE") || fname.equals("GETCLIENTVARIABLESLIST") ||
-            fname.equals("TRANSACTIONCOMMIT")) {
+            fname.equals("TRANSACTIONCOMMIT") || fname.equals("GETPAGECONTEXT")) {
             if (call.args.size() > 0 && !(call.args.size() == 1 && call.args[0].isEmpty())) {
                 throw webstrada::exception(fname + " requires 0 arguments");
             }
@@ -5615,6 +5615,7 @@ cfvariant evaluateExpr(string &out, const string &expr,
             if (fname.equals("GETFUNCTIONLIST")) return tempReturn(cf_getfunctionlist());
             if (fname.equals("GETCSPNONCE")) return tempReturn(cf_getcspnonce());
             if (fname.equals("GETCLIENTVARIABLESLIST")) return tempReturn(cf_getclientvariableslist());
+            if (fname.equals("GETPAGECONTEXT")) return tempReturn(cf_getpagecontext());
             return tempReturn(cf_transactioncommit());
         }
 
@@ -5623,7 +5624,8 @@ cfvariant evaluateExpr(string &out, const string &expr,
             fname.equals("ISIPV6") || fname.equals("ISLOCALHOST") || fname.equals("GETMETRICDATA") ||
             fname.equals("ISDDX") || fname.equals("ISWDDX") || fname.equals("DELETECLIENTVARIABLE") ||
             fname.equals("PRESERVESINGLEQUOTES") || fname.equals("CREATEODBCDATE") ||
-            fname.equals("CREATEODBCTIME") || fname.equals("ISTHREADINTERRUPTED")) {
+            fname.equals("CREATEODBCTIME") || fname.equals("ISTHREADINTERRUPTED") ||
+            fname.equals("GETVFSMETADATA")) {
             if (call.args.size() != 1) throw webstrada::exception(fname + " requires exactly 1 argument");
             cfvariant a = evaluateExpr(out, call.args[0], cgi, server, cookie, application, session, url, form, variables);
             if (fname.equals("GETENCODING")) return tempReturn(cf_getencoding(&a));
@@ -5638,6 +5640,7 @@ cfvariant evaluateExpr(string &out, const string &expr,
             if (fname.equals("PRESERVESINGLEQUOTES")) return tempReturn(cf_preservesinglequotes(&a));
             if (fname.equals("CREATEODBCDATE")) return tempReturn(cf_createodbcdate(&a));
             if (fname.equals("CREATEODBCTIME")) return tempReturn(cf_createodbctime(&a));
+            if (fname.equals("GETVFSMETADATA")) return tempReturn(cf_getvfsmetadata(&a));
             return tempReturn(cf_isthreadinterrupted(&a));
         }
 
@@ -5646,6 +5649,13 @@ cfvariant evaluateExpr(string &out, const string &expr,
             cfvariant a = evaluateExpr(out, call.args[0], cgi, server, cookie, application, session, url, form, variables);
             cfvariant b = evaluateExpr(out, call.args[1], cgi, server, cookie, application, session, url, form, variables);
             return tempReturn(cf_objectequals(&a, &b));
+        }
+
+        if (fname.equals("SETENCODING")) {
+            if (call.args.size() != 2) throw webstrada::exception("SetEncoding requires exactly 2 arguments");
+            cfvariant a = evaluateExpr(out, call.args[0], cgi, server, cookie, application, session, url, form, variables);
+            cfvariant b = evaluateExpr(out, call.args[1], cgi, server, cookie, application, session, url, form, variables);
+            return tempReturn(cf_setencoding(&a, &b));
         }
 
         if (fname.equals("GETTOKEN")) {

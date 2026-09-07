@@ -2355,7 +2355,7 @@ static cfvariant *cf_call_builtin_dispatch(
     if (fname.equals("GETCONTEXTROOT") || fname.equals("GETLOCALHOSTIP") || fname.equals("ISDEBUGMODE") ||
         fname.equals("GETSYSTEMFREEMEMORY") || fname.equals("GETSYSTEMTOTALMEMORY") ||
         fname.equals("GETFUNCTIONLIST") || fname.equals("GETCSPNONCE") || fname.equals("GETCLIENTVARIABLESLIST") ||
-        fname.equals("TRANSACTIONCOMMIT")) {
+        fname.equals("TRANSACTIONCOMMIT") || fname.equals("GETPAGECONTEXT")) {
         if (arg_count != 0) throw webstrada::exception(fname + " requires 0 arguments");
         if (fname.equals("GETCONTEXTROOT")) return cf_getcontextroot();
         if (fname.equals("GETLOCALHOSTIP")) return cf_getlocalhostip();
@@ -2365,6 +2365,7 @@ static cfvariant *cf_call_builtin_dispatch(
         if (fname.equals("GETFUNCTIONLIST")) return cf_getfunctionlist();
         if (fname.equals("GETCSPNONCE")) return cf_getcspnonce();
         if (fname.equals("GETCLIENTVARIABLESLIST")) return cf_getclientvariableslist();
+        if (fname.equals("GETPAGECONTEXT")) return cf_getpagecontext();
         return cf_transactioncommit();
     }
 
@@ -2373,7 +2374,8 @@ static cfvariant *cf_call_builtin_dispatch(
         fname.equals("ISIPV6") || fname.equals("ISLOCALHOST") || fname.equals("GETMETRICDATA") ||
         fname.equals("ISDDX") || fname.equals("ISWDDX") || fname.equals("DELETECLIENTVARIABLE") ||
         fname.equals("PRESERVESINGLEQUOTES") || fname.equals("CREATEODBCDATE") ||
-        fname.equals("CREATEODBCTIME") || fname.equals("ISTHREADINTERRUPTED")) {
+        fname.equals("CREATEODBCTIME") || fname.equals("ISTHREADINTERRUPTED") ||
+        fname.equals("GETVFSMETADATA")) {
         if (arg_count != 1) throw webstrada::exception(fname + " requires exactly 1 argument");
         if (fname.equals("GETENCODING")) return cf_getencoding(args[0]);
         if (fname.equals("GETFREESPACE")) return cf_getfreespace(args[0]);
@@ -2387,12 +2389,18 @@ static cfvariant *cf_call_builtin_dispatch(
         if (fname.equals("PRESERVESINGLEQUOTES")) return cf_preservesinglequotes(args[0]);
         if (fname.equals("CREATEODBCDATE")) return cf_createodbcdate(args[0]);
         if (fname.equals("CREATEODBCTIME")) return cf_createodbctime(args[0]);
+        if (fname.equals("GETVFSMETADATA")) return cf_getvfsmetadata(args[0]);
         return cf_isthreadinterrupted(args[0]);
     }
 
     if (fname.equals("OBJECTEQUALS")) {
         if (arg_count != 2) throw webstrada::exception("ObjectEquals requires exactly 2 arguments");
         return cf_objectequals(args[0], args[1]);
+    }
+
+    if (fname.equals("SETENCODING")) {
+        if (arg_count != 2) throw webstrada::exception("SetEncoding requires exactly 2 arguments");
+        return cf_setencoding(args[0], args[1]);
     }
 
     if (fname.equals("GETTOKEN")) {

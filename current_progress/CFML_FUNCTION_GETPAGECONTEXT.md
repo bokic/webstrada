@@ -5,23 +5,23 @@
 
 ## Current state
 
-- Runtime stub: `cfml::cf_getpagecontext()` in `src/cf8.cpp:13582` throws `"Function GETPAGECONTEXT is not implemented"`.
-- Compiler: `GETPAGECONTEXT` is in the zero-arg not-implemented function list (`src/compiler.cpp:1736`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5378`.
+- Runtime: `cfml::cf_getpagecontext()` implemented in `src/cffunctions/fn_getpagecontext.cpp`. Throws `Function GetPageContext is not supported: it returns a Java page context object.` per AGENTS.md rule (engine has no Java object interop; matches `CacheGetSession`).
+- Compiler: JIT compiled direct call via `codegen_expr.cpp`.
+- Interpreter: `core_interp.cpp` and `core_membermethods.cpp` support.
+- Symbol registered in `llvm_compiler.cpp`.
 
-## Implemented: 0%
+## Implemented: 100%
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:13582` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1736`, symbol at `src/compiler.cpp:5378` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Implemented (throws unsupported error) | `src/cffunctions/fn_getpagecontext.cpp` |
+| Compiler wiring | ✅ JIT compiled direct call | `src/codegen/codegen_expr.cpp` |
+| Interpreter dispatch | ✅ Implemented | `src/core/core_interp.cpp`, `src/core/core_membermethods.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*getpagecontext*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:428` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Get*/Meta/System) | — |
+| Tests | ✅ Verified via unit tests (`JitExpressionTest.Tier1GetPageContext`) | `tests/tests.cpp` |
+| Tracker status | ✅ `PROGRESS.md` (✅ Yes) | — |
 | Docs/spec | ✅ Spec reference exists | `cfml_docs/CFML_FUNCTION_GETPAGECONTEXT.md` |
 
 ## What GETPAGECONTEXT does at the low C level

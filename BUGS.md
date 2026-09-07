@@ -52,6 +52,10 @@ The `CacheGet`/`CachePut`/`CacheRegion*`/`RemoveCachedQuery` family (implemented
 
 The whole family's byte-verification against CF 2025 is now possible (the `caching` package was installed on the RDS host 2026-08-09). The `<cfcache>` tag is byte-verified (see the PROGRESS.md row); the Cache* functions still diverge from CF and `tests/cfm/tier2_cache_test.cfm` pins the engine's behavior via the CLI with the `CacheTest`/`CfcacheTagTest` unit tests covering the corner cases (see BUGS_CF.md).
 
+## `GetPageContext` throws; CF returns a Java object
+
+CF returns the underlying servlet `PageContext` Java object (`coldfusion.runtime.NeoPageContext`); this native C++ engine has no Java runtime or JVM object interop, so calling `GetPageContext()` raises `Function GetPageContext is not supported: it returns a Java page context object.` (following the AGENTS.md rule for functions that return engine-internal Java handles, matching `CacheGetSession`).
+
 ## `<cfcache>` divergences
 
 - **`directory` is validated but not used for storage**: CF stores cached pages/fragments in the `directory` attribute's on-disk directory; this engine always uses its SQLite-backed cache store (the `CacheStore`), so the attribute only reproduces CF's validation (empty → "The value of the DIRECTORY attribute is invalid...", non-existent → "The directory (...) specified in the directory attribute in the cfcache tag does not exist.").

@@ -361,4 +361,10 @@ std::string renderSubstitution(const std::string &subst, const std::string &subj
 webstrada::cfvariant *doReReplace(const webstrada::string &strVal, const webstrada::string &reVal,                                const webstrada::string &subVal, const webstrada::string &scopeVal, bool nocase);
 std::vector<webstrada::string> getSortedComponentKeys(const webstrada::cfvariant *compVal, bool includeProperties, bool includeThisScope, bool includeMethods);
 
+void encoding_reset();
+void set_form_encoding(const std::string &enc);
+void set_url_encoding(const std::string &enc);
+std::string get_form_encoding();
+std::string get_url_encoding();
+
 } // namespace cfml

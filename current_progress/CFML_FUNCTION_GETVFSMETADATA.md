@@ -5,23 +5,23 @@
 
 ## Current state
 
-- Runtime stub: `cfml::cf_getvfsmetadata()` in `src/cf8.cpp:13681` throws `"Function GETVFSMETADATA is not implemented"`.
-- Compiler: `GETVFSMETADATA` is in the zero-arg not-implemented function list (`src/compiler.cpp:1737`).
-- No interpreter (`evalFunction`) dispatch entry.
-- Symbol registered at `src/compiler.cpp:5400`.
+- Runtime: `cfml::cf_getvfsmetadata(const cfvariant *fileSystemType)` implemented in `src/cffunctions/fn_getvfsmetadata.cpp`.
+- Compiler: JIT compiled direct call via `codegen_expr.cpp`.
+- Interpreter: `core_interp.cpp` and `core_membermethods.cpp` support.
+- Symbol registered in `llvm_compiler.cpp`.
 
-## Implemented: 0%
+## Implemented: 100%
 
 ## Status checklist
 
 | Area | Status | Location |
 |------|--------|----------|
-| Runtime | ❌ Stub that throws | `src/cf8.cpp:13681` |
-| Compiler wiring | ⚠️ Compiled as zero-arg call into the not-implemented list; no args compiled/passed | `src/compiler.cpp:1737`, symbol at `src/compiler.cpp:5400` |
-| Interpreter dispatch | ❌ Missing | — |
+| Runtime | ✅ Implemented | `src/cffunctions/fn_getvfsmetadata.cpp` |
+| Compiler wiring | ✅ JIT compiled direct call | `src/codegen/codegen_expr.cpp` |
+| Interpreter dispatch | ✅ Implemented | `src/core/core_interp.cpp`, `src/core/core_membermethods.cpp` |
 | Tag support | N/A (function only) | — |
-| Tests | ❌ No `tests/cfm/*getvfsmetadata*`, no `verify_with_coldfusion.py` coverage | — |
-| Tracker status | ❌ `PROGRESS.md:453` (❌ No), listed in `UNIMPLEMENTED_FUNCTIONS.md` (Get*/Meta/System) | — |
+| Tests | ✅ Verified against CF 2025 (`tests/cfm/tier1_getvfsmetadata_test.cfm` + `JitExpressionTest.Tier1GetVFSMetaData`) | `tests/cfm/tier1_getvfsmetadata_test.cfm`, `tests/tests.cpp` |
+| Tracker status | ✅ `PROGRESS.md` (✅ Yes) | — |
 | Docs/spec | ✅ Spec reference exists | `cfml_docs/CFML_FUNCTION_GETVFSMETADATA.md` |
 
 ## What GETVFSMETADATA does at the low C level

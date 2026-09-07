@@ -21214,6 +21214,65 @@ TEST_F(JitExpressionTest, Tier1IsThreadInterrupted) {
     }
 }
 
+TEST_F(JitExpressionTest, Tier1SetEncoding) {
+    cfml::encoding_reset();
+    EXPECT_EQ(runJitTemplate("<cfoutput>#GetEncoding(\"form\")#</cfoutput>", variables).equals("UTF-8"), true);
+    EXPECT_EQ(runJitTemplate("<cfoutput>#GetEncoding(\"url\")#</cfoutput>", variables).equals("UTF-8"), true);
+
+    // SetEncoding for FORM
+    EXPECT_EQ(runJitTemplate("<cfset SetEncoding(\"form\", \"ISO-8859-1\")><cfoutput>#GetEncoding(\"form\")#</cfoutput>", variables).equals("ISO-8859-1"), true);
+    // URL remains untouched
+    EXPECT_EQ(runJitTemplate("<cfoutput>#GetEncoding(\"url\")#</cfoutput>", variables).equals("UTF-8"), true);
+
+    // SetEncoding for URL
+    EXPECT_EQ(runJitTemplate("<cfset SetEncoding(\"url\", \"windows-1252\")><cfoutput>#GetEncoding(\"url\")#</cfoutput>", variables).equals("windows-1252"), true);
+    // Case insensitivity of scope
+    EXPECT_EQ(runJitTemplate("<cfset SetEncoding(\"FORM\", \"UTF-8\")><cfoutput>#GetEncoding(\"form\")#</cfoutput>", variables).equals("UTF-8"), true);
+
+    // Invalid scope throws
+    EXPECT_THROW(runJitTemplate("<cfset SetEncoding(\"cookie\", \"utf-8\")>", variables), webstrada::exception);
+
+    // Arity errors
+    EXPECT_THROW(runJitTemplate("<cfset SetEncoding(\"form\")>", variables), webstrada::exception);
+    EXPECT_THROW(runJitTemplate("<cfset SetEncoding()>", variables), webstrada::exception);
+
+    // encoding_reset resets state back to UTF-8
+    cfml::encoding_reset();
+    EXPECT_EQ(runJitTemplate("<cfoutput>#GetEncoding(\"url\")#</cfoutput>", variables).equals("UTF-8"), true);
+}
+
+TEST_F(JitExpressionTest, Tier1GetVFSMetaData) {
+    EXPECT_EQ(runJitTemplate("<cfset vfs = GetVFSMetaData(\"ram\")><cfoutput>#vfs.enabled#|#vfs.limit#|#vfs.used#|#vfs.free#</cfoutput>", variables).equals("YES|20971520|0|20971520"), true);
+    EXPECT_EQ(runJitTemplate("<cfset vfs = GetVFSMetaData(\"RAM\")><cfoutput>#vfs.enabled#</cfoutput>", variables).equals("YES"), true);
+    EXPECT_EQ(runJitTemplate("<cfset vfs = GetVFSMetaData(\"ram:\")><cfoutput>#vfs.enabled#</cfoutput>", variables).equals("YES"), true);
+    EXPECT_EQ(runJitTemplate("<cfset vfs = GetVFSMetaData(\"ram:///\")><cfoutput>#vfs.enabled#</cfoutput>", variables).equals("YES"), true);
+
+    // Invalid filesystem type throws
+    try {
+        runJitTemplate("<cfset vfs = GetVFSMetaData(\"disk\")>", variables);
+        FAIL() << "GetVFSMetaData(\"disk\") should throw";
+    } catch (const webstrada::exception &e) {
+        EXPECT_EQ(string(e.what()).contains("FileSystemType provided is not valid."), true);
+    }
+
+    // Arity errors
+    EXPECT_THROW(runJitTemplate("<cfset vfs = GetVFSMetaData()>", variables), webstrada::exception);
+    EXPECT_THROW(runJitTemplate("<cfset vfs = GetVFSMetaData(\"ram\", \"extra\")>", variables), webstrada::exception);
+}
+
+TEST_F(JitExpressionTest, Tier1GetPageContext) {
+    // GetPageContext throws because WebStrada has no Java object interop (like CacheGetSession)
+    try {
+        runJitTemplate("<cfset pc = GetPageContext()>", variables);
+        FAIL() << "GetPageContext() should throw";
+    } catch (const webstrada::exception &e) {
+        EXPECT_EQ(string(e.what()).contains("Function GetPageContext is not supported: it returns a Java page context object."), true);
+    }
+
+    // Arity error
+    EXPECT_THROW(runJitTemplate("<cfset pc = GetPageContext(\"arg\")>", variables), webstrada::exception);
+}
+
 // ---- Tier-2 built-in functions (CFFUNCTION_IMPLEMENTATION_ACTION_PLAN.md) ----
 
 TEST_F(JitExpressionTest, Tier2EncodeForFamily) {

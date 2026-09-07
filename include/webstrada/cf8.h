@@ -481,6 +481,9 @@ bool cf_transaction_rollback_to(const std::string &name);
 // is called at request start (scope_begin); it is also useful to tests.
 void locale_reset();
 
+// Resets FORM and URL scope encodings back to "UTF-8" per request.
+void encoding_reset();
+
 // ---- HTTP response output state (<cfcontent> / <cfflush>) ----
 
 // Byte-writing callback used to send output to the web engine. The daemon
@@ -1828,7 +1831,7 @@ cfvariant *cf_getsystemtotalmemory();
 cfvariant *cf_gettimezoneinfo();
 cfvariant *cf_gettoken(const cfvariant *str, const cfvariant *index, const cfvariant *delimiters);
 cfvariant *cf_gettotalspace(const cfvariant *path);
-cfvariant *cf_getvfsmetadata();
+cfvariant *cf_getvfsmetadata(const cfvariant *fileSystemType);
 cfvariant *cf_getwriteableimageformats();
 cfvariant *cf_hash(const cfvariant *str, const cfvariant *algorithm, const cfvariant *encoding, const cfvariant *additionalIterations);
 cfvariant *cf_hmac(const cfvariant *message, const cfvariant *key, const cfvariant *algorithm, const cfvariant *encoding);
@@ -2090,7 +2093,7 @@ cfvariant *cf_sessiongetmetadata();
 cfvariant *cf_sessioninvalidate();
 cfvariant *cf_sessionrotate();
 cfvariant *cf_setday(const cfvariant *date, const cfvariant *day);
-cfvariant *cf_setencoding();
+cfvariant *cf_setencoding(const cfvariant *scope, const cfvariant *encoding);
 cfvariant *cf_sethour(const cfvariant *date, const cfvariant *hour);
 cfvariant *cf_setlocale(const cfvariant *locale);
 cfvariant *cf_setminute(const cfvariant *date, const cfvariant *minute);
