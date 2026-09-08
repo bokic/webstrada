@@ -5,10 +5,6 @@ For issues that live on the ColdFusion side (server/installation problems found 
 testing against the RDS host) see `BUGS_CF.md`; for cosmetic output artifacts see
 `BUGS_COSMETIC.md`.
 
-## CFScript `while` / `do-while` loops do not execute
-
-`while (cond) { ... }` and `do { ... } while (cond)` inside `<cfscript>` / `.cfc` script blocks produce no output and no iterations — the body is silently skipped. This is a pre-existing bug that predates the `Keyword` grammar changes (confirmed by reverting `cfml_definition.json` to the committed state and reproducing the same failure). The parser parses the block without errors but the JIT either mis-compiles or skips the loop body. Reproducer: `tests/cfm/cfscript_while_test.cfm` (fails at `tests/cfm/cfscript_while_test.cfm` step 1 with "Unexpected keyword 'while' in expression"). Needs investigation in `codegen_script.cpp` / `llvm_codegen.cpp` where `while` statement handling lives.
-
 ## Session CFC graphs after worker restart
 
 The SQLite session format is JSON, so it cannot restore compiled CFC method tables.
@@ -70,14 +66,6 @@ CF returns the underlying servlet `PageContext` Java object (`coldfusion.runtime
 
 Byte-verified against the RDS host in tests/cfm/cferror_*_test.cfm except where noted:
 
-- **Diagnostics** is emitted as `{message} {detail}`; CF appends
-  ` <br>The error occurred on line {N}.` (this engine's exceptions carry no line
-  info).
-- **Browser / RemoteAddress / HTTPReferer / QueryString / StackTrace are empty**
-  (CF fills them from the request; StackTrace is the real Java stack trace).
-  Datetime matches CF's format exactly ("EEE MMM dd HH:mm:ss zzz yyyy").
-- **Suppressed is `false`**; CF renders the (always empty) Java array's
-  toString, e.g. `[Ljava.lang.Throwable;@3ddb2f31`.
 - **The ExceptionScope pseudo-keys (detail, errorcode, extendedinfo, exceptions)
   are stored as real map keys**, so `structKeyList(error)` shows 19 entries
   instead of CF's 15. Reads and structKeyExists behave like CF (verified); only
@@ -353,20 +341,24 @@ CF 2025 byte-for-byte. The following deliberate limitations/divergences remain:
   throw `Database: Error Executing Database Query.` on CF but work here. Being a
   superset is intended.
 
-## Full unit-test suite has 14 pre-existing failures (not from the sqlite shared-mode work)
+## Full unit-test suite has 12 host-level pre-existing failures (not from the sqlite shared-mode work)
 
-On HEAD (2026-09-02), before and after the scope/cache/profiler store changes,
-the following unit tests fail (reproduced with `./bin/webstrada-tests`); they
-are unrelated to the SQLite store work and pre-date it:
+On 2026-09-08, the elevated host run of `./bin/webstrada-tests` ran 1,478
+tests and passed 1,432; the following 12 failures remain. They are unrelated
+to the SQLite store work and pre-date it:
 
 - `ArrayStructLiteralTest.UnsupportedArrayOutputThrows`
 - `CfHttpTest.GetAsBinaryNoStoresByteArrayOutputStream` / `GetAsBinaryYesStoresBinary`
 - `CfQueryTest.DbLayerDumpsOperationsToStdout` / `DsnFileCreatedNextToConfiguredDir`
-  (the latter is order/flake dependent: it passed and failed across runs)
-- `ComponentTest.ScriptFormConstructorCallsAndWriteOutput`
-- `JitExpressionTest.CreateUuidIsUniquePerCall` / `MemberChainAfterBracketIndex`
-  / `Tier2NumberFormat` / `UnimplementedAndUnknownTags` (the `<cfmail>` one
+  (`DsnFileCreatedNextToConfiguredDir` is order/flake dependent and passes in
+  isolation)
+- `JitExpressionTest.MemberChainAfterBracketIndex` / `Tier2NumberFormat`
+  / `UnimplementedAndUnknownTags`
+  (the `<cfmail>` assertion in the first test
   expects a thrown error but `<cfmail>` is now a non-throwing logging stub)
+- In the restricted workspace sandbox, `JitExpressionTest.Tier2TraceAndAjax`
+  is an additional environment-only failure because `/var/log/webstrada/`
+  cannot be opened; it passes in the elevated host run.
 - `LocaleTest.LSIsDateUsesLocale`
 - `StructScopeFunctionsTest.ScopePassedDirectly` / `UdfRegisteredInVariables`
 - `UdfTest.ArgumentsVisibleKeysMatchCf`

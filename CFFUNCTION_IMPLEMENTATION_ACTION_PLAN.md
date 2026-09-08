@@ -9,6 +9,15 @@ Source of truth: `PROGRESS.md` (CFML Functions table), `UNIMPLEMENTED_FUNCTIONS.
 - Every implementation is a standalone `cfvariant *cf_<name>(...)` in `src/cffunctions/` following the `fn_trim.cpp` pattern, then registered in the AddSymbol table.
 - Per AGENTS.md: every cffunction argument should be `cfvariant *` (or `const cfvariant *`); return type `cfvariant *` or void.
 
+## Confirmed CF 2025 removals
+
+`CreateGUID` is not an implementation target. The Adobe ColdFusion 2025 RDS
+instance raises `Variable CREATEGUID is undefined.` when it is called, while
+`CreateUUID()` remains available and returns CF's 8-4-4-16 format. The UUID
+implementation and `JitExpressionTest.CreateUuidIsUniquePerCall` therefore
+cover `CreateUUID()` only; do not add `CreateGUID` as an alias or mark it as an
+implemented function.
+
 ## Available infrastructure
 
 Already-linked libraries: **curl** (HTTP), **openssl** (HMAC/RAND/AES), **sqlite3**, **pcre2**, **libxml2/libxslt**, **cairo/jpeg/zlib** (images).
@@ -27,18 +36,17 @@ Reusable runtime code:
 
 | Function | Effort | Deps | Why deferred |
 |---|---|---|---|
-| GetFunctionCalledName | M | call stack | — **implemented** (call-frame recording in UDF/component runtime) |
-| CallStackGet / CallStackDump | M | call stack | frame tracking — **deferred** |
-| GetBaseTagList / GetBaseTagData | M | tag stack | needs tag-nesting stack — **deferred** |
-| SetEncoding | M | request | set form/url decode charset — **deferred** |
 | CreateSignedJWT | M | openssl | JWS HS256/384/512 (HMAC exists) — **deferred** (JKS keystore needed) |
 | CreateEncryptedJWT | M/L | openssl | JWE (AES/RSA) — **deferred** |
+
+Call-stack, base-tag, and request-encoding functions previously listed here
+are implemented and documented in `PROGRESS.md`. They are no longer deferred.
 
 ## Tier 3 — Defer / needs a decision (new subsystem or external service)
 
 | Group | Functions | Why deferred |
 |---|---|---|
-| Auth/Security | AuthenticatedContext, AuthenticatedUser, GetAuthUser, GetUserRoles, IsAuthenticated, IsAuthorized, IsUserInAnyRole, IsUserInRole, IsUserLoggedIn, VerifyClient, IsProtected | needs an auth config/identity model |
+| Auth/Security | AuthenticatedContext, AuthenticatedUser | needs an auth config/identity model |
 | SAML | GenerateSAMLSPMetadata, Get/Init/ProcessSAMLAuthRequest, Get/Init/Process/SendSAMLLogoutRequest/Response, isSamlLogoutResponse | full SAML protocol |
 | OAuth | InvalidateOauthAccesstoken, IsValidOauthAccesstoken | OAuth token store |
 | SafeHTML | GetSafeHTML, isSafeHTML | OWASP AntiSamy HTML sanitizer (large) |
@@ -47,7 +55,6 @@ Reusable runtime code:
 | Printers | GetPrinterInfo, GetPrinterList | printing subsystem |
 | VFS | GetVFSMetaData | virtual filesystem |
 | Threads | isThreadInterrupted, ThreadJoin, ThreadTerminate, InterruptThread | no thread subsystem (`cfthread` unimplemented); needs a named-thread registry + join/terminate/interrupt model |
-| Cache | CacheGet, CacheGetAllIds, CacheGetMetadata, CacheGetProperties, CacheGetSession, CacheIdExists, CachePut, CacheRegionExists, CacheRegionNew, CacheRegionRemove, CacheRemove, CacheRemoveAll, CacheSetProperties, RemoveCachedQuery | implementable via sqlite (per TODO.md); needs a cache subsystem/decision | — **implemented 2026-08-08** (sqlite-backed `CacheStore`, `<cfquery cachedwithin/cacheid/cachedafter/cacheregion>` query cache too; see PROGRESS.md). Cannot be byte-verified on the RDS host (no `caching` package, see BUGS_CF.md). |
 | PageContext | GetPageContext | returns a Java object — cannot replicate; should throw (AGENTS.md rule) |
 | Store ACL | StoreAddACL, StoreGetACL, StoreGetMetadata, StoreSetACL, StoreSetMetadata | web-storage framework (S3 etc.) |
 | Spreadsheet* | 75 functions | large subsystem; needs a spreadsheet library (per TODO.md: via xlnt); currently throw stubs |
@@ -55,3 +62,9 @@ Reusable runtime code:
 | SOAP/WS* | 12 functions | needs SOAP/web-services support (per TODO.md: libcurl/libxml2/gSOAP); currently throw stubs |
 | Java/.NET | 3 functions | needs Java/.NET interop (per TODO.md: jnipp / libmono); currently throw stubs |
 | REST | 3 functions | needs REST framework integration; currently throw stubs |
+
+The login/security helpers `GetAuthUser`, `GetUserRoles`, `IsUserInAnyRole`,
+`IsUserInRole`, `IsUserLoggedIn`, and `VerifyClient` are implemented. The
+legacy `IsAuthenticated`, `IsAuthorized`, and `IsProtected` names are not CF
+2025 functions and intentionally resolve as undefined rather than belonging to
+this deferred implementation group.

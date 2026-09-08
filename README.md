@@ -22,6 +22,10 @@ A high-performance, lightweight **CFML Application Engine** written in C++.
   - Native image processing (`<cfimage>`, Cairo/JPEG), XML, WDDX, ZIP/archive operations, and file/directory I/O.
 - **🌐 Deployment Ready:** Runs as a standalone FastCGI application server (`webstrada`) fronted by Nginx/Caddy/Apache, or as a direct command-line runner (`webstrada-cli`).
 - **🗄️ Multi-Process Scopes & Caching:** Multi-process session and application caching backed by SQLite WAL mode and shared-memory architectures.
+- **🔁 CFScript loop control:** `while` and `do-while` loops, including `break`/`continue`, are compiled and byte-verified against Adobe ColdFusion 2025.
+- **⚠️ CFError request context:** `<cferror>` exposes request metadata and location-aware diagnostics in both exception and request handlers.
+- **🧵 CFML error stack:** `<cferror>` exposes the captured CFML call stack through `error.stackTrace` and `error.rootCause.stackTrace`.
+- **🧪 Test baseline:** The current full unit-suite failure inventory is maintained in `BUGS.md`; log-writing tests require host access to `/var/log/webstrada/` or a writable `WEBSTRADA_LOG_DIR`.
 
 ## ⚠️ ColdFusion 2025 feature gaps
 
@@ -29,7 +33,7 @@ WebStrada is not yet a complete implementation of every Adobe ColdFusion 2025 fe
 
 - 2025 language additions that are still pending, including null-coalescing/safe-navigation and lambda/spread syntax, parameter destructuring, several newer assignment/exception constructs, and the newer query-cache options.
 - Spreadsheet workbooks and streaming spreadsheets. CSV read/write/process support is available, but the Spreadsheet API is not.
-- Server-side charts and the 2025 chart improvements (including `cfchartset`, `cfcharset`, and newer chart types/customization).
+- Server-side charts and the 2025 chart improvements (including `cfchartset` and newer chart types/customization).
 - PDF, HTML-to-PDF, document, presentation, and report tags.
 - Threading and related interruption/join/termination behavior; WebSocket support.
 - Java/.NET object interoperation, ORM/entity/HQL, SOAP/web services, REST lifecycle helpers, SAML/OAuth integrations, gateways, and Exchange/SharePoint integrations.

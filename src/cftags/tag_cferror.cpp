@@ -46,6 +46,7 @@
 #include <algorithm>
 #include <chrono>
 #include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -212,6 +213,58 @@ static CferrorHandler *matchExceptionHandler(CferrorRuntime *reg,
     return nullptr;
 }
 
+static string requestCgiValue(void *cgi, const char *name)
+{
+    auto *scope = static_cast<cfvariant *>(cgi);
+    if (!scope || scope->m_type != cfvariant::Struct || !scope->m_struct) return string();
+    for (const auto &entry : *scope->m_struct) {
+        if (entry.first.compareCaseInsensitive(name) == 0) {
+            return const_cast<cfvariant &>(entry.second).toString();
+        }
+    }
+    return string();
+}
+
+static string errorDiagnostics(const webstrada::exception &ex)
+{
+    string diagnostics = ex.m_message + string(" ") + ex.m_detail;
+    if (!ex.m_stackTrace.empty()) {
+        const auto &loc = ex.m_stackTrace.back();
+        diagnostics += " <br>The error occurred in ";
+        diagnostics += string(loc.path.c_str());
+        diagnostics += ": line ";
+        diagnostics += string::number(loc.line);
+        diagnostics += ".";
+    }
+    return diagnostics;
+}
+
+static string cfmlStackTraceString(const std::vector<webstrada::StackLevel> &stack)
+{
+    std::string rendered;
+    bool first = true;
+    for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+        if (!first) rendered += "\n";
+        first = false;
+        rendered += it->path;
+        rendered += ":";
+        rendered += std::to_string(it->line);
+        if (!it->function.empty()) {
+            rendered += ":";
+            rendered += it->function;
+        }
+    }
+    return string(rendered.c_str());
+}
+
+static string suppressedThrowableArrayString(const webstrada::exception &ex)
+{
+    std::ostringstream out;
+    out << "[Ljava.lang.Throwable;@" << std::hex
+        << reinterpret_cast<std::uintptr_t>(&ex);
+    return string(out.str().c_str());
+}
+
 // CF's ExceptionScope.get on the ROOTCAUSE throwable: the type is the custom
 // type name for user throws, the engine type otherwise. The wrapper struct
 // (CfErrorWrapper) always reports TYPE "coldfusion.runtime.CfErrorWrapper"
@@ -228,7 +281,7 @@ static cfvariant *buildRootCause(const webstrada::exception &ex)
     root->structSet("EXTENDEDINFO", cfvariant(ex.m_extendedInfo));
     root->structSet("CODE", cfvariant(ex.m_errorCode));
     root->structSet("EXTENDED_INFO", cfvariant(ex.m_extendedInfo));
-    root->structSet("STACKTRACE", cfvariant(string()));
+    root->structSet("STACKTRACE", cfvariant(cfmlStackTraceString(ex.m_stackTrace)));
     cfvariant *tags = cfml::cf_stack_tagcontext(ex.m_stackTrace);
     root->structSet("TAGCONTEXT", *tags);
     delete tags;
@@ -241,7 +294,8 @@ static cfvariant *buildRootCause(const webstrada::exception &ex)
 // The error/cferror struct (CfErrorWrapper + ExceptionScope) CF publishes for
 // the exception handler page. The caller owns the returned variant.
 static cfvariant *buildErrorStruct(const webstrada::exception &ex, const std::string &mailto,
-                                   const string &generatedContent, const string &requestPath)
+                                   const string &generatedContent, const string &requestPath,
+                                   void *cgi)
 {
     auto *err = new cfvariant(cfvariant::Struct);
     err->structSet("TYPE", cfvariant("coldfusion.runtime.CfErrorWrapper"));
@@ -249,27 +303,16 @@ static cfvariant *buildErrorStruct(const webstrada::exception &ex, const std::st
     err->structSet("GENERATEDCONTENT", cfvariant(generatedContent));
     err->structSet("MAILTO", cfvariant(mailto.c_str()));
     err->structSet("TEMPLATE", cfvariant(requestPath));
-    // CF's Diagnostics appends "The error occurred in <template>: line N." to
-    // the message/detail once the engine tracks the source location.
-    webstrada::string diagnostics = ex.m_message + string(" ") + ex.m_detail;
-    if (!ex.m_stackTrace.empty()) {
-        const auto &loc = ex.m_stackTrace.back();
-        diagnostics += " <br>The error occurred in ";
-        diagnostics += webstrada::string(loc.path.c_str());
-        diagnostics += ": line ";
-        diagnostics += webstrada::string::number(loc.line);
-        diagnostics += ".";
-    }
-    err->structSet("DIAGNOSTICS", cfvariant(diagnostics));
-    err->structSet("BROWSER", cfvariant(string()));
-    err->structSet("REMOTEADDRESS", cfvariant(string()));
-    err->structSet("HTTPREFERER", cfvariant(string()));
-    err->structSet("QUERYSTRING", cfvariant(string()));
-    err->structSet("STACKTRACE", cfvariant(string()));
+    err->structSet("DIAGNOSTICS", cfvariant(errorDiagnostics(ex)));
+    err->structSet("BROWSER", cfvariant(requestCgiValue(cgi, "HTTP_USER_AGENT")));
+    err->structSet("REMOTEADDRESS", cfvariant(requestCgiValue(cgi, "REMOTE_ADDR")));
+    err->structSet("HTTPREFERER", cfvariant(requestCgiValue(cgi, "HTTP_REFERER")));
+    err->structSet("QUERYSTRING", cfvariant(requestCgiValue(cgi, "QUERY_STRING")));
+    err->structSet("STACKTRACE", cfvariant(cfmlStackTraceString(ex.m_stackTrace)));
     cfvariant *tags = cfml::cf_stack_tagcontext(ex.m_stackTrace);
     err->structSet("TAGCONTEXT", *tags);
     delete tags;
-    err->structSet("SUPPRESSED", cfvariant(false));
+    err->structSet("SUPPRESSED", cfvariant(suppressedThrowableArrayString(ex)));
     // ExceptionScope.get pseudo-keys that resolve to "" (non-null) for the
     // wrapper: structKeyExists(error,'detail') is TRUE on CF and
     // #error.detail#/#error.errorcode#/#error.extendedinfo#/#error.exceptions#
@@ -313,7 +356,7 @@ static void runHandlerPage(const CferrorHandler &h, const webstrada::exception &
     }
 
     const string generatedContent = *out;
-    cfvariant *errStruct = buildErrorStruct(ex, h.mailto, generatedContent, requestPath);
+    cfvariant *errStruct = buildErrorStruct(ex, h.mailto, generatedContent, requestPath, cgi);
     if (variables && static_cast<cfvariant*>(variables)->m_type == cfvariant::Struct) {
         cfvariant *vars = static_cast<cfvariant*>(variables);
         vars->structSet("error", *errStruct);
@@ -361,7 +404,7 @@ static void replacePlaceholder(string &content, const char *search, const string
 // placeholders, writes the result. Returns false when the template file is
 // missing (falls through to the built-in handler).
 static int runRequestHandler(const CferrorHandler &h, const webstrada::exception &ex,
-                             string *out, const string &requestPath)
+                             string *out, void *cgi, const string &requestPath)
 {
     if (h.templatePath.empty() || !fileExists(h.templatePath.c_str())) {
         return 0;
@@ -383,8 +426,7 @@ static int runRequestHandler(const CferrorHandler &h, const webstrada::exception
 
     string content(raw.c_str(), raw.size());
     replacePlaceholder(content, "#ERROR.GENERATEDCONTENT#", generatedContent);
-    replacePlaceholder(content, "#ERROR.DIAGNOSTICS#",
-                       ex.m_message + string(" ") + ex.m_detail);
+    replacePlaceholder(content, "#ERROR.DIAGNOSTICS#", errorDiagnostics(ex));
     replacePlaceholder(content, "#ERROR.MAILTO#", string(h.mailto.c_str()));
     {
         std::time_t t = std::time(nullptr);
@@ -396,10 +438,10 @@ static int runRequestHandler(const CferrorHandler &h, const webstrada::exception
         }
         replacePlaceholder(content, "#ERROR.DATETIME#", string(buf));
     }
-    replacePlaceholder(content, "#ERROR.BROWSER#", string());
-    replacePlaceholder(content, "#ERROR.REMOTEADDRESS#", string());
-    replacePlaceholder(content, "#ERROR.HTTPREFERER#", string());
-    replacePlaceholder(content, "#ERROR.QUERYSTRING#", string());
+    replacePlaceholder(content, "#ERROR.BROWSER#", requestCgiValue(cgi, "HTTP_USER_AGENT"));
+    replacePlaceholder(content, "#ERROR.REMOTEADDRESS#", requestCgiValue(cgi, "REMOTE_ADDR"));
+    replacePlaceholder(content, "#ERROR.HTTPREFERER#", requestCgiValue(cgi, "HTTP_REFERER"));
+    replacePlaceholder(content, "#ERROR.QUERYSTRING#", requestCgiValue(cgi, "QUERY_STRING"));
     replacePlaceholder(content, "#ERROR.TEMPLATE#", requestPath);
     replacePlaceholder(content, "#ERROR.ROOTCAUSE.TYPE#", ex.m_type);
     replacePlaceholder(content, "#ERROR.ROOTCAUSE.MESSAGE#", ex.m_message);
@@ -557,7 +599,7 @@ int cf_cferror_handle(const webstrada::exception *ex, string *out, void *cgi, vo
     // runRequestHandler.
     if (!reg->requestHandler.templatePath.empty()) {
         try {
-            if (runRequestHandler(reg->requestHandler, *current, out, requestPathStr)) {
+            if (runRequestHandler(reg->requestHandler, *current, out, cgi, requestPathStr)) {
                 cfml::response().statusCode = 500;
                 return 1;
             }

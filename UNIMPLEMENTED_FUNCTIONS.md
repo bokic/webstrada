@@ -6,6 +6,14 @@ be the exact function-level source of truth, including the Spreadsheet, ORM,
 SOAP/web-service, REST, SAML/OAuth, Java/.NET, threading, gateway, and related
 integration functions listed below.
 
+Compatibility note (2026-09-08): CFScript `while`/`do-while` loop execution is implemented; this does not change the function inventory.
+
+Compatibility note (2026-09-08): `<cferror>` request-context fields and diagnostics were corrected; this does not change the function inventory.
+
+Compatibility note (2026-09-08): `<cferror>` now exposes the captured CFML stack through its StackTrace fields; this does not change the function inventory.
+
+Compatibility note (2026-09-08): the current 12 host-level full unit-suite failures and the sandbox-only log-path failure are documented in `BUGS.md`; no function inventory status changed.
+
 Compatibility note (2026-09-07): `IsProtected`, `IsAuthenticated`, and `IsAuthorized`
 are obsolete ColdFusion security functions (removed in CF MX / CF 6). In modern
 ColdFusion, CF reports `Variable <NAME> is undefined.`, which the engine reproduces

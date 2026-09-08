@@ -20,7 +20,6 @@ This is the technical follow-up to the overview in `README.md`. Keep exact imple
 
 * Implement the complete Spreadsheet API, including workbook read/write, cell/row/column formatting and metadata, hyperlinks, validation, page layout, and streaming spreadsheet APIs. CSV functions are already implemented.
 * Implement server-side charting, `cfchartset`, SVG output, new chart types, themes, number formatting, markers, rules, and animation.
-* Implement the new `cfcharset` tag and its response-encoding behavior.
 * Implement PDF/HTML-to-PDF/document/presentation/report tags and their associated functions.
 * Implement `cfthread`, thread interruption/join/termination, and the corresponding async execution model.
 * Implement WebSocket support and the 2025 HTTP streaming/SSE enhancements.

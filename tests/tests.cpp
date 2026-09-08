@@ -20468,10 +20468,14 @@ TEST_F(JitExpressionTest, LlvmCodegenCompileString) {
 // Runs a page through worker::process_cli_request (the same path that
 // dispatches <cferror>) in a fresh temp tree; returns the output buffer.
 static std::string runCliRequestTree(const std::vector<std::pair<std::string, std::string>> &files,
-                                     const char *page = "page.cfm")
+                                     const char *page = "page.cfm",
+                                     const std::vector<std::pair<std::string, std::string>> &cgiEntries = {})
 {
     std::string root = makeAppCfmTree(files);
     worker w;
+    for (const auto &entry : cgiEntries) {
+        w.cgi().set(entry.first.c_str()) = entry.second.c_str();
+    }
     std::filesystem::path pagePath = std::filesystem::absolute(root + "/" + page);
     std::filesystem::path dirPath = std::filesystem::absolute(root);
     w.process_cli_request(pagePath.string().c_str(), dirPath.string().c_str());
@@ -20593,6 +20597,58 @@ TEST_F(CferrorTest, RequestHandlerReplacesPlaceholdersAndLeavesUnknown) {
         {"page.cfm", "<cferror type=\"request\" template=\"req_page.txt\"><cfthrow type=\"ktype\" message=\"rboot\" detail=\"rdtl\">"},
     });
     EXPECT_EQ(out, "RP|GC=<>|MLTO=<>|RCT=<ktype>|RCM=<rboot>|RCD=<rdtl>|UNK=<#ERROR.NOSUCH#>|END");
+}
+
+TEST_F(CferrorTest, RequestHandlerIncludesLocationAndRequestMetadata) {
+    std::string out = runCliRequestTree({
+        {"req_page.txt", "D=<#ERROR.DIAGNOSTICS#>|B=<#ERROR.BROWSER#>|R=<#ERROR.REMOTEADDRESS#>|H=<#ERROR.HTTPREFERER#>|Q=<#ERROR.QUERYSTRING#>"},
+        {"page.cfm", "<cferror type=\"request\" template=\"req_page.txt\"><cfthrow message=\"boom\" detail=\"detail\">"},
+    }, "page.cfm", {
+        {"HTTP_USER_AGENT", "TestBrowser"},
+        {"REMOTE_ADDR", "192.0.2.7"},
+        {"HTTP_REFERER", "https://example.test/from"},
+        {"QUERY_STRING", "a=1&b=two"},
+    });
+    EXPECT_EQ(out.rfind("D=<boom detail <br>The error occurred in ", 0), (size_t)0);
+    EXPECT_EQ(out.contains("/page.cfm: line 1.>|B=<TestBrowser>|R=<192.0.2.7>|H=<https://example.test/from>|Q=<a=1&b=two>"), true);
+}
+
+TEST_F(CferrorTest, ExceptionErrorStructIncludesRequestMetadataAndCfSuppressedForm) {
+    std::string out = runCliRequestTree({
+        {"err_page.cfm", "<cfoutput>B=#error.browser#|R=#error.remoteAddress#|H=#error.httpReferer#|Q=#error.queryString#|S=#error.suppressed#</cfoutput>"},
+        {"page.cfm", "<cferror type=\"exception\" exception=\"any\" template=\"err_page.cfm\"><cfthrow message=\"boom\">"},
+    }, "page.cfm", {
+        {"HTTP_USER_AGENT", "TestBrowser"},
+        {"REMOTE_ADDR", "192.0.2.7"},
+        {"HTTP_REFERER", "https://example.test/from"},
+        {"QUERY_STRING", "a=1&b=two"},
+    });
+    EXPECT_EQ(out.contains("B=TestBrowser|R=192.0.2.7|H=https://example.test/from|Q=a=1&b=two|S=[Ljava.lang.Throwable;@"), true);
+}
+
+TEST_F(CferrorTest, ExceptionErrorStructIncludesCfmlStackTrace) {
+    std::string out = runCliRequestTree({
+        {"err_page.cfm", "<cfoutput>#error.stackTrace#|#error.rootcause.stackTrace#</cfoutput>"},
+        {"page.cfm", "<cferror type=\"exception\" exception=\"any\" template=\"err_page.cfm\"><cfthrow message=\"boom\">"},
+    });
+    EXPECT_EQ(out.rfind("/tmp/webstrada_appcfm_test_", 0), (size_t)0);
+    EXPECT_EQ(out.contains(":1|"), true);
+    EXPECT_EQ(out.contains("|/tmp/webstrada_appcfm_test_"), true);
+}
+
+TEST_F(CferrorTest, ExceptionErrorStructStackTracePreservesThreeLevelOrder) {
+    std::string out = runCliRequestTree({
+        {"err_page.cfm", "<cfoutput>#error.stackTrace#</cfoutput>"},
+        {"page.cfm", "<cfscript>function outer(){ middle(); } function middle(){ inner(); } function inner(){ throw(message=\"boom\"); }</cfscript><cferror type=\"exception\" exception=\"any\" template=\"err_page.cfm\"><cfset outer()>"},
+    });
+    size_t inner = out.find(":INNER");
+    size_t middle = out.find(":MIDDLE");
+    size_t outer = out.find(":OUTER");
+    ASSERT_NE(inner, std::string::npos);
+    ASSERT_NE(middle, std::string::npos);
+    ASSERT_NE(outer, std::string::npos);
+    EXPECT_LT(inner, middle);
+    EXPECT_LT(middle, outer);
 }
 
 TEST_F(CferrorTest, RequestHandlerEmitsPageAndStatus500) {
@@ -21510,15 +21566,14 @@ TEST_F(JitExpressionTest, IsDateRejectsTrailingGarbage) {
 }
 
 TEST_F(JitExpressionTest, CreateUuidIsUniquePerCall) {
-    // CreateUUID()/CreateGUID() were built from unseeded rand(), so a fresh
-    // process returned the same value on every call (was BUGS.md
-    // "CreateUUID()/CreateGUID() return the same value on every run"). The
-    // generator is now seeded at process startup; two calls must differ.
+    // CreateUUID() was built from unseeded rand(), so a fresh process returned
+    // the same value on every call (was BUGS.md "CreateUUID() returns the
+    // same value on every run"). The generator is now seeded at process
+    // startup; two calls must differ. CreateGUID() was removed in CF 2025 and
+    // is intentionally not part of this test.
     string a = runJitTemplate("<cfoutput>#CreateUUID()#</cfoutput>", variables);
     string b = runJitTemplate("<cfoutput>#CreateUUID()#</cfoutput>", variables);
     EXPECT_EQ(a.equals(b), false);
-    string g = runJitTemplate("<cfoutput>#CreateGUID()#</cfoutput>", variables);
-    EXPECT_EQ(g.isEmpty(), false);
 }
 
 TEST_F(JitExpressionTest, FileWriteAppendsNewline) {
