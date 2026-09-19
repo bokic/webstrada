@@ -26,6 +26,7 @@ A high-performance, lightweight **CFML Application Engine** written in C++.
 - **⚠️ CFError request context:** `<cferror>` exposes request metadata and location-aware diagnostics in both exception and request handlers.
 - **🧵 CFML error stack:** `<cferror>` exposes the captured CFML call stack through `error.stackTrace` and `error.rootCause.stackTrace`.
 - **🧪 Test baseline:** The current full unit-suite failure inventory is maintained in `BUGS.md`; log-writing tests require host access to `/var/log/webstrada/` or a writable `WEBSTRADA_LOG_DIR`.
+- **📦 Release builds:** `./build-release.sh` configures a Release build with GCC, GNU `ld.bfd`, the size/performance flags, and LTO enabled centrally by CMake.
 
 ## ⚠️ ColdFusion 2025 feature gaps
 

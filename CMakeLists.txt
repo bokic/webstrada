@@ -9,13 +9,16 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffunction-sections -fdata-sections")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -Wl,--gc-sections -Wl,-s")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -Wl,--gc-sections -Wl,-s")
+
 project(WebStrada LANGUAGES CXX)
 
-#add_definitions(-D ENABLE_TRACE)
-
-#set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-#set(CMAKE_C_VISIBILITY_PRESET hidden)
-#set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(FATAL_ERROR "WebStrada requires GCC for its native build")
+endif()
 
 add_subdirectory(src)
 add_subdirectory(tests)

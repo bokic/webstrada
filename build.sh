@@ -19,7 +19,11 @@ for arg in "$@"; do
     esac
 done
 
-cmake -B build -G Ninja -DBUILD_UNIT_TESTS="${BUILD_UNIT_TESTS}" "${CMAKE_ARGS[@]}"
+echo ">> Configuring in build"
+cmake -B build -G Ninja -DBUILD_UNIT_TESTS="${BUILD_UNIT_TESTS}" "${CMAKE_ARGS[@]}" \
+    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+
+echo ">> Building"
 cmake --build build
 
 cp build/compile_commands.json .

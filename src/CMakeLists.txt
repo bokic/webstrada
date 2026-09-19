@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(WebStrada LANGUAGES CXX C)
 
+if(NOT CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    message(FATAL_ERROR "WebStrada requires GCC for its native build")
+endif()
+
 find_package(LLVM REQUIRED)
 find_package(LibXml2 REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -28,11 +32,8 @@ if(NOT MINIZIP_FOUND)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
     set(CMAKE_C_VISIBILITY_PRESET hidden)
     set(CMAKE_CXX_VISIBILITY_PRESET hidden)
-    add_link_options($<$<CONFIG:RELEASE>:-s>)
-    add_link_options($<$<CONFIG:MINSIZEREL>:-s>)
 endif()
 
 option(WEBSTRADA_USE_PCH "Use precompiled headers" ON)
