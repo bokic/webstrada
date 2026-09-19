@@ -22,6 +22,7 @@ A high-performance, lightweight **CFML Application Engine** written in C++.
   - Native image processing (`<cfimage>`, Cairo/JPEG), XML, WDDX, ZIP/archive operations, and file/directory I/O.
 - **🌐 Deployment Ready:** Runs as a standalone FastCGI application server (`webstrada`) fronted by Nginx/Caddy/Apache, or as a direct command-line runner (`webstrada-cli`).
 - **🗄️ Multi-Process Scopes & Caching:** Multi-process session and application caching backed by SQLite WAL mode and shared-memory architectures.
+- **⏱️ Intra-Request Tracking & Profiling:** Superior intra-request execution tracking and profiling system (enabled and managed directly via the built-in Admin Panel) that pinpoints where CFML consumes time down to the millisecond—breaking down template execution, `Application.cfc` lifecycle events (`onRequestStart`, `onRequestEnd`), database queries, custom tags, and CFC instantiations/method calls, complete with line-by-line execution tracing.
 - **🔁 CFScript loop control:** `while` and `do-while` loops, including `break`/`continue`, are compiled and byte-verified against Adobe ColdFusion 2025.
 - **⚠️ CFError request context:** `<cferror>` exposes request metadata and location-aware diagnostics in both exception and request handlers.
 - **🧵 CFML error stack:** `<cferror>` exposes the captured CFML call stack through `error.stackTrace` and `error.rootCause.stackTrace`.
@@ -47,8 +48,10 @@ WebStrada is not yet a complete implementation of every Adobe ColdFusion 2025 fe
 
 Run `webstrada` by passing a configuration file or defining your routing paths via the command line interface:
 
+### Install and Run
+
 ```bash
-# Download docker images
+# Download docker image
 docker pull bokic78/webstrada:latest
 
 # Create docker container
@@ -57,7 +60,11 @@ docker create --name webstrada -p 80:80 -v .:/webroot bokic78/webstrada:latest
 
 # Start webstrada app server
 docker start webstrada
+```
 
+### Stop and Uninstall
+
+```bash
 # Stop webstrada app server
 docker stop webstrada
 
@@ -66,7 +73,6 @@ docker rm webstrada
 
 # Delete webstrada docker image
 docker rmi bokic78/webstrada:latest
-
 ```
 
 This will server current directory as CFML application. Then open:
