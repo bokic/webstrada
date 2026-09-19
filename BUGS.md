@@ -5,6 +5,19 @@ For issues that live on the ColdFusion side (server/installation problems found 
 testing against the RDS host) see `BUGS_CF.md`; for cosmetic output artifacts see
 `BUGS_COSMETIC.md`.
 
+## Release builds with a custom nested build directory
+
+`build-release.sh <build-directory>` fails during the generated grammar step
+when the directory is nested below the repository root, because the current
+CMake rule resolves its generated `definitions` directory as the build
+directory's parent. The default `./build-release.sh` path works; custom build
+directories need to be siblings of the repository or this CMake path handling
+needs to be made independent of the build-directory location.
+
+The project intentionally requires GCC with GNU `ld.bfd` for native builds.
+Alternative compiler/linker toolchains are rejected by CMake because Release
+LTO behavior is defined for this toolchain only.
+
 ## Session CFC graphs after worker restart
 
 The SQLite session format is JSON, so it cannot restore compiled CFC method tables.

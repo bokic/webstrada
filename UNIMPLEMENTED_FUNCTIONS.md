@@ -8,6 +8,14 @@ integration functions listed below.
 
 Compatibility note (2026-09-08): CFScript `while`/`do-while` loop execution is implemented; this does not change the function inventory.
 
+Build note (2026-09-08): Release optimization flags and LTO were moved from
+`build-release.sh` into CMake; this does not change the function inventory.
+Both build scripts explicitly select GCC; Release links use GNU `ld.bfd`.
+Redundant Release `-O3` and unused shared-linker flag overrides were removed;
+this does not change the function inventory.
+Release per-function/data sections and linker garbage collection are enabled for
+size reduction; this does not change the function inventory.
+
 Compatibility note (2026-09-08): `<cferror>` request-context fields and diagnostics were corrected; this does not change the function inventory.
 
 Compatibility note (2026-09-08): `<cferror>` now exposes the captured CFML stack through its StackTrace fields; this does not change the function inventory.

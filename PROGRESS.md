@@ -1,4 +1,6 @@
 
+Documentation note (2026-09-19): Documented WebStrada's intra-request execution tracking and profiling system in `README.md` (enabled and managed in the Admin Panel). The profiler tracks granular timing across template execution, `Application.cfc` lifecycle callbacks (`onRequestStart`, `onRequestEnd`), database queries, custom tags, and CFC instantiations/method invocations, as well as line-level execution tracing persisted in SQLite.
+
 Compatibility note (2026-09-08): the ColdFusion 2025 feature-gap audit is summarized in `README.md` and technically decomposed in `TODO.md`. The repository's existing tag/function tables remain the source of truth for exact unsupported names. The audit additionally records pending 2025 language features (`??`, `?.`, `=>`, spread, destructuring, multi-assignment, dynamic properties, QoQ enhancements, and `cacheMaxIdleTime`) and ColdFusion 2025 Update 8 capabilities (AI/LLM, MCP, RAG/vector stores, passkeys/Argon2, Sets, and async APIs).
 
 Compatibility note (2026-09-08): the elevated host full unit suite currently passes 1,432/1,478 tests; 12 host-level failures remain documented in `BUGS.md`. The formerly failing `ComponentTest.ScriptFormConstructorCallsAndWriteOutput` and the obsolete `CreateGUID` assertion now pass; the sandbox adds one environment-only log-path failure.
@@ -18,6 +20,16 @@ Compatibility note (2026-09-07): `SpreadOperator` (`...`) is added to `cfml_defi
 Compatibility note (2026-09-07): `IncDecOperator` (`++` / `--`) is now a single dedicated grammar token in `cfml_definition.json`, placed inside `ExpressionTokens`. Pre-increment (`++x`, `--x`) and post-increment (`x++`, `x--`) are fully supported in CFScript expressions: post-form returns the old value and then mutates the variable; pre-form mutates first and returns the new value. The engine already handled the two-adjacent-sign-token case; this stage wires up the dedicated single-token grammar so the textparser produces an `IncDecOperator` token instead of two `AddOperator` tokens. Byte-verified against Adobe ColdFusion 2025 (`tests/cfm/incdec_operator_test.cfm`; the original `tests/cfm/cfscript_incr_test.cfm` continues to pass).
 
 Compatibility note (2026-09-08): CFScript `while` and `do-while` loops execute correctly when the grammar tokenizes their statement keywords as `Keyword`. The reproducer `tests/cfm/cfscript_while_test.cfm` emits `012|DO|134|W` and matches Adobe ColdFusion 2025 exactly; focused JIT coverage is in `JitExpressionTest.ScriptWhileAndDoWhile`.
+
+Build note (2026-09-08): Release optimization flags and link-time optimization
+are configured centrally in `CMakeLists.txt`; `build-release.sh` now only selects
+the Release configuration and builds it. LTO is always enabled for Release.
+Both build scripts explicitly select GCC; Release links use GNU `ld.bfd`.
+The redundant Release `-O3` and unused shared-linker flag overrides were removed;
+CMake's standard Release flags already provide `-O3`, and this project builds
+static libraries and executables only.
+Release size flags now enable per-function/data sections and linker garbage
+collection; stripping remains enabled for the executable targets.
 
 Get all technical info from: https://helpx.adobe.com/coldfusion/cfml-reference/coldfusion-tags/tag-summary.html
 
