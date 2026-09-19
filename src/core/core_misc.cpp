@@ -940,6 +940,9 @@ cfvariant *cfml::cf_sessiongetmetadata() {
 
 cfvariant *cfml::cf_sessioninvalidate() {
     auto &sc = scope_context();
+    if (sc.appCfc) {
+        cf_invoke_on_session_end(static_cast<webstrada::ComponentInstance*>(sc.appCfc), sc.session, sc.application);
+    }
     if (sc.store && sc.sessionEnabled && !sc.sessionId.empty()) {
         sc.store->removeSession(sc.appName, sc.sessionId);
     }

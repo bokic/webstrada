@@ -2,6 +2,7 @@
 #include <webstrada/template_cache.h>
 #include <webstrada/config.h>
 #include <webstrada/worker.h>
+#include <webstrada/reaper.h>
 #include <webstrada/cf8.h>
 
 #include <vector>
@@ -85,6 +86,23 @@ int webstrada::appserver::run()
     {
         std::vector<int> childs;
 
+        auto fork_reaper = []() -> int {
+            int pid = fork();
+            if (pid == 0) {
+#ifdef __linux__
+                prctl(PR_SET_PDEATHSIG, SIGTERM);
+#endif
+                printf("Starting dedicated reaper process. pid: %d\n", getpid());
+                _exit(run_reaper_process());
+            } else if (pid < 0) {
+                perror("fork reaper");
+                return -1;
+            }
+            return pid;
+        };
+
+        int reaper_pid = fork_reaper();
+
         for(int fork_cnt = 0; fork_cnt < m_worker_num; fork_cnt++)
         {
             int pid = fork();
@@ -108,21 +126,47 @@ int webstrada::appserver::run()
         printf("main process wait for signal..\n");
 
         sigset_t sigset;
-        int sig = 0;
         sigemptyset(&sigset);
         sigaddset(&sigset, SIGINT);
+        sigaddset(&sigset, SIGTERM);
+        sigaddset(&sigset, SIGCHLD);
         sigprocmask(SIG_BLOCK, &sigset, NULL);
-        sigwait(&sigset, &sig);
+
+        bool terminate = false;
+        while (!terminate) {
+            int sig = 0;
+            sigwait(&sigset, &sig);
+            if (sig == SIGINT || sig == SIGTERM) {
+                terminate = true;
+                break;
+            } else if (sig == SIGCHLD) {
+                int status;
+                pid_t exited;
+                while ((exited = waitpid(-1, &status, WNOHANG)) > 0) {
+                    if (exited == reaper_pid && !terminate) {
+                        fprintf(stderr, "[SUPERVISOR] Reaper process %d exited with status %d, restarting...\n",
+                                reaper_pid, status);
+                        reaper_pid = fork_reaper();
+                    }
+                }
+            }
+        }
 
         printf("\n");
         printf("ask children to terminate..\n");
 
+        if (reaper_pid > 0) {
+            kill(reaper_pid, SIGTERM);
+        }
         for(const int& child : childs)
             kill(child, SIGUSR1);
 
         printf("wait for children to terminate..\n");
 
         int status;
+        if (reaper_pid > 0) {
+            waitpid(reaper_pid, &status, 0);
+        }
         for(const int& child : childs)
             waitpid(child, &status, 0);
 

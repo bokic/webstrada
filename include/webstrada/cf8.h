@@ -775,11 +775,14 @@ struct ScopeContext {
     bool sessionDirty = false;         // session data changed in this request
     bool appDirty = false;             // application data changed in this request
     bool sessionNewlyCreated = false;  // a fresh session was minted this request
+    bool applicationNewlyCreated = false; // application scope was newly created or expired & re-initialized
     int64_t sessionStartTime = 0;      // unix epoch of session creation (0=unknown)
     // <cfapplication loginstorage="session">: the CFAUTHORIZATION login key is
     // stored in the session scope instead of a cookie (CF's
     // ApplicationScope.setStoreloginCredentialInSession). Default: cookie.
     bool loginStorageIsSession = false;
+    void *appCfc = nullptr;            // webstrada::ComponentInstance* if Application.cfc is active
+    std::string appCfcPath;            // filesystem path to active Application.cfc
 };
 
 // Set up the request-scope context. `store` may be null (CLI) — the enable
@@ -792,6 +795,9 @@ void scope_begin(ScopeStore *store, cfvariant *application, cfvariant *session,
 void scope_end();
 
 ScopeContext &scope_context();
+
+std::string scope_json_serialize(const cfvariant &data);
+bool scope_json_deserialize(const std::string &text, cfvariant &out);
 
 // <cfapplication> runtime. The compiled tag passes the request's application,
 // session and cookie scope pointers plus the evaluated attributes (each
@@ -1556,6 +1562,26 @@ int cf_component_has_method_on(webstrada::ComponentInstance *inst, const char *m
 // Adds the component's public method names (uppercased, in declaration order)
 // to the given key list (StructKeyList / StructKeyArray virtual view).
 void cf_component_append_method_keys(const cfvariant *compVal, std::vector<webstrada::string> &keys);
+
+// Invokes onSessionEnd(SessionScope, ApplicationScope) on an Application.cfc instance.
+// Scopes (CGI, URL, FORM, etc.) are unbound, output is discarded, and exceptions are logged.
+void cf_invoke_on_session_end(webstrada::ComponentInstance *inst,
+                              cfvariant *sessionScope,
+                              cfvariant *applicationScope);
+
+// Invokes onApplicationEnd(ApplicationScope) on an Application.cfc instance.
+// Scopes are unbound, output is discarded, and exceptions are logged.
+void cf_invoke_on_application_end(webstrada::ComponentInstance *inst,
+                                  cfvariant *applicationScope);
+
+// Instantiates Application.cfc from ComponentInfo and runs onSessionEnd.
+void cf_invoke_on_session_end_with_info(webstrada::ComponentInfo *info,
+                                        cfvariant *sessionScope,
+                                        cfvariant *applicationScope);
+
+// Instantiates Application.cfc from ComponentInfo and runs onApplicationEnd.
+void cf_invoke_on_application_end_with_info(webstrada::ComponentInfo *info,
+                                            cfvariant *applicationScope);
 
 // The CF "method not found in component" error for an inaccessible/unknown method.
 [[noreturn]] void cf_component_throw_method_not_found(const cfvariant *compVal, const char *methodName);

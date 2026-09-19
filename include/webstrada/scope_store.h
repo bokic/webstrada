@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <cstdint>
 
 struct sqlite3;
@@ -42,9 +43,10 @@ public:
 
     // Persist a scope. `expiresAt` is a unix-epoch seconds value; 0 means no
     // expiry. `now` is recorded as last_access. `startTime` (0 = keep the
-    // existing creation time) is recorded for sessions.
-    bool storeApplication(const std::string &appName, const std::string &data, int64_t expiresAt, int64_t now);
-    bool storeSession(const std::string &appName, const std::string &sessionId, const std::string &data, int64_t expiresAt, int64_t now, int64_t startTime = 0);
+    // existing creation time) is recorded for sessions. `cfcPath` optionally records
+    // the filesystem path to the defining Application.cfc.
+    bool storeApplication(const std::string &appName, const std::string &data, int64_t expiresAt, int64_t now, const std::string &cfcPath = "");
+    bool storeSession(const std::string &appName, const std::string &sessionId, const std::string &data, int64_t expiresAt, int64_t now, int64_t startTime = 0, const std::string &cfcPath = "");
 
     bool removeApplication(const std::string &appName);
     bool removeSession(const std::string &appName, const std::string &sessionId);
@@ -52,6 +54,31 @@ public:
     // Rename a session row, preserving its data, expiry and creation time
     // (SessionRotate).
     bool rotateSession(const std::string &appName, const std::string &oldSessionId, const std::string &newSessionId);
+
+    // Atomically touch/extend the lifetime of an active scope without loading or mutating data.
+    // If expires_at == 0 (never expires) or expires_at > now, extends expiry to newExpiresAt
+    // and updates last_access = now.
+    // Returns true if a live row was touched, or false if the row is expired/missing.
+    bool touchApplication(const std::string &appName, int64_t newExpiresAt, int64_t now);
+    bool touchSession(const std::string &appName, const std::string &sessionId, int64_t newExpiresAt, int64_t now);
+
+    // Query the earliest expiration across the system (lowest expires_at > 0).
+    // Returns true and sets *earliestExpiresAt if an expiring row exists.
+    // Returns false if no rows have an expiry scheduled.
+    bool earliestExpiry(int64_t &earliestExpiresAt);
+
+    struct ExpiredScopeRecord {
+        std::string scopeKind; // "APPLICATION" or "SESSION"
+        std::string appName;
+        std::string scopeId;
+        std::string data;
+        std::string cfcPath;
+        int64_t startTime = 0;
+    };
+
+    // Atomically claim (copy data and delete) all expired rows where expires_at > 0 AND expires_at <= now.
+    // The SQLite write transaction is committed immediately before returning.
+    bool claimExpired(int64_t now, std::vector<ExpiredScopeRecord> &outExpired);
 
     // Monotonic server-wide counter used to mint CFID values (ColdFusion
     // assigns CFIDs from a single server-global sequence). Returns false on

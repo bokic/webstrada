@@ -12,6 +12,7 @@ if(BUILD_UNIT_TESTS)
         tests.cpp
         ../src/worker.cpp
         ../src/template_cache.cpp
+        ../src/reaper.cpp
     )
 
     if(WEBSTRADA_USE_PCH_IN_BUILD)
@@ -33,6 +34,7 @@ add_executable(webstrada-cli
     WebStrada_cli.cpp
     ../src/template_cache.cpp
     ../src/worker.cpp
+    ../src/reaper.cpp
 )
 
 target_include_directories(webstrada-cli PRIVATE

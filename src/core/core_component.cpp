@@ -1679,4 +1679,86 @@ cfvariant *cf_component_get_super_scope()
     throw webstrada::exception("component", "SUPER scope is only available inside a component method.");
 }
 
+void cf_invoke_on_session_end(webstrada::ComponentInstance *inst,
+                              cfvariant *sessionScope,
+                              cfvariant *applicationScope)
+{
+    if (!inst) return;
+    if (!cf_component_has_method_on(inst, "ONSESSIONEND")) return;
+
+    string dummyOut;
+    cfvariant fallbackSession(cfvariant::Struct);
+    cfvariant fallbackApp(cfvariant::Struct);
+    cfvariant *sPtr = sessionScope ? sessionScope : &fallbackSession;
+    cfvariant *aPtr = applicationScope ? applicationScope : &fallbackApp;
+
+    const cfvariant *args[2] = { sPtr, aPtr };
+    try {
+        cf_component_invoke_instance(inst, "onSessionEnd", args, 2, dummyOut,
+                                     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+    } catch (const std::exception &e) {
+        fprintf(stderr, "[ERROR] Exception in onSessionEnd: %s\n", e.what());
+    } catch (...) {
+        fprintf(stderr, "[ERROR] Unknown exception in onSessionEnd\n");
+    }
+}
+
+void cf_invoke_on_application_end(webstrada::ComponentInstance *inst,
+                                  cfvariant *applicationScope)
+{
+    if (!inst) return;
+    if (!cf_component_has_method_on(inst, "ONAPPLICATIONEND")) return;
+
+    string dummyOut;
+    cfvariant fallbackApp(cfvariant::Struct);
+    cfvariant *aPtr = applicationScope ? applicationScope : &fallbackApp;
+
+    const cfvariant *args[1] = { aPtr };
+    try {
+        cf_component_invoke_instance(inst, "onApplicationEnd", args, 1, dummyOut,
+                                     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+    } catch (const std::exception &e) {
+        fprintf(stderr, "[ERROR] Exception in onApplicationEnd: %s\n", e.what());
+    } catch (...) {
+        fprintf(stderr, "[ERROR] Unknown exception in onApplicationEnd\n");
+    }
+}
+
+void cf_invoke_on_session_end_with_info(webstrada::ComponentInfo *info,
+                                        cfvariant *sessionScope,
+                                        cfvariant *applicationScope)
+{
+    if (!info) return;
+    cfvariant dummyVariables(cfvariant::Struct);
+    string dummyOut;
+    try {
+        cfvariant *inst = cf_component_instantiate(info, &dummyVariables, &dummyOut,
+                                                   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+        if (!inst || inst->m_type != cfvariant::Component || !inst->m_component) return;
+        cf_invoke_on_session_end(inst->m_component, sessionScope, applicationScope);
+    } catch (const std::exception &e) {
+        fprintf(stderr, "[ERROR] Exception instantiating Application.cfc for onSessionEnd: %s\n", e.what());
+    } catch (...) {
+        fprintf(stderr, "[ERROR] Unknown exception instantiating Application.cfc for onSessionEnd\n");
+    }
+}
+
+void cf_invoke_on_application_end_with_info(webstrada::ComponentInfo *info,
+                                            cfvariant *applicationScope)
+{
+    if (!info) return;
+    cfvariant dummyVariables(cfvariant::Struct);
+    string dummyOut;
+    try {
+        cfvariant *inst = cf_component_instantiate(info, &dummyVariables, &dummyOut,
+                                                   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+        if (!inst || inst->m_type != cfvariant::Component || !inst->m_component) return;
+        cf_invoke_on_application_end(inst->m_component, applicationScope);
+    } catch (const std::exception &e) {
+        fprintf(stderr, "[ERROR] Exception instantiating Application.cfc for onApplicationEnd: %s\n", e.what());
+    } catch (...) {
+        fprintf(stderr, "[ERROR] Unknown exception instantiating Application.cfc for onApplicationEnd\n");
+    }
+}
+
 } // namespace cfml

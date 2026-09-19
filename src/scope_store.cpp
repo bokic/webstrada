@@ -58,6 +58,7 @@ bool ScopeStore::open(const std::string &dbPath)
         " expires_at  INTEGER NOT NULL DEFAULT 0,"
         " last_access INTEGER NOT NULL,"
         " start_time  INTEGER NOT NULL DEFAULT 0,"
+        " cfc_path    TEXT NOT NULL DEFAULT '',"
         " PRIMARY KEY (scope_kind, app_name, scope_id)"
         ");"
         "CREATE TABLE IF NOT EXISTS cf_seq ("
@@ -77,8 +78,9 @@ bool ScopeStore::open(const std::string &dbPath)
         "CREATE INDEX IF NOT EXISTS idx_security_app ON cf_security(app_token);";
     if (!exec(kSchema)) return false;
 
-    // Migration for stores created before the start_time column existed.
+    // Migration for stores created before start_time or cfc_path existed.
     exec("ALTER TABLE cf_scope ADD COLUMN start_time INTEGER NOT NULL DEFAULT 0;");
+    exec("ALTER TABLE cf_scope ADD COLUMN cfc_path TEXT NOT NULL DEFAULT '';");
     exec("CREATE INDEX IF NOT EXISTS idx_scope_expires ON cf_scope(expires_at);");
     exec("CREATE INDEX IF NOT EXISTS idx_security_app ON cf_security(app_token);");
 
@@ -155,15 +157,17 @@ bool ScopeStore::loadSession(const std::string &appName, const std::string &sess
 // Upsert one scope row.
 static bool storeRow(sqlite3 *db, std::string &lastError,
                      const char *kind, const std::string &appName, const std::string &scopeId,
-                     const std::string &data, int64_t expiresAt, int64_t now, int64_t startTime)
+                     const std::string &data, int64_t expiresAt, int64_t now, int64_t startTime,
+                     const std::string &cfcPath)
 {
     sqlite3_stmt *stmt = nullptr;
-    const char *sql = "INSERT INTO cf_scope (scope_kind, app_name, scope_id, data, expires_at, last_access, start_time)"
-                      " VALUES (?,?,?,?,?,?,?)"
+    const char *sql = "INSERT INTO cf_scope (scope_kind, app_name, scope_id, data, expires_at, last_access, start_time, cfc_path)"
+                      " VALUES (?,?,?,?,?,?,?,?)"
                       " ON CONFLICT(scope_kind, app_name, scope_id)"
                       " DO UPDATE SET data=excluded.data, expires_at=excluded.expires_at,"
                       "               last_access=excluded.last_access,"
-                      "               start_time=CASE WHEN excluded.start_time > 0 THEN excluded.start_time ELSE cf_scope.start_time END;";
+                      "               start_time=CASE WHEN excluded.start_time > 0 THEN excluded.start_time ELSE cf_scope.start_time END,"
+                      "               cfc_path=CASE WHEN excluded.cfc_path != '' THEN excluded.cfc_path ELSE cf_scope.cfc_path END;";
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         lastError = sqlite3_errmsg(db);
         return false;
@@ -175,6 +179,7 @@ static bool storeRow(sqlite3 *db, std::string &lastError,
     sqlite3_bind_int64(stmt, 5, expiresAt);
     sqlite3_bind_int64(stmt, 6, now);
     sqlite3_bind_int64(stmt, 7, startTime);
+    sqlite3_bind_text(stmt, 8, cfcPath.c_str(), -1, SQLITE_TRANSIENT);
 
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -185,14 +190,14 @@ static bool storeRow(sqlite3 *db, std::string &lastError,
     return true;
 }
 
-bool ScopeStore::storeApplication(const std::string &appName, const std::string &data, int64_t expiresAt, int64_t now)
+bool ScopeStore::storeApplication(const std::string &appName, const std::string &data, int64_t expiresAt, int64_t now, const std::string &cfcPath)
 {
-    return storeRow(m_db, m_lastError, "APPLICATION", appName, "", data, expiresAt, now, 0);
+    return storeRow(m_db, m_lastError, "APPLICATION", appName, "", data, expiresAt, now, 0, cfcPath);
 }
 
-bool ScopeStore::storeSession(const std::string &appName, const std::string &sessionId, const std::string &data, int64_t expiresAt, int64_t now, int64_t startTime)
+bool ScopeStore::storeSession(const std::string &appName, const std::string &sessionId, const std::string &data, int64_t expiresAt, int64_t now, int64_t startTime, const std::string &cfcPath)
 {
-    return storeRow(m_db, m_lastError, "SESSION", appName, sessionId, data, expiresAt, now, startTime);
+    return storeRow(m_db, m_lastError, "SESSION", appName, sessionId, data, expiresAt, now, startTime, cfcPath);
 }
 
 bool ScopeStore::removeApplication(const std::string &appName)
@@ -250,6 +255,120 @@ bool ScopeStore::rotateSession(const std::string &appName, const std::string &ol
         m_lastError = sqlite3_errmsg(m_db);
         return false;
     }
+    return true;
+}
+
+static bool touchRow(sqlite3 *db, std::string &lastError,
+                     const char *kind, const std::string &appName, const std::string &scopeId,
+                     int64_t newExpiresAt, int64_t now)
+{
+    sqlite3_stmt *stmt = nullptr;
+    const char *sql = "UPDATE cf_scope SET expires_at=?, last_access=?"
+                      " WHERE scope_kind=? AND app_name=? AND scope_id=?"
+                      "   AND (expires_at = 0 OR expires_at > ?);";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        lastError = sqlite3_errmsg(db);
+        return false;
+    }
+    sqlite3_bind_int64(stmt, 1, newExpiresAt);
+    sqlite3_bind_int64(stmt, 2, now);
+    sqlite3_bind_text(stmt, 3, kind, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, appName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, scopeId.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 6, now);
+
+    int rc = sqlite3_step(stmt);
+    int changes = sqlite3_changes(db);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        lastError = sqlite3_errmsg(db);
+        return false;
+    }
+    return (changes > 0);
+}
+
+bool ScopeStore::touchApplication(const std::string &appName, int64_t newExpiresAt, int64_t now)
+{
+    return touchRow(m_db, m_lastError, "APPLICATION", appName, "", newExpiresAt, now);
+}
+
+bool ScopeStore::touchSession(const std::string &appName, const std::string &sessionId, int64_t newExpiresAt, int64_t now)
+{
+    return touchRow(m_db, m_lastError, "SESSION", appName, sessionId, newExpiresAt, now);
+}
+
+bool ScopeStore::earliestExpiry(int64_t &earliestExpiresAt)
+{
+    sqlite3_stmt *stmt = nullptr;
+    const char *sql = "SELECT MIN(expires_at) FROM cf_scope WHERE expires_at > 0;";
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        m_lastError = sqlite3_errmsg(m_db);
+        return false;
+    }
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+            earliestExpiresAt = sqlite3_column_int64(stmt, 0);
+            found = true;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+bool ScopeStore::claimExpired(int64_t now, std::vector<ExpiredScopeRecord> &outExpired)
+{
+    outExpired.clear();
+    // Use an atomic transaction: select matching expired rows, copy data, then delete.
+    if (!exec("BEGIN IMMEDIATE;")) return false;
+
+    sqlite3_stmt *sel = nullptr;
+    const char *selSql = "SELECT scope_kind, app_name, scope_id, data, start_time, cfc_path FROM cf_scope"
+                         " WHERE expires_at > 0 AND expires_at <= ?;";
+    if (sqlite3_prepare_v2(m_db, selSql, -1, &sel, nullptr) != SQLITE_OK) {
+        m_lastError = sqlite3_errmsg(m_db);
+        sqlite3_exec(m_db, "ROLLBACK;", nullptr, nullptr, nullptr);
+        return false;
+    }
+    sqlite3_bind_int64(sel, 1, now);
+
+    while (sqlite3_step(sel) == SQLITE_ROW) {
+        ExpiredScopeRecord rec;
+        const unsigned char *kind = sqlite3_column_text(sel, 0);
+        const unsigned char *app = sqlite3_column_text(sel, 1);
+        const unsigned char *sid = sqlite3_column_text(sel, 2);
+        const unsigned char *data = sqlite3_column_text(sel, 3);
+        const unsigned char *cfc = sqlite3_column_text(sel, 5);
+        rec.scopeKind = kind ? reinterpret_cast<const char *>(kind) : "";
+        rec.appName = app ? reinterpret_cast<const char *>(app) : "";
+        rec.scopeId = sid ? reinterpret_cast<const char *>(sid) : "";
+        rec.data.assign(data ? reinterpret_cast<const char *>(data) : "",
+                        data ? static_cast<size_t>(sqlite3_column_bytes(sel, 3)) : 0);
+        rec.startTime = sqlite3_column_int64(sel, 4);
+        rec.cfcPath = cfc ? reinterpret_cast<const char *>(cfc) : "";
+        outExpired.push_back(std::move(rec));
+    }
+    sqlite3_finalize(sel);
+
+    if (!outExpired.empty()) {
+        sqlite3_stmt *del = nullptr;
+        const char *delSql = "DELETE FROM cf_scope WHERE expires_at > 0 AND expires_at <= ?;";
+        if (sqlite3_prepare_v2(m_db, delSql, -1, &del, nullptr) != SQLITE_OK) {
+            m_lastError = sqlite3_errmsg(m_db);
+            sqlite3_exec(m_db, "ROLLBACK;", nullptr, nullptr, nullptr);
+            return false;
+        }
+        sqlite3_bind_int64(del, 1, now);
+        int rc = sqlite3_step(del);
+        sqlite3_finalize(del);
+        if (rc != SQLITE_DONE) {
+            m_lastError = sqlite3_errmsg(m_db);
+            sqlite3_exec(m_db, "ROLLBACK;", nullptr, nullptr, nullptr);
+            return false;
+        }
+    }
+
+    if (!exec("COMMIT;")) return false;
     return true;
 }
 

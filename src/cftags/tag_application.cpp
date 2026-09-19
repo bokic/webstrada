@@ -94,16 +94,23 @@ static std::string liveSessionKey(const std::string &appName, const std::string 
 
 string makeCfToken()
 {
-    unsigned char buf[8];
-    std::srand((unsigned)std::time(nullptr) ^ (unsigned)getpid() ^ (unsigned)(uintptr_t)&buf);
-    for (int i = 0; i < 8; i++) buf[i] = (unsigned char)(rand() % 256);
+    unsigned char buf[24];
+    FILE *f = std::fopen("/dev/urandom", "rb");
+    if (f) {
+        size_t n = std::fread(buf, 1, sizeof(buf), f);
+        std::fclose(f);
+        if (n != sizeof(buf)) {
+            for (size_t i = n; i < sizeof(buf); i++) buf[i] = (unsigned char)(rand() % 256);
+        }
+    } else {
+        for (size_t i = 0; i < sizeof(buf); i++) buf[i] = (unsigned char)(rand() % 256);
+    }
     char part[17];
     std::snprintf(part, sizeof(part), "%08x%08x",
                   ((unsigned)buf[0] << 24) | ((unsigned)buf[1] << 16) | ((unsigned)buf[2] << 8) | buf[3],
                   ((unsigned)buf[4] << 24) | ((unsigned)buf[5] << 16) | ((unsigned)buf[6] << 8) | buf[7]);
 
-    unsigned char uuid[16];
-    for (int i = 0; i < 16; i++) uuid[i] = (unsigned char)(rand() % 256);
+    unsigned char *uuid = &buf[8];
     uuid[6] = (unsigned char)((uuid[6] & 0x0F) | 0x40);
     uuid[8] = (unsigned char)((uuid[8] & 0x3F) | 0x80);
     char hex[64] = {0};
@@ -193,14 +200,14 @@ void scope_end()
         sc.application->m_type == cfvariant::Struct) {
         int64_t expiresAt = (sc.appTimeoutSeconds > 0)
             ? now + static_cast<int64_t>(sc.appTimeoutSeconds) : 0;
-        sc.store->storeApplication(sc.appName, scope_json_serialize(*sc.application), expiresAt, now);
+        sc.store->storeApplication(sc.appName, scope_json_serialize(*sc.application), expiresAt, now, sc.appCfcPath);
     }
 
     if (sc.store && sc.sessionEnabled && !sc.sessionId.empty() && sc.session &&
         sc.session->m_type == cfvariant::Struct) {
         int64_t expiresAt = (sc.sessionTimeoutSeconds > 0)
             ? now + static_cast<int64_t>(sc.sessionTimeoutSeconds) : 0;
-        sc.store->storeSession(sc.appName, sc.sessionId, scope_json_serialize(*sc.session), expiresAt, now, sc.sessionStartTime);
+        sc.store->storeSession(sc.appName, sc.sessionId, scope_json_serialize(*sc.session), expiresAt, now, sc.sessionStartTime, sc.appCfcPath);
         {
             std::lock_guard<std::mutex> lock(g_liveSessionMutex);
             g_liveSessions[liveSessionKey(sc.appName, sc.sessionId)] = *sc.session;
@@ -245,11 +252,27 @@ cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
     sc.sessionTimeoutSeconds = cfAppTimeoutSeconds(sessionTimeout, webstrada::config::defaultSessionTimeoutSeconds);
     sc.sessionManagement = cfScopeBool(sessionManagement, false);
 
+    int64_t nowApp = nowSeconds();
+    int64_t newAppExp = (sc.appTimeoutSeconds > 0) ? (nowApp + static_cast<int64_t>(sc.appTimeoutSeconds)) : 0;
+
+    if (!scopeEmpty) {
+        // If the worker has a live in-memory application scope, verify it hasn't expired in the store
+        if (!sc.store->touchApplication(storeKey.constData(), newAppExp, nowApp)) {
+            // Expired in store or missing! Clear local application scope to re-initialize
+            application->set_type(cfvariant::NotSet);
+            application->set_type(cfvariant::Struct);
+            scopeEmpty = true;
+        }
+    }
+
     if (scopeEmpty) {
         std::string json;
-        bool found = sc.store->loadApplication(storeKey.constData(), nowSeconds(), json);
+        bool found = sc.store->loadApplication(storeKey.constData(), nowApp, json);
         if (found && scope_json_deserialize(json, *application)) {
-            // loaded
+            // loaded; touch to extend expiry
+            sc.store->touchApplication(storeKey.constData(), newAppExp, nowApp);
+        } else {
+            sc.applicationNewlyCreated = true;
         }
         sc.appDirty = !found;
     } else {
@@ -269,11 +292,26 @@ cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
         string sessionId = cfid + ":" + token;
         bool haveIds = !cfid.isEmpty() && !token.isEmpty();
 
+        int64_t now = nowSeconds();
+        int64_t newExp = (sc.sessionTimeoutSeconds > 0) ? (now + static_cast<int64_t>(sc.sessionTimeoutSeconds)) : 0;
         std::string sjson;
         int64_t startTime = 0;
-        bool foundSession = haveIds && sc.store->loadSession(storeKey.constData(), sessionId.constData(), nowSeconds(), sjson, &startTime);
+        bool foundSession = false;
+
+        if (haveIds) {
+            // First attempt to atomically touch the session in the store
+            if (sc.store->touchSession(storeKey.constData(), sessionId.constData(), newExp, now)) {
+                foundSession = sc.store->loadSession(storeKey.constData(), sessionId.constData(), now, sjson, &startTime);
+            }
+        }
 
         if (!foundSession) {
+            // If the session was expired or not found, clear any stale live session from the local worker cache
+            if (haveIds) {
+                std::lock_guard<std::mutex> lock(g_liveSessionMutex);
+                g_liveSessions.erase(liveSessionKey(storeKey.constData(), sessionId.constData()));
+            }
+
             int64_t newCfid = 1;
             sc.store->nextCfid(newCfid);
             token = makeCfToken();
@@ -285,7 +323,7 @@ cfvariant *cf_application_enable(cfvariant *application, cfvariant *session,
                 setSessionCookies(cfid, token);
             }
             sc.sessionNewlyCreated = true;
-            sc.sessionStartTime = nowSeconds();
+            sc.sessionStartTime = now;
         } else if (session) {
             bool restoredLive = false;
             {

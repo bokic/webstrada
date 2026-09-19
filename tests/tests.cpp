@@ -13,6 +13,7 @@
 #include <webstrada/server_stats.h>
 #include <webstrada/upload.h>
 #include <webstrada/component.h>
+#include <webstrada/reaper.h>
 #include "../src/cftags/common.h"
 #include "../src/cffunctions/common.h"
 #include <cairo.h>
@@ -10842,6 +10843,174 @@ TEST_F(ScopeStoreTest, GlobalCfidCounter) {
     EXPECT_EQ(a + 1, b);
 }
 
+TEST_F(ScopeStoreTest, TouchApplicationAndSession) {
+    int64_t now = 1000000;
+    m_store.storeApplication("app", "{\"a\":1}", now + 100, now);
+    m_store.storeSession("app", "1:t", "{\"s\":1}", now + 100, now, now);
+
+    // Active rows: touch succeeds and extends expiry.
+    EXPECT_EQ(m_store.touchApplication("app", now + 500, now + 10), true);
+    EXPECT_EQ(m_store.touchSession("app", "1:t", now + 500, now + 10), true);
+
+    // Row is still valid at now + 300 (past original now + 100, but within extended now + 500).
+    std::string data;
+    EXPECT_EQ(m_store.loadApplication("app", now + 300, data), true);
+    EXPECT_EQ(m_store.loadSession("app", "1:t", now + 300, data), true);
+
+    // After expiration (now + 600), touch fails (changes == 0).
+    EXPECT_EQ(m_store.touchApplication("app", now + 1000, now + 600), false);
+    EXPECT_EQ(m_store.touchSession("app", "1:t", now + 1000, now + 600), false);
+
+    // Missing row touch fails.
+    EXPECT_EQ(m_store.touchApplication("nonexistent", now + 1000, now), false);
+    EXPECT_EQ(m_store.touchSession("app", "missing", now + 1000, now), false);
+}
+
+TEST_F(ScopeStoreTest, EarliestExpiryAndClaimExpired) {
+    int64_t now = 1000000;
+    int64_t earliest = 0;
+
+    // Initially empty.
+    EXPECT_EQ(m_store.earliestExpiry(earliest), false);
+
+    // Insert multiple scopes with different expiries.
+    m_store.storeApplication("app1", "{\"app\":1}", now + 300, now);
+    m_store.storeSession("app1", "sessA", "{\"user\":\"alice\"}", now + 100, now, now);
+    m_store.storeSession("app1", "sessB", "{\"user\":\"bob\"}", now + 200, now, now);
+    m_store.storeApplication("never", "{}", 0, now); // expires_at == 0 should be ignored
+
+    // Earliest expiry should be sessA at now + 100.
+    EXPECT_EQ(m_store.earliestExpiry(earliest), true);
+    EXPECT_EQ(earliest, now + 100);
+
+    // At now + 50, claimExpired claims 0 rows.
+    std::vector<ScopeStore::ExpiredScopeRecord> claimed;
+    EXPECT_EQ(m_store.claimExpired(now + 50, claimed), true);
+    EXPECT_EQ(claimed.empty(), true);
+
+    // At now + 150, sessA is expired and claimed.
+    EXPECT_EQ(m_store.claimExpired(now + 150, claimed), true);
+    EXPECT_EQ(claimed.size(), 1u);
+    if (!claimed.empty()) {
+        EXPECT_EQ(claimed[0].scopeKind, "SESSION");
+        EXPECT_EQ(claimed[0].appName, "app1");
+        EXPECT_EQ(claimed[0].scopeId, "sessA");
+        EXPECT_EQ(claimed[0].data, "{\"user\":\"alice\"}");
+        EXPECT_EQ(claimed[0].startTime, now);
+    }
+
+    // Now earliest expiry should be sessB at now + 200.
+    EXPECT_EQ(m_store.earliestExpiry(earliest), true);
+    EXPECT_EQ(earliest, now + 200);
+
+    // Claim at now + 350 claims both sessB and app1.
+    EXPECT_EQ(m_store.claimExpired(now + 350, claimed), true);
+    EXPECT_EQ(claimed.size(), 2u);
+
+    // After claiming, only "never" remains (which has expires_at == 0).
+    EXPECT_EQ(m_store.earliestExpiry(earliest), false);
+}
+
+TEST_F(ScopeStoreTest, ReapExpiredScopesInMemLifecycle) {
+    int64_t now = static_cast<int64_t>(std::time(nullptr));
+
+    char templateDir[] = "/tmp/webstrada_reaper_test_XXXXXX";
+    char *dir = mkdtemp(templateDir);
+    ASSERT_NE(dir, nullptr);
+    std::string root(dir);
+    std::string markerPath = root + "/reaper_marker.txt";
+    std::string appCfcPath = root + "/Application.cfc";
+
+    std::string cfcContent =
+        "<cfcomponent>\n"
+        "<cfset this.name = \"reap_app\">\n"
+        "<cffunction name=\"onSessionEnd\">\n"
+        "  <cfargument name=\"SessionScope\" required=\"true\">\n"
+        "  <cfargument name=\"ApplicationScope\" required=\"false\">\n"
+        "  <cffile action=\"append\" file=\"" + markerPath + "\" output=\"SESSION_END:#arguments.SessionScope.username#:#arguments.ApplicationScope.env#|\">\n"
+        "</cffunction>\n"
+        "<cffunction name=\"onApplicationEnd\">\n"
+        "  <cfargument name=\"ApplicationScope\" required=\"false\">\n"
+        "  <cffile action=\"append\" file=\"" + markerPath + "\" output=\"APP_END:#arguments.ApplicationScope.env#|\">\n"
+        "</cffunction>\n"
+        "</cfcomponent>\n";
+
+    {
+        std::ofstream out(appCfcPath);
+        out << cfcContent;
+    }
+
+    // Insert application and session into store with cfcPath recorded.
+    EXPECT_EQ(m_store.storeApplication("reap_app", "{\"env\":\"prod\"}", now + 100, now, appCfcPath), true);
+    EXPECT_EQ(m_store.storeSession("reap_app", "sess1", "{\"username\":\"bob\"}", now + 100, now, now, appCfcPath), true);
+
+    TemplateCache cache;
+
+    // Reap at now + 50: nothing expired yet.
+    EXPECT_EQ(reap_expired_scopes(m_store, now + 50, &cache), 0u);
+    EXPECT_FALSE(std::filesystem::exists(markerPath));
+
+    // Reap at now + 150: both session and application are expired and claimed.
+    EXPECT_EQ(reap_expired_scopes(m_store, now + 150, &cache), 2u);
+
+    // Verify callback output in the marker file.
+    EXPECT_TRUE(std::filesystem::exists(markerPath));
+    std::ifstream in(markerPath);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "SESSION_END:bob:prod|\nAPP_END:prod|\n");
+
+    // Store should have 0 rows left.
+    std::string dummy;
+    EXPECT_FALSE(m_store.loadSession("reap_app", "sess1", now + 200, dummy));
+    EXPECT_FALSE(m_store.loadApplication("reap_app", now + 200, dummy));
+
+    std::filesystem::remove_all(root);
+}
+
+TEST_F(ScopeStoreTest, ReaperProcessForkTimerAndSignalWakeup) {
+    m_store.close();
+
+    pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+
+    if (pid == 0) {
+        int rc = run_reaper_process(m_dbPath);
+        _exit(rc);
+    }
+
+    int64_t now = static_cast<int64_t>(std::time(nullptr));
+    {
+        ScopeStore parentStore;
+        ASSERT_TRUE(parentStore.open(m_dbPath));
+        EXPECT_TRUE(parentStore.storeSession("test_app", "s_fork", "{\"k\":1}", now + 1, now, now));
+    }
+
+    bool reaped = false;
+    for (int i = 0; i < 30; ++i) {
+        usleep(100000); // 100ms
+        ScopeStore checkStore;
+        if (checkStore.open(m_dbPath)) {
+            std::string data;
+            int64_t curNow = static_cast<int64_t>(std::time(nullptr));
+            if (!checkStore.loadSession("test_app", "s_fork", curNow, data)) {
+                reaped = true;
+                break;
+            }
+        }
+    }
+    EXPECT_TRUE(reaped);
+
+    kill(pid, SIGTERM);
+
+    int status = 0;
+    pid_t waited = waitpid(pid, &status, 0);
+    EXPECT_EQ(waited, pid);
+    EXPECT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+
+    m_store.open(m_dbPath);
+}
+
 TEST_F(WorkerTest, ScopeApplicationPersistsAcrossRequests) {
     std::string db = makeTempScopeDb();
     webstrada::config::scopeDbPath = db;
@@ -10918,6 +11087,55 @@ TEST_F(WorkerTest, ScopeSessionPersistsWithCookies) {
     removeScopeDb(db);
 }
 
+TEST_F(WorkerTest, ScopeSessionExpiresAndMintsFreshSession) {
+    std::string db = makeTempScopeDb();
+    webstrada::config::scopeDbPath = db;
+
+    std::string root = makeAppCfmTree({
+        {"index.cfm",
+         "<cfapplication name=\"sess_exp\" sessionmanagement=\"true\" sessiontimeout=\"#createTimeSpan(0,0,0,1)#\">"
+         "<cfif not StructKeyExists(session, \"c\")><cfset session.c = 0></cfif>"
+         "<cfset session.c = session.c + 1>"
+         "<cfoutput>#session.c#</cfoutput>"},
+    });
+    string page = (root + "/index.cfm").c_str();
+
+    {
+        worker w;
+        // Request 1: mints session (c=1)
+        EXPECT_EQ(runWorkerRequest(w, page, root.c_str()).equals("1"), true);
+        string cfid1 = cookieValue("CFID");
+        string token1 = cookieValue("CFTOKEN");
+        EXPECT_EQ(cfid1.isEmpty(), false);
+        EXPECT_EQ(token1.isEmpty(), false);
+
+        // Immediate subsequent request resumes the session (c=2)
+        w.cookie().set("CFID") = cfid1;
+        w.cookie().set("CFTOKEN") = token1;
+        EXPECT_EQ(runWorkerRequest(w, page, root.c_str()).equals("2"), true);
+        EXPECT_EQ(cfml::response().cookies.size(), (size_t)0); // no cookies sent on resume
+
+        // Simulate session expiration in the database by setting expires_at into the past
+        ScopeStore store;
+        EXPECT_EQ(store.open(db), true);
+        EXPECT_EQ(store.purgeExpired(static_cast<int64_t>(std::time(nullptr)) + 1000), true); // deletes rows expired by now + 1000
+        store.close();
+
+        // Next request with the old cookies should detect expiration: mint fresh session with c=1 and new cookies
+        w.cookie().set("CFID") = cfid1;
+        w.cookie().set("CFTOKEN") = token1;
+        EXPECT_EQ(runWorkerRequest(w, page, root.c_str()).equals("1"), true);
+        string cfid2 = cookieValue("CFID");
+        string token2 = cookieValue("CFTOKEN");
+        EXPECT_EQ(cfid2.isEmpty(), false);
+        EXPECT_EQ(token2.isEmpty(), false);
+        EXPECT_EQ(token1.equals(token2), false);
+    }
+
+    webstrada::config::scopeDbPath = "";
+    removeScopeDb(db);
+}
+
 TEST_F(WorkerTest, ScopeSessionRotatePreservesData) {
     std::string db = makeTempScopeDb();
     webstrada::config::scopeDbPath = db;
@@ -10948,6 +11166,94 @@ TEST_F(WorkerTest, ScopeSessionRotatePreservesData) {
         w.cookie().set("CFTOKEN") = token2;
         w.url().set("ROTATE") = "";
         EXPECT_EQ(runWorkerRequest(w, page, root.c_str()).equals("3"), true);
+    }
+
+    webstrada::config::scopeDbPath = "";
+    removeScopeDb(db);
+}
+
+TEST_F(WorkerTest, ScopeSessionInvalidateRemovesStoreRow) {
+    std::string db = makeTempScopeDb();
+    webstrada::config::scopeDbPath = db;
+
+    std::string root = makeAppCfmTree({
+        {"index.cfm",
+         "<cfapplication name=\"inv_store\" sessionmanagement=\"true\">"
+         "<cfif StructKeyExists(url, \"inv\")>"
+         "  <cfset SessionInvalidate()>"
+         "  <cfoutput>INV_DONE</cfoutput>"
+         "<cfelse>"
+         "  <cfset session.x = 42>"
+         "  <cfoutput>#session.x#</cfoutput>"
+         "</cfif>"},
+    });
+    string page = (root + "/index.cfm").c_str();
+
+    {
+        worker w;
+        // Request 1: creates session
+        EXPECT_EQ(runWorkerRequest(w, page, root.c_str()).equals("42"), true);
+        string cfid = cookieValue("CFID");
+        string token = cookieValue("CFTOKEN");
+        EXPECT_EQ(cfid.isEmpty(), false);
+        EXPECT_EQ(token.isEmpty(), false);
+        std::string sid = std::string(cfid.constData()) + ":" + token.constData();
+        EXPECT_EQ(storeHasRow(w, "inv_store", sid.c_str()), true);
+
+        // Request 2: invalidates session
+        w.cookie().set("CFID") = cfid;
+        w.cookie().set("CFTOKEN") = token;
+        w.url().set("INV") = "1";
+        EXPECT_EQ(runWorkerRequest(w, page, root.c_str()).equals("INV_DONE"), true);
+
+        // Session row must be deleted from the store
+        EXPECT_EQ(storeHasRow(w, "inv_store", sid.c_str()), false);
+    }
+
+    webstrada::config::scopeDbPath = "";
+    removeScopeDb(db);
+}
+
+TEST_F(WorkerTest, ScopeSessionInvalidateInvokesOnSessionEnd) {
+    std::string db = makeTempScopeDb();
+    webstrada::config::scopeDbPath = db;
+
+    std::string root = makeAppCfmTree({
+        {"Application.cfc",
+         "<cfcomponent>"
+         "<cfset this.name = \"end_test_app\">"
+         "<cfset this.sessionManagement = true>"
+         "<cffunction name=\"onSessionEnd\">"
+         "  <cfargument name=\"SessionScope\" required=\"true\">"
+         "  <cfargument name=\"ApplicationScope\" required=\"false\">"
+         "  <cfset arguments.ApplicationScope.recorded = arguments.SessionScope.msg>"
+         "  <cfset writeOutput(\"SHOULD_BE_DISCARDED\")>"
+         "  <cfthrow message=\"ignored error\">"
+         "</cffunction>"
+         "</cfcomponent>"},
+        {"index.cfm",
+         "<cfif StructKeyExists(url, \"inv\")>"
+         "  <cfset SessionInvalidate()>"
+         "  <cfoutput>#application.recorded#</cfoutput>"
+         "<cfelse>"
+         "  <cfset application.recorded = \"none\">"
+         "  <cfset session.msg = \"hello_from_ended_session\">"
+         "  <cfoutput>INIT</cfoutput>"
+         "</cfif>"},
+    });
+    string page = (root + "/index.cfm").c_str();
+
+    {
+        worker w;
+        EXPECT_EQ(runWorkerRequestWithContext(w, page, root.c_str()).equals("INIT"), true);
+        string cfid = cookieValue("CFID");
+        string token = cookieValue("CFTOKEN");
+
+        w.cookie().set("CFID") = cfid;
+        w.cookie().set("CFTOKEN") = token;
+        w.url().set("INV") = "1";
+        // onSessionEnd should run, copy session.msg into application.recorded, discard output and suppress error
+        EXPECT_EQ(runWorkerRequestWithContext(w, page, root.c_str()).equals("hello_from_ended_session"), true);
     }
 
     webstrada::config::scopeDbPath = "";

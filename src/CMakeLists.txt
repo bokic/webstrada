@@ -675,6 +675,7 @@ add_executable(webstrada
     template_cache.cpp ../include/webstrada/template_cache.h
     appserver.cpp          ../include/webstrada/appserver.h
     worker.cpp             ../include/webstrada/worker.h
+    reaper.cpp             ../include/webstrada/reaper.h
 )
 
 target_include_directories(webstrada PRIVATE

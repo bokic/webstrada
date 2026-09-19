@@ -7,6 +7,7 @@
 #include <webstrada/config.h>
 #include <webstrada/cache_store.h>
 #include <webstrada/server_stats.h>
+#include <webstrada/reaper.h>
 #include <webstrada/db.h>
 #include "cftags/common.h"
 #include "core/core_internal.h"
@@ -124,21 +125,7 @@ void worker::open_profiler_store()
 // <cfapplication> helpers throw a clear error when asked to enable them).
 void worker::open_scope_store()
 {
-    std::string dbPath = webstrada::config::scopeDbPath;
-    if (dbPath.empty()) {
-        char exe[4096];
-        ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
-        if (n > 0) {
-            exe[n] = '\0';
-            std::string path(exe);
-            size_t slash = path.find_last_of('/');
-            dbPath = (slash != std::string::npos)
-                ? path.substr(0, slash + 1) + "WebStrada-scopes.sqlite"
-                : "WebStrada-scopes.sqlite";
-        } else {
-            dbPath = "WebStrada-scopes.sqlite";
-        }
-    }
+    std::string dbPath = resolve_scope_db_path();
     if (!m_scopeStore.open(dbPath)) {
         fprintf(stderr, "[WebStrada] Warning: could not open scope database %s: %s\n",
                 dbPath.c_str(), m_scopeStore.lastError().c_str());
@@ -873,6 +860,8 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
     }
     cfvariant *thisScope = m_appCfc.m_component->thisScope;
     cfvariant *compPtr = &m_appCfc;
+    cfml::scope_context().appCfc = m_appCfc.m_component;
+    cfml::scope_context().appCfcPath = app_cfc_path.constData() ? app_cfc_path.constData() : "";
 
     // Apply the Application.cfc settings like <cfapplication> (name,
     // sessionmanagement, setclientcookies, applicationtimeout, sessiontimeout).
@@ -898,8 +887,8 @@ bool worker::run_application_cfc(const string &app_cfc_path, const string &pathn
     }
     cfml::trace_record_event("ENGINE", "[ENGINE]", "APPLICATION_ENABLE");
 
-    // onApplicationStart runs once per worker (per app object).
-    if (!m_appCfcStarted) {
+    // onApplicationStart runs on initial start or when the application expired and was re-created.
+    if (!m_appCfcStarted || cfml::scope_context().applicationNewlyCreated) {
         m_appCfcStarted = true;
         if (cfml::cf_component_has_method_on(m_appCfc.m_component, "ONAPPLICATIONSTART")) {
             cfvariant *res = appCfcInvoke(compPtr, "onApplicationStart", nullptr, 0,
