@@ -51,25 +51,14 @@ Run `webstrada` by passing a configuration file or defining your routing paths v
 ### Install and Run
 
 ```bash
-# Download docker image
-docker pull bokic78/webstrada:latest
-
-# Create docker container
-cd {to root of your CFML application}
-docker create --name webstrada -p 80:80 -v .:/webroot bokic78/webstrada:latest
-
-# Start webstrada app server
-docker start webstrada
+docker run -d --name webstrada -p 80:80 -v /path/to/your/CFML/application:/webroot bokic78/webstrada:latest
 ```
 
 ### Stop and Uninstall
 
 ```bash
-# Stop webstrada app server
-docker stop webstrada
-
-# Delete webstrada docker container
-docker rm webstrada
+# Stop and delete webstrada docker container
+docker rm -f webstrada
 
 # Delete webstrada docker image
 docker rmi bokic78/webstrada:latest
@@ -86,4 +75,4 @@ http://localhost/webstrada/ — the WebStrada admin panel
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
-Developed with ❤️ by [Boris Barbulovski (bokic)](https://github.com).
+Developed with ❤️ by [Boris Barbulovski (bokic)](https://github.com/bokic).
