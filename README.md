@@ -3,6 +3,8 @@
 [![Language: C++23](https://img.shields.io/badge/Language-C%2B%2B23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 [![Compiler: LLVM/Clang](https://img.shields.io/badge/JIT-LLVM-orange.svg)](https://llvm.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Docker Pulls](https://img.shields.io/docker/pulls/bokic78/webstrada)](https://hub.docker.com/r/bokic78/webstrada)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/bokic/webstrada)
 
 A high-performance, lightweight **CFML Application Engine** written in C++. 
 
